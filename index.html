@@ -2271,6 +2271,15 @@ function escucharCambios() {
         <button class="btn btn-primary" onclick="abrirNuevoPrestamo()">+ Nuevo préstamo</button>
       </div>
     </div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Total pendiente en préstamos activos</div>
+          <div class="card-subtitle"><span id="prestamos-resumen-count">0 préstamos activos</span> · saldo consolidado pendiente</div>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--naranja);">$<span id="prestamos-total-pendiente">0</span></div>
+      </div>
+    </div>
     <div class="card">
       <table>
         <thead>
@@ -4141,7 +4150,8 @@ function renderVista(v) {
 // ══════════════════════════════════════════════════
 function renderDashboard() {
   const totalAhorros = DB.socios.reduce((s,x) => s+x.ahorro, 0);
-  const prestPendiente = DB.prestamos.filter(p=>p.estado==='activo').reduce((s,p)=>s+p.pendiente,0);
+  const prestamosActivosConsolidados = consolidarTodos('activo');
+  const prestPendiente = prestamosActivosConsolidados.reduce((s,c)=>s + (c.pendienteTotal || 0),0);
   const tandasActivas = DB.tandas.length;
   // Utilidades: suma de utilidades registradas y pendientes por pagar
   const utils = DB.utilidades || [];
@@ -4151,7 +4161,7 @@ function renderDashboard() {
   document.getElementById('kpi-ahorros').textContent = fmt(totalAhorros);
   document.getElementById('kpi-socios-count').textContent = DB.socios.filter(s=>s.activo).length + ' socios activos';
   document.getElementById('kpi-prestamos').textContent = fmt(prestPendiente);
-  document.getElementById('kpi-presta-count').textContent = DB.prestamos.filter(p=>p.estado==='activo').length + ' préstamos activos';
+  document.getElementById('kpi-presta-count').textContent = prestamosActivosConsolidados.length + ' deudores activos';
   document.getElementById('kpi-tandas').textContent = tandasActivas;
   document.getElementById('kpi-utilidades').textContent = fmt(utilidades);
   const elPend = document.getElementById('kpi-utilidades-pend');
@@ -4303,9 +4313,12 @@ function renderAhorros() {
 function renderPrestamos(filtro) {
   filtro = 'activo';
   const tb = document.getElementById('prestamos-tbody');
-  // Consolidar por cliente — incluir según filtro
-  const todosLosConsolidados = consolidarTodos(filtro);
-  const consolidados = todosLosConsolidados;
+  const consolidados = consolidarTodos('activo');
+  const totalPendiente = consolidados.reduce((s,c)=>s + (c.pendienteTotal || 0),0);
+  const resumenTotal = document.getElementById('prestamos-total-pendiente');
+  const resumenCount = document.getElementById('prestamos-resumen-count');
+  if(resumenTotal) resumenTotal.textContent = fmt(totalPendiente);
+  if(resumenCount) resumenCount.textContent = consolidados.length + (consolidados.length === 1 ? ' préstamo activo' : ' préstamos activos');
   tb.innerHTML = consolidados.map(c => {
     // Buscar número de cliente en directorio
     // Buscar número en directorio global
