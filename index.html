@@ -5312,6 +5312,9 @@ function restaurarUtilidadesBase() {
 function guardarUtilidadesAhora() {
   sincronizarAhorradorUtilidades();
   if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof renderSocios === 'function' && document.getElementById('view-socios')?.classList.contains('active')) renderSocios();
+  if(typeof renderAhorros === 'function' && document.getElementById('view-ahorros')?.classList.contains('active')) renderAhorros();
+  if(typeof renderCuentas === 'function' && document.getElementById('view-cuentas')?.classList.contains('active')) renderCuentas();
   alert('Utilidades guardadas. El ahorrador UTILIDADES quedó actualizado.');
 }
 
@@ -8321,6 +8324,8 @@ function guardarEnLocal() {
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
     const datos = {
       v: 2,
+      v2: (typeof _d !== 'undefined' && _d._version) ? _d._version : 0,
+      _version: (typeof _d !== 'undefined' && _d._version) ? _d._version : 0,
       ts: Date.now(),
       socios:       DB.socios,
       prestamos:    DB.prestamos,
@@ -8382,6 +8387,7 @@ function cargarDesdeLocal() {
     DB._directorio  = datos._directorio  || [];
     aplicarCuentasPersistidas(datos.cuentas);
     asegurarCuentasEspeciales();
+    if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
 
     const d = new Date(datos.ts);
     const ind = document.getElementById('ls-indicator');
@@ -8439,6 +8445,7 @@ function guardarArchivoCompleto() {
 
   try {
     const datosActuales = {
+      _version: (typeof _d !== 'undefined' && _d._version) ? _d._version : Date.now(),
       socios: DB.socios, prestamos: DB.prestamos, tandas: DB.tandas,
       movimientos: DB.movimientos, cumple: DB.cumple,
       fondoCumple: DB.fondoCumple, configCumple: DB.configCumple,
@@ -8498,11 +8505,18 @@ function guardarArchivoCompleto() {
   // Verificar versión: si HTML es más nuevo que localStorage, forzar recarga
   var _htmlVer = (typeof _d !== 'undefined' && _d._version) ? _d._version : 0;
   var _lsVer = 0;
-  try { var _lsD = JSON.parse(localStorage.getItem('caja_ahorro_2026')||'{}'); _lsVer = _lsD.v2||0; } catch(e){}
-  if(_htmlVer > _lsVer) {
-    try { localStorage.removeItem('caja_ahorro_2026'); } catch(e){}
-    lsOk = false; // forzar uso de datos HTML
-  }
+  try {
+    var _lsD = JSON.parse(localStorage.getItem('caja_ahorro_2026')||'{}');
+    _lsVer = _lsD._version || _lsD.v2 || 0;
+  } catch(e){}
+
+  /*
+    Importante:
+    Antes se borraba localStorage cuando _htmlVer > _lsVer.
+    El guardado local anterior tenía v:2, pero no guardaba v2/_version,
+    entonces _lsVer quedaba en 0 y al abrir la app se borraban los cambios.
+    No borremos datos del usuario automáticamente.
+  */
   var cargado = lsOk ? cargarDesdeLocal() : false;
   if(!cargado) {
     if(!DB.fondoCumple) DB.fondoCumple = [];
