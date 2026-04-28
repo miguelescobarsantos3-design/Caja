@@ -2561,7 +2561,7 @@ function escucharCambios() {
   <!-- ─── UTILIDADES ─── -->
   <div class="content view" id="view-utilidades">
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);max-width:900px;margin-bottom:24px;">
-      <div class="kpi kpi-green"><div class="kpi-accent"></div><div class="kpi-label">Total interés 2025</div><div class="kpi-value mono">$122,305.73</div><div class="kpi-sub">generado en el año</div></div>
+      <div class="kpi kpi-green"><div class="kpi-accent"></div><div class="kpi-label">Total interés 2025</div><div class="kpi-value mono" id="util-total-kpi">$122,305.73</div><div class="kpi-sub">generado en el año</div></div>
       <div class="kpi kpi-blue"><div class="kpi-accent"></div><div class="kpi-label">Total cobrado</div><div class="kpi-value mono" id="util-cobrado-kpi" style="color:var(--verde);">$77,625.73</div><div class="kpi-sub" id="util-cobrado-pct">63.5% del total</div></div>
       <div class="kpi kpi-orange"><div class="kpi-accent"></div><div class="kpi-label">Saldo pendiente 2026</div><div class="kpi-value mono" style="color:var(--rojo);">$44,680.00</div><div class="kpi-sub">por cobrar</div></div>
       <div class="kpi kpi-yellow"><div class="kpi-accent"></div><div class="kpi-label">Liquidados</div><div class="kpi-value">15</div><div class="kpi-sub">de 36 deudores</div></div>
@@ -5297,6 +5297,8 @@ function actualizarKpiUtilidades() {
   const elPct = document.getElementById('util-cobrado-pct');
   if(el) el.textContent = '$'+fmt(cobrado);
   if(elPct) elPct.textContent = pct+'% del total';
+  const elTotal = document.getElementById('util-total-kpi');
+  if(elTotal) elTotal.textContent = '$'+fmt(Math.round(total*100)/100);
 }
 
 function renderUtilidades() {
