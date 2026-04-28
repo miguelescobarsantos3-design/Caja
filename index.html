@@ -9593,7 +9593,7 @@ function tgConfirmarEntrega(){
   // Service Worker para cache offline
   if ('serviceWorker' in navigator) {
     var swCode = [
-      'const CACHE = "caja-v2";',
+      'const CACHE = "caja-v4-guardado-total";',
       'self.addEventListener("install", function(e) {',
       '  e.waitUntil(caches.open(CACHE).then(function(c) {',
       '    return c.add(self.location.origin + self.location.pathname);',
@@ -9730,6 +9730,168 @@ function prAutoDesglose() {
   if(document.getElementById('pr-capital-display')) document.getElementById('pr-capital-display').textContent = '$' + fmt(capitalAbono);
   if(document.getElementById('pr-desglose-box')) document.getElementById('pr-desglose-box').style.display = 'block';
 }
+
+// ══════════════════════════════════════════════════
+// PARCHE GUARDADO TOTAL — ABONOS, CUMPLEAÑOS Y SOCIOS NUEVOS
+// ══════════════════════════════════════════════════
+(function(){
+  if(window.__cajaGuardadoTotalPatch) return;
+  window.__cajaGuardadoTotalPatch = true;
+
+  function resetSelect(id) {
+    var el = document.getElementById(id);
+    if(!el) return;
+    var first = el.options && el.options.length ? el.options[0].textContent : '— Seleccionar —';
+    el.innerHTML = '<option value="">' + first + '</option>';
+  }
+
+  function refrescarSelectsCaja() {
+    // Obliga a que aparezcan ahorradores nuevos/editados en pagos, retiros y préstamos.
+    ['ah-socio','rt-socio','np-socio','td-tanda','td-participante'].forEach(resetSelect);
+    try {
+      var pagosActiva = document.getElementById('view-pagos') && document.getElementById('view-pagos').classList.contains('active');
+      if(pagosActiva && typeof renderPagos === 'function') renderPagos();
+    } catch(e) {}
+  }
+
+  function pintarGuardadoOK() {
+    try {
+      var ind = document.getElementById('ls-indicator');
+      if(ind) {
+        ind.textContent = '✓ Guardado';
+        ind.style.color = 'rgba(100,220,140,0.8)';
+        clearTimeout(ind._t);
+        ind._t = setTimeout(function(){
+          var d = new Date();
+          ind.textContent = '🕐 ' + d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+          ind.style.color = 'rgba(255,255,255,0.3)';
+        }, 2000);
+      }
+    } catch(e) {}
+  }
+
+  function guardarTodoCaja(motivo) {
+    try { if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales(); } catch(e) {}
+    try { if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades(); } catch(e) {}
+    try { if(typeof fixFondoCumple === 'function') fixFondoCumple(); } catch(e) {}
+    try { if(typeof guardarEnLocal === 'function') guardarEnLocal(); } catch(e) { console.warn('No se pudo guardar local:', e.message); }
+    try { if(typeof guardarEnFirebase === 'function') guardarEnFirebase(); } catch(e) { console.warn('No se pudo guardar nube:', e.message); }
+    pintarGuardadoOK();
+  }
+  window.guardarTodoCaja = guardarTodoCaja;
+
+  function envolverConGuardado(nombre, opciones) {
+    opciones = opciones || {};
+    var fn = window[nombre];
+    if(typeof fn !== 'function' || fn.__guardadoTotal) return;
+    var envuelta = function() {
+      var r = fn.apply(this, arguments);
+      setTimeout(function(){
+        if(opciones.refrescarSelects) refrescarSelectsCaja();
+        guardarTodoCaja(nombre);
+        try {
+          var activa = document.querySelector('.view.active');
+          if(activa && activa.id === 'view-dashboard' && typeof renderDashboard === 'function') renderDashboard();
+        } catch(e) {}
+      }, opciones.delay || 150);
+      return r;
+    };
+    envuelta.__guardadoTotal = true;
+    window[nombre] = envuelta;
+  }
+
+  // Funciones que mueven dinero o modifican la base. Ya no dependemos del Proxy de movimientos,
+  // porque al cargar localStorage/Firebase DB.movimientos se reemplaza y el Proxy se pierde.
+  [
+    'procesarAhorro',
+    'procesarPrestamo',
+    'procesarRetiro',
+    'procesarTanda',
+    'mostrarRecibo',
+    'mostrarReciboPrestamo',
+    'guardarPrestamo',
+    'guardarEdicionPrestamo',
+    'confirmarEliminarPrestamo',
+    'confirmarCancelacion',
+    'confirmarAporteCumple',
+    'confirmarEntregaCumple',
+    'guardarMontoCumple',
+    'guardarFestejado',
+    'guardarAporteManual',
+    'guardarArchivoCompleto',
+    'guardarUtilidadesDesdeInputs',
+    'agregarFilaUtilidades',
+    'eliminarFilaUtilidades',
+    'tgGuardarTanda',
+    'tgRegistrarPago',
+    'tgMarcarEntrega',
+    'guardarEdicionTanda'
+  ].forEach(function(n){ envolverConGuardado(n); });
+
+  // Socios/tandas: además de guardar, refrescar selects para que el ahorrador nuevo sí aparezca.
+  ['guardarSocio','guardarEdicionSocio','guardarTanda'].forEach(function(n){
+    envolverConGuardado(n, {refrescarSelects:true, delay:180});
+  });
+
+  // Baja de socio: el cambio real ocurre dentro del botón de confirmación, por eso se parchea aparte.
+  if(typeof confirmarEliminarSocio === 'function' && !confirmarEliminarSocio.__guardadoTotalEspecial) {
+    var _confirmarEliminarSocio = confirmarEliminarSocio;
+    window.confirmarEliminarSocio = function() {
+      var r = _confirmarEliminarSocio.apply(this, arguments);
+      setTimeout(function(){
+        var btn = document.getElementById('confirmar-eliminar-btn');
+        if(btn && !btn.__guardadoTotal) {
+          var old = btn.onclick;
+          btn.onclick = function(ev) {
+            var rr = old ? old.call(this, ev) : undefined;
+            setTimeout(function(){ refrescarSelectsCaja(); guardarTodoCaja('confirmarEliminarSocio'); }, 150);
+            return rr;
+          };
+          btn.__guardadoTotal = true;
+        }
+      }, 50);
+      return r;
+    };
+    window.confirmarEliminarSocio.__guardadoTotalEspecial = true;
+  }
+
+  // Si algún flujo sigue usando DB.movimientos directamente, reinstala autosave sobre el arreglo actual.
+  function instalarAutosaveMovimientos() {
+    try {
+      if(!Array.isArray(DB.movimientos) || DB.movimientos.__autosaveCaja) return;
+      var target = DB.movimientos;
+      DB.movimientos = new Proxy(target, {
+        get: function(arr, prop) {
+          if(['push','unshift','splice','pop','shift'].indexOf(prop) >= 0) {
+            return function() {
+              var res = Array.prototype[prop].apply(arr, arguments);
+              setTimeout(function(){ guardarTodoCaja('movimientos.' + prop); }, 180);
+              return res;
+            };
+          }
+          return typeof arr[prop] === 'function' ? arr[prop].bind(arr) : arr[prop];
+        }
+      });
+      DB.movimientos.__autosaveCaja = true;
+    } catch(e) {}
+  }
+  instalarAutosaveMovimientos();
+
+  // Evita quedarse con versión vieja del PWA/cache. No toca tus datos; solo el archivo cacheado.
+  try {
+    if(window.caches && caches.keys) {
+      caches.keys().then(function(keys){
+        keys.filter(function(k){ return /^caja-/.test(k); }).forEach(function(k){ caches.delete(k); });
+      }).catch(function(){});
+    }
+    if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(reg){ try { reg.update(); } catch(e) {} });
+      }).catch(function(){});
+    }
+  } catch(e) {}
+})();
+
 </script>
 
 <!-- ─── MODAL EXPORTAR EXCEL ─── -->
