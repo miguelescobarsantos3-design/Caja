@@ -845,6 +845,29 @@ function escucharCambios() {
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAQRFRkR6q1BB_mSserosac4eaNAf0d3mM",
+  authDomain: "caja-ahorro-2026.firebaseapp.com",
+  projectId: "caja-ahorro-2026",
+  storageBucket: "caja-ahorro-2026.firebasestorage.app",
+  messagingSenderId: "1050323559779",
+  appId: "1:1050323559779:web:3900632cec3d8b687f5f6"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// 🔥 PRUEBA BÁSICA
+onSnapshot(collection(db, "socios"), snapshot => {
+  console.log("🔥 Firebase conectado:", snapshot.size);
+});
+
+</script>
 </head>
 <body>
 <div id="version-publicada" style="background:#0d7a5f;color:white;padding:10px;text-align:center;font-size:14px;font-weight:700;position:relative;z-index:999999;">APP ACTUALIZADA 20260429</div>
