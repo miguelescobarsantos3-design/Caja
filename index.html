@@ -826,9 +826,7 @@ function escucharCambios() {
       <span class="icon">◈</span> Préstamos
       <span class="badge" id="badge-prestamos">86</span>
     </div>
-    <div class="nav-item" onclick="goto('tandas')">
-      <span class="icon">⬡</span> Tandas
-    </div>
+
 
     <div class="nav-section">Más</div>
     <div class="nav-item" onclick="goto('cuentas')">
@@ -837,9 +835,7 @@ function escucharCambios() {
     <div class="nav-item" onclick="goto('cumple')">
       <span class="icon">◉</span> Cumpleaños
     </div>
-    <div class="nav-item" onclick="goto('tandas-grupales')">
-      <span class="icon">⬡</span> Tandas
-    </div>
+
     <div class="nav-item" onclick="goto('recibos')">
       <span class="icon">◻</span> Recibos
     </div>
@@ -5047,12 +5043,13 @@ function clonarUtilidadesBase() {
 function cobradoUtilidad(u) {
   if(!u) return 0;
   if(u.cobrado !== undefined) return numUtil(u.cobrado);
+  if(u.cobradoManual !== undefined) return numUtil(u.cobradoManual);
   if(u.pagado !== undefined) return numUtil(u.pagado);
   if(Array.isArray(u.pagos)) return u.pagos.reduce((s, v) => s + numUtil(v), 0);
   return ['ene1','ene2','feb1','feb2','mar1','mar2','abr1','abr2'].reduce((s, k) => s + numUtil(u[k]), 0);
 }
 function totalUtilidad(u) {
-  return numUtil(u && (u.total !== undefined ? u.total : (u.utilidad || u.totalInteres || u.interesMonto || 0)));
+  return numUtil(u && (u.total !== undefined ? u.total : (u.interesTotal || u.utilidad || u.totalInteres || u.interesMonto || 0)));
 }
 function baseUtilidadPorNombre(nombre) {
   const n = normUtilNombre(nombre);
