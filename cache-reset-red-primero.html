@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Actualizar Caja 2026</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f0ede6;color:#1a1916;margin:0;padding:24px}.box{max-width:520px;margin:40px auto;background:white;border-radius:16px;padding:24px;box-shadow:0 8px 28px rgba(0,0,0,.12)}button{width:100%;border:0;border-radius:10px;background:#0d7a5f;color:white;padding:14px 18px;font-size:16px;font-weight:700}code{background:#eee;padding:2px 6px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>Actualizar Caja 2026</h2>
+<p>Esto elimina service workers y cachés viejos. No borra tus datos capturados en la app.</p>
+<button onclick="actualizar()">Limpiar caché y abrir app</button>
+<p id="log"></p>
+</div>
+<script>
+async function actualizar(){
+  const log=document.getElementById('log');
+  log.textContent='Limpiando caché viejo...';
+  try{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if(window.caches){
+      const keys=await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+  }catch(e){ console.warn(e); }
+  log.textContent='Listo. Abriendo versión nueva...';
+  location.href='./?v=20260429-network-first-v3&nocache=' + Date.now();
+}
+</script>
+</body>
+</html>
