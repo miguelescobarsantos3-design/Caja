@@ -5409,7 +5409,7 @@ function guardarEditarUtilidad() {
   cerrarModal('modal-editar-utilidad');
   renderUtilidades();
   guardarEnLocal();
-  if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  // Firebase se actualiza solo al presionar Guardar (para no agotar límite diario)
 }
 function abrirNuevaUtilidad() {
   _utilidadEditandoIdx = null;
@@ -6215,7 +6215,7 @@ function guardarPrestamo() {
     cuenta: npCuentaKey || null
   });
   guardarEnLocal();
-  if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  // Firebase se actualiza solo al presionar Guardar (para no agotar límite diario)
   if(npCuentaKey && CUENTAS[npCuentaKey]) renderCuentas();
 
   // Limpiar
@@ -8705,8 +8705,8 @@ function _guardarTras(fn) {
     return r;
   };
 }
-// Guardar cada 30 segundos como respaldo adicional
-setInterval(guardarEnLocal, 30000);
+// Guardar cada 5 minutos como respaldo local
+setInterval(guardarEnLocal, 300000);
 
 function guardarArchivoCompleto() {
   asegurarCuentasEspeciales();
@@ -8757,6 +8757,7 @@ function guardarArchivoCompleto() {
       setTimeout(() => { btn1.innerHTML = textoOrig; btn1.style.background = '#16a34a'; btn1.disabled = false; }, 2500);
     }
     if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   } catch(err) {
     if(btn1) { btn1.innerHTML = textoOrig; btn1.disabled = false; }
     alert('Error al guardar: ' + err.message);
@@ -8850,7 +8851,7 @@ function guardarArchivoCompleto() {
   }, 300);
 
   // Auto-guardar cada 30 segundos
-  if(lsOk) setInterval(guardarEnLocal, 30000);
+  if(lsOk) setInterval(guardarEnLocal, 300000);
 })();
 
 // ══════════════════════════════════════════════════
@@ -9343,7 +9344,7 @@ function confirmarAporteCumple(){
   generarReciboCumpleVisual(aportante, monto, fecha, notas, festSeleccionados);
   renderCumple();
   if(typeof guardarEnLocal==='function') guardarEnLocal();
-  if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  // Firebase se actualiza solo al presionar Guardar (para no agotar límite diario)
 }
 
 function generarReciboCumpleVisual(aportante, monto, fecha, notas, festejados) {
@@ -9895,19 +9896,23 @@ function forzarSyncDesdeFirebase() {
     if(!snap.exists) { alert('No hay datos en Firebase'); return; }
     const datos = snap.data();
     if(!datos) return;
-    // Borrar localStorage viejo y guardar datos de Firebase con su ts original
-    try {
-      localStorage.removeItem('caja_ahorro_2026');
-      localStorage.removeItem('caja_ahorro_2026_backup_total');
-      localStorage.removeItem('caja_ts');
-      const json = JSON.stringify(Object.assign({}, datos, {v:3}));
-      localStorage.setItem('caja_ahorro_2026', json);
-      localStorage.setItem('caja_ahorro_2026_backup_total', json);
-      localStorage.setItem('caja_ts', String(datos.ts));
-    } catch(e) {}
+    DB.socios      = datos.socios      || [];
+    DB.prestamos   = datos.prestamos   || [];
+    fixSocioIds();
+    DB.tandas      = datos.tandas      || [];
+    DB.movimientos = datos.movimientos || [];
+    DB.cumple      = datos.cumple      || [];
+    DB.fondoCumple = datos.fondoCumple || [];
+    DB.configCumple= datos.configCumple|| {participantes:32, aportacion:100};
+    DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
+    DB.utilidades  = datos.utilidades  || [];
+    DB.recibos     = datos.recibos     || [];
+    if(datos.cuentas) aplicarCuentasPersistidas(datos.cuentas);
+    if(datos.ts) localStorage.setItem('caja_ts', String(datos.ts));
+    guardarEnLocal();
+    renderDashboard();
     actualizarIndicadorSync('conectado');
-    alert('Sincronizado. Recargando...');
-    setTimeout(function(){ location.reload(); }, 500);
+    alert('✓ Datos sincronizados desde Firebase');
   }).catch(function(e) {
     alert('Error: ' + e.message);
     actualizarIndicadorSync('sin_conexion');
