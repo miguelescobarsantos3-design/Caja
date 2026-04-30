@@ -9895,6 +9895,8 @@ function forzarSyncDesdeFirebase() {
     if(!snap.exists) { alert('No hay datos en Firebase'); return; }
     const datos = snap.data();
     if(!datos) return;
+    // Limpiar localStorage para que Firebase gane
+    try { localStorage.clear(); } catch(e) {}
     DB.socios      = datos.socios      || [];
     DB.prestamos   = datos.prestamos   || [];
     fixSocioIds();
@@ -9911,7 +9913,7 @@ function forzarSyncDesdeFirebase() {
     guardarEnLocal();
     renderDashboard();
     actualizarIndicadorSync('conectado');
-    alert('✓ Datos sincronizados desde Firebase');
+    alert('✓ Datos actualizados. Los números cambiaron ahora.');
   }).catch(function(e) {
     alert('Error: ' + e.message);
     actualizarIndicadorSync('sin_conexion');
