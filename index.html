@@ -9895,25 +9895,19 @@ function forzarSyncDesdeFirebase() {
     if(!snap.exists) { alert('No hay datos en Firebase'); return; }
     const datos = snap.data();
     if(!datos) return;
-    // Limpiar localStorage para que Firebase gane
-    try { localStorage.clear(); } catch(e) {}
-    DB.socios      = datos.socios      || [];
-    DB.prestamos   = datos.prestamos   || [];
-    fixSocioIds();
-    DB.tandas      = datos.tandas      || [];
-    DB.movimientos = datos.movimientos || [];
-    DB.cumple      = datos.cumple      || [];
-    DB.fondoCumple = datos.fondoCumple || [];
-    DB.configCumple= datos.configCumple|| {participantes:32, aportacion:100};
-    DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
-    DB.utilidades  = datos.utilidades  || [];
-    DB.recibos     = datos.recibos     || [];
-    if(datos.cuentas) aplicarCuentasPersistidas(datos.cuentas);
-    if(datos.ts) localStorage.setItem('caja_ts', String(datos.ts));
-    guardarEnLocal();
-    renderDashboard();
+    // Borrar localStorage viejo y guardar datos de Firebase con su ts original
+    try {
+      localStorage.removeItem('caja_ahorro_2026');
+      localStorage.removeItem('caja_ahorro_2026_backup_total');
+      localStorage.removeItem('caja_ts');
+      const json = JSON.stringify(Object.assign({}, datos, {v:3}));
+      localStorage.setItem('caja_ahorro_2026', json);
+      localStorage.setItem('caja_ahorro_2026_backup_total', json);
+      localStorage.setItem('caja_ts', String(datos.ts));
+    } catch(e) {}
     actualizarIndicadorSync('conectado');
-    alert('✓ Datos actualizados. Los números cambiaron ahora.');
+    alert('Sincronizado. Recargando...');
+    setTimeout(function(){ location.reload(); }, 500);
   }).catch(function(e) {
     alert('Error: ' + e.message);
     actualizarIndicadorSync('sin_conexion');
