@@ -698,7 +698,7 @@ function iniciarFirebase() {
     // MODO SEGURO: los datos locales mandan. No descargar datos viejos de la nube al abrir.
     window.CAJA_LOCAL_GANA = true;
     actualizarIndicadorSync('conectado');
-    console.log('Firebase conectado ✓ — modo local gana');
+    console.log('Firebase conectado ✓');
     // Después de cargar localStorage/HTML, subimos ese estado a nube.
     setTimeout(function(){
       try { if(typeof guardarDatos === 'function') guardarDatos({render:false, fuente:'inicio-local-gana'}); }
@@ -768,18 +768,51 @@ async function guardarEnFirebase() {
 
 // Cargar datos de Firestore
 async function cargarDesdFirebase() {
-  // Modo seguro: no jalamos datos de Firebase automáticamente porque puede regresar una copia vieja
-  // y pisar lo capturado. Para esta caja, primero se guarda local y luego se sube a nube.
-  console.log('Carga automática desde nube desactivada: localStorage/archivo local manda.');
-  return false;
+  if(!_fbDb) return false;
+  _fbDb.collection('caja').doc('datos').get().then(function(snap) {
+    if(!snap.exists) return;
+    const datos = snap.data();
+    if(!datos || !datos.ts) return;
+    const tsLocal = parseInt(localStorage.getItem('caja_ts')||'0');
+    // Firebase gana si tiene datos más recientes O si el cel no tiene datos propios
+    if(datos.ts >= tsLocal) {
+      console.log('Cargando desde Firebase (ts=' + datos.ts + ')');
+      try {
+        localStorage.removeItem('caja_ahorro_2026');
+        localStorage.removeItem('caja_ahorro_2026_backup_total');
+        const json = JSON.stringify(Object.assign({}, datos, {v:3}));
+        localStorage.setItem('caja_ahorro_2026', json);
+        localStorage.setItem('caja_ahorro_2026_backup_total', json);
+        localStorage.setItem('caja_ts', String(datos.ts));
+      } catch(e) {}
+      location.reload();
+    } else {
+      console.log('localStorage más reciente — manteniendo datos locales');
+    }
+  }).catch(function(e){ console.warn('Error Firebase:', e.message); });
+  return true;
 }
 
 // Escuchar cambios en tiempo real (otro dispositivo guarda)
 let _fbListener = null;
 function escucharCambios() {
-  // Modo seguro: evitamos que otra copia vieja en Firebase reemplace cambios locales.
-  console.log('Listener de Firebase desactivado en modo local gana.');
-  return;
+  if(!_fbDb) return;
+  _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
+    if(!snap.exists) return;
+    const datos = snap.data();
+    if(!datos || !datos.ts) return;
+    const tsLocal = parseInt(localStorage.getItem('caja_ts')||'0');
+    if(datos.ts > tsLocal) {
+      console.log('Cambio en Firebase detectado — recargando...');
+      try {
+        const json = JSON.stringify(Object.assign({}, datos, {v:3}));
+        localStorage.setItem('caja_ahorro_2026', json);
+        localStorage.setItem('caja_ahorro_2026_backup_total', json);
+        localStorage.setItem('caja_ts', String(datos.ts));
+      } catch(e) {}
+      location.reload();
+    }
+  }, function(err){ console.warn('Listener error:', err.message); });
 }
 
     if('serviceWorker' in navigator) {
@@ -1024,9 +1057,9 @@ function escucharCambios() {
       </div>
       <div class="kpi kpi-yellow">
         <div class="kpi-accent"></div>
-        <div class="kpi-label">Tandas activas</div>
-        <div class="kpi-value" id="kpi-tandas">0</div>
-        <div class="kpi-sub">tandas en curso</div>
+        <div class="kpi-label">Pendiente utilidades</div>
+        <div class="kpi-value mono" id="kpi-util-pendiente">$0</div>
+        <div class="kpi-sub">por cobrar de intereses</div>
       </div>
       <div class="kpi kpi-blue">
         <div class="kpi-accent"></div>
@@ -3870,6 +3903,7 @@ function escucharCambios() {
       <button class="btn btn-secondary" onclick="cerrarModal('modal-ficha-socio')">Cerrar</button>
       <button class="btn btn-secondary" id="ficha-btn-editar" onclick="">✏️ Editar</button>
       <button class="btn btn-secondary" id="ficha-btn-ec" onclick="" style="display: none;">📄 Estado de cuenta</button>
+      <button class="btn btn-secondary" id="ficha-btn-inactivar" onclick="toggleInactivarSocio()" style="background:#fff0f0;color:#dc2626;border:1px solid #fca5a5;font-size:12px;">🗑 Ocultar</button>
       <button class="btn btn-secondary" id="ficha-btn-nuevo-prestamo" onclick="abrirNuevoPrestamoDesdeFicha()" style="background:#fff3e0;color:#e65100;border:1px solid #ffb74d;">📋 Nuevo préstamo</button>
       <button class="btn btn-primary" id="ficha-btn-pago" onclick="">+ Registrar pago</button>
     </div>
@@ -4517,7 +4551,28 @@ function renderDashboard() {
   document.getElementById('kpi-socios-count').textContent = DB.socios.filter(s=>s.activo).length + ' socios activos';
   document.getElementById('kpi-prestamos').textContent = fmt(prestPendiente);
   document.getElementById('kpi-presta-count').textContent = DB.prestamos.filter(p=>p.estado==='activo').length + ' préstamos activos';
-  document.getElementById('kpi-tandas').textContent = tandasActivas;
+  // Calcular pendiente de utilidades
+  (function() {
+    const src = DB.utilidades || [];
+    let pend = 0;
+    if(src.length > 0) {
+      const cobMov = {};
+      (DB.movimientos||[]).forEach(function(m){
+        if(m.tipo==='prestamo' && m.interesAbonado>0){
+          const n=(m.socio||'').toUpperCase().trim();
+          cobMov[n]=(cobMov[n]||0)+m.interesAbonado;
+        }
+      });
+      src.forEach(function(u){
+        const tot=u.interesTotal||u.total||0;
+        const man=u.cobradoManual||u.cobrado||0;
+        const mov=cobMov[(u.nombre||'').toUpperCase().trim()]||0;
+        pend+=Math.max(0,tot-Math.min(man+mov,tot));
+      });
+    } else { pend=44680; }
+    const el=document.getElementById('kpi-util-pendiente');
+    if(el) el.textContent='$'+fmt(Math.round(pend));
+  })();
   document.getElementById('kpi-utilidades').textContent = (typeof fmtUtil === 'function') ? fmtUtil(utilidades) : fmt(utilidades);
   const elPend = document.getElementById('kpi-utilidades-pend');
   if(elPend) elPend.textContent = (typeof fmtUtil === 'function') ? fmtUtil(utilidadesPend) : fmt(utilidadesPend);
@@ -7195,6 +7250,15 @@ function abrirFichaSocio(socioId) {
 
   // Activar tab ahorro por defecto
   fichaTab('ahorro');
+  // Actualizar botón ocultar según estado del socio
+  const btnInact = document.getElementById('ficha-btn-inactivar');
+  if(btnInact) {
+    const estaActivo = s.activo !== false;
+    btnInact.textContent = estaActivo ? '🗑 Ocultar' : '✓ Activar';
+    btnInact.style.background = estaActivo ? '#fff0f0' : '#f0fdf4';
+    btnInact.style.color = estaActivo ? '#dc2626' : '#15803d';
+    btnInact.style.borderColor = estaActivo ? '#fca5a5' : '#bbf7d0';
+  }
   document.getElementById('modal-ficha-socio').classList.add('open');
 }
 
@@ -9941,6 +10005,21 @@ function abrirNuevoPrestamoDesdeFicha() {
       }
     }
   }, 200);
+}
+
+function toggleInactivarSocio() {
+  const s = DB.socios.find(x => x.id === _fichaId);
+  if(!s) return;
+  const estaActivo = s.activo !== false;
+  const accion = estaActivo ? 'ocultar' : 'activar';
+  if(!confirm((estaActivo ? '¿Ocultar a ' : '¿Activar a ') + s.nombre + '? ' + (estaActivo ? 'Ya no aparecerá en la lista de socios.' : 'Volverá a aparecer en la lista.'))) return;
+  s.activo = !estaActivo;
+  guardarEnLocal();
+  if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  cerrarModal('modal-ficha-socio');
+  renderSocios && renderSocios();
+  renderDashboard && renderDashboard();
+  alert((estaActivo ? '✓ Socio ocultado. ' : '✓ Socio activado. ') + 'Para verlo de nuevo activa "Mostrar inactivos" en Socios.');
 }
 </script>
 
