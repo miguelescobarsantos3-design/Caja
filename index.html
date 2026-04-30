@@ -768,54 +768,18 @@ async function guardarEnFirebase() {
 
 // Cargar datos de Firestore
 async function cargarDesdFirebase() {
-  if(!_fbDb) return false;
-  _fbDb.collection('caja').doc('datos').get().then(snap => {
-    if(!snap.exists) return;
-    const datos = snap.data();
-    if(!datos || !datos.ts) return;
-    // Firebase siempre gana — es la fuente de verdad
-    aplicarDatosFirebase(datos);
-    console.log('Datos cargados desde Firebase');
-  }).catch(e => console.warn('Error cargando Firebase:', e));
-  return true;
-}
-
-function aplicarDatosFirebase(datos) {
-  if(!datos) return;
-  DB.socios      = datos.socios      || DB.socios      || [];
-  DB.prestamos   = datos.prestamos   || DB.prestamos   || [];
-  fixSocioIds();
-  DB.tandas      = datos.tandas      || DB.tandas      || [];
-  DB.movimientos = datos.movimientos || DB.movimientos || [];
-  DB.cumple      = datos.cumple      || DB.cumple      || [];
-  DB.fondoCumple = datos.fondoCumple || DB.fondoCumple || [];
-  DB.configCumple= datos.configCumple|| DB.configCumple|| {participantes:32, aportacion:100};
-  DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix|| {festejados:[], participantes:[]};
-  DB.utilidades  = datos.utilidades  || DB.utilidades  || [];
-  DB.recibos     = datos.recibos     || DB.recibos     || [];
-  if(datos.cuentas) aplicarCuentasPersistidas(datos.cuentas);
-  localStorage.setItem('caja_ts', String(datos.ts));
-  guardarEnLocal();
-  renderDashboard();
-  setTimeout(() => actualizarIndicadorSync('conectado'), 500);
+  // Modo seguro: no jalamos datos de Firebase automáticamente porque puede regresar una copia vieja
+  // y pisar lo capturado. Para esta caja, primero se guarda local y luego se sube a nube.
+  console.log('Carga automática desde nube desactivada: localStorage/archivo local manda.');
+  return false;
 }
 
 // Escuchar cambios en tiempo real (otro dispositivo guarda)
 let _fbListener = null;
 function escucharCambios() {
-  if(!_fbDb) return;
-  let _lastTs = parseInt(localStorage.getItem('caja_ts') || '0');
-  _fbDb.collection('caja').doc('datos').onSnapshot(snap => {
-    if(!snap.exists) return;
-    const datos = snap.data();
-    if(!datos || !datos.ts) return;
-    // Solo actualizar si Firebase tiene datos MÁS recientes que los locales
-    if(datos.ts > _lastTs + 1000) {
-      _lastTs = datos.ts;
-      console.log('Cambio en Firebase detectado — actualizando...');
-      aplicarDatosFirebase(datos);
-    }
-  }, err => console.warn('Error listener Firebase:', err.message));
+  // Modo seguro: evitamos que otra copia vieja en Firebase reemplace cambios locales.
+  console.log('Listener de Firebase desactivado en modo local gana.');
+  return;
 }
 
     if('serviceWorker' in navigator) {
@@ -885,6 +849,9 @@ function escucharCambios() {
   <div style="padding:16px 24px;border-top:1px solid rgba(255,255,255,0.1);margin-top:auto;">
     <button onclick="guardarArchivoCompleto()" id="btn-guardar-sidebar" style="width:100%;background:#16a34a;border:none;color:#fff;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">
       💾 Guardar
+    </button>
+    <button onclick="forzarSyncDesdeFirebase()" style="width:100%;background:rgba(100,180,255,0.15);border:1px solid rgba(100,180,255,0.3);color:rgba(150,210,255,0.9);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:6px;">
+      🔄 Sync desde nube
     </button>
     <button onclick="abrirConfiguracion()" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:6px;">
       ⚙ Configuración
@@ -8867,6 +8834,10 @@ function guardarArchivoCompleto() {
   // Guardar de inmediato el estado correcto y luego subirlo a nube en modo local-gana.
   if(typeof guardarDatos === 'function') guardarDatos({render:false, firebase:false});
   iniciarFirebase();
+  // Forzar carga desde Firebase al arrancar (sobreescribe localStorage)
+  setTimeout(function() {
+    if(_fbDb) cargarDesdFirebase();
+  }, 2000);
 
   // Aviso si no hay localStorage disponible
   setTimeout(function() {
@@ -9916,6 +9887,36 @@ function tgConfirmarEntrega(){
     if(dp) { dp.prompt(); dp.userChoice.then(function(){ dp = null; }); }
   };
 })();
+
+function forzarSyncDesdeFirebase() {
+  if(!_fbDb) { alert('Sin conexión a Firebase'); return; }
+  actualizarIndicadorSync('guardando');
+  _fbDb.collection('caja').doc('datos').get().then(function(snap) {
+    if(!snap.exists) { alert('No hay datos en Firebase'); return; }
+    const datos = snap.data();
+    if(!datos) return;
+    DB.socios      = datos.socios      || [];
+    DB.prestamos   = datos.prestamos   || [];
+    fixSocioIds();
+    DB.tandas      = datos.tandas      || [];
+    DB.movimientos = datos.movimientos || [];
+    DB.cumple      = datos.cumple      || [];
+    DB.fondoCumple = datos.fondoCumple || [];
+    DB.configCumple= datos.configCumple|| {participantes:32, aportacion:100};
+    DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
+    DB.utilidades  = datos.utilidades  || [];
+    DB.recibos     = datos.recibos     || [];
+    if(datos.cuentas) aplicarCuentasPersistidas(datos.cuentas);
+    if(datos.ts) localStorage.setItem('caja_ts', String(datos.ts));
+    guardarEnLocal();
+    renderDashboard();
+    actualizarIndicadorSync('conectado');
+    alert('✓ Datos sincronizados desde Firebase');
+  }).catch(function(e) {
+    alert('Error: ' + e.message);
+    actualizarIndicadorSync('sin_conexion');
+  });
+}
 </script>
 
 
