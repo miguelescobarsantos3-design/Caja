@@ -3870,6 +3870,7 @@ function escucharCambios() {
       <button class="btn btn-secondary" onclick="cerrarModal('modal-ficha-socio')">Cerrar</button>
       <button class="btn btn-secondary" id="ficha-btn-editar" onclick="">✏️ Editar</button>
       <button class="btn btn-secondary" id="ficha-btn-ec" onclick="" style="display: none;">📄 Estado de cuenta</button>
+      <button class="btn btn-secondary" id="ficha-btn-nuevo-prestamo" onclick="abrirNuevoPrestamoDesdeFicha()" style="background:#fff3e0;color:#e65100;border:1px solid #ffb74d;">📋 Nuevo préstamo</button>
       <button class="btn btn-primary" id="ficha-btn-pago" onclick="">+ Registrar pago</button>
     </div>
   </div>
@@ -9917,6 +9918,29 @@ function forzarSyncDesdeFirebase() {
     alert('Error: ' + e.message);
     actualizarIndicadorSync('sin_conexion');
   });
+}
+
+function abrirNuevoPrestamoDesdeFicha() {
+  const s = DB.socios.find(x => x.id === _fichaId);
+  if(!s) return;
+  cerrarModal('modal-ficha-socio');
+  // Abrir modal de nuevo préstamo
+  abrirNuevoPrestamo();
+  setTimeout(function() {
+    // Seleccionar modo "Socio registrado"
+    npTipo('socio');
+    // Pre-seleccionar el socio en el select np-socio
+    const sel = document.getElementById('np-socio');
+    if(sel) {
+      for(let i = 0; i < sel.options.length; i++) {
+        if(parseInt(sel.options[i].value) === s.id) {
+          sel.selectedIndex = i;
+          sel.dispatchEvent(new Event('change'));
+          break;
+        }
+      }
+    }
+  }, 200);
 }
 </script>
 
