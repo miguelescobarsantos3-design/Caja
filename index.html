@@ -6032,7 +6032,38 @@ function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
   document.getElementById('recibo-socio').textContent = socio;
   document.getElementById('recibo-fecha').textContent = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   document.getElementById('recibo-concepto').textContent = concepto;
-  document.getElementById('recibo-saldo').textContent = tipo==='ahorro'?`$${fmt(saldo)}`:(tipo==='prestamo'?`$${fmt(saldo)} restante`:`$${fmt(monto)}`);
+
+  // Etiqueta y meta del socio
+  const metaEl = document.getElementById('recibo-socio-meta');
+  if(metaEl) metaEl.textContent = tipo==='ahorro' ? 'Socio ahorrador' : tipo==='prestamo' ? 'Deudor' : 'Participante';
+
+  if(tipo === 'ahorro') {
+    // AHORRO: mostrar total ahorrado, ocultar saldo anterior y total a liquidar
+    document.getElementById('recibo-saldo-label').textContent = 'Total ahorrado';
+    const saldoEl = document.getElementById('recibo-saldo');
+    saldoEl.textContent = `$${fmt(saldo)}`;
+    saldoEl.style.color = 'var(--verde)';
+    // Ocultar campos de préstamo
+    const rowAnt = document.getElementById('recibo-row-saldo-ant');
+    if(rowAnt) rowAnt.style.display = 'none';
+    const rowDeuda = document.getElementById('recibo-row-total-deuda');
+    if(rowDeuda) rowDeuda.style.display = 'none';
+  } else if(tipo === 'prestamo') {
+    document.getElementById('recibo-saldo-label').textContent = 'Saldo pendiente';
+    const saldoEl = document.getElementById('recibo-saldo');
+    saldoEl.textContent = `$${fmt(saldo)}`;
+    saldoEl.style.color = 'var(--naranja)';
+  } else {
+    document.getElementById('recibo-saldo-label').textContent = 'Monto';
+    const saldoEl = document.getElementById('recibo-saldo');
+    saldoEl.textContent = `$${fmt(monto)}`;
+    saldoEl.style.color = 'var(--amarillo)';
+    const rowAnt = document.getElementById('recibo-row-saldo-ant');
+    if(rowAnt) rowAnt.style.display = 'none';
+    const rowDeuda = document.getElementById('recibo-row-total-deuda');
+    if(rowDeuda) rowDeuda.style.display = 'none';
+  }
+
   const rn = document.getElementById('recibo-row-notas');
   if(notas) { rn.style.display='flex'; document.getElementById('recibo-notas').textContent=notas; } else { rn.style.display='none'; }
 
