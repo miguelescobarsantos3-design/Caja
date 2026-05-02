@@ -888,7 +888,7 @@ function escucharCambios() {
     </div>
   </nav>
   <div style="padding:16px 24px;border-top:1px solid rgba(255,255,255,0.1);margin-top:auto;">
-    <button onclick="guardarRapido()" id="btn-guardar-sidebar" style="width:100%;background:#16a34a;border:none;color:#fff;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">
+    <button onclick="guardarArchivoCompleto()" id="btn-guardar-sidebar" style="width:100%;background:#16a34a;border:none;color:#fff;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">
       💾 Guardar
     </button>
     <button onclick="forzarSyncDesdeFirebase()" style="width:100%;background:rgba(100,180,255,0.15);border:1px solid rgba(100,180,255,0.3);color:rgba(150,210,255,0.9);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:6px;">
@@ -10049,37 +10049,6 @@ function abrirNuevoPrestamoDesdeFicha() {
       }
     }
   }, 200);
-}
-
-function guardarRapido() {
-  const btn = document.getElementById('btn-guardar-sidebar');
-  if(btn) { btn.innerHTML = '⏳ Guardando...'; btn.disabled = true; }
-  try {
-    asegurarCuentasEspeciales && asegurarCuentasEspeciales();
-    guardarEnLocal && guardarEnLocal();
-  } catch(e) {}
-  // Subir a Firebase
-  if(typeof guardarEnFirebase === 'function') {
-    guardarEnFirebase().then(function() {
-      if(btn) {
-        btn.innerHTML = '✓ Guardado';
-        btn.style.background = '#15803d';
-        setTimeout(function() {
-          btn.innerHTML = '💾 Guardar';
-          btn.style.background = '#16a34a';
-          btn.disabled = false;
-        }, 2000);
-      }
-    }).catch(function(e) {
-      if(btn) { btn.innerHTML = '💾 Guardar'; btn.style.background = '#16a34a'; btn.disabled = false; }
-      console.warn('Error guardando:', e);
-    });
-  } else {
-    if(btn) {
-      btn.innerHTML = '✓ Local';
-      setTimeout(function() { btn.innerHTML = '💾 Guardar'; btn.disabled = false; }, 1500);
-    }
-  }
 }
 </script>
 
