@@ -10226,4 +10226,500 @@ function prActualizarInteres() {
     </div>
   </div>
 </div>
+<script>
+/* PARCHE MAYO 2026 — Utilidades enlazadas a préstamos
+   Regla contable: el préstamo conserva solo CAPITAL; el INTERÉS vive en Utilidades. */
+(function(){
+  'use strict';
+
+  function n(v) {
+    if (v === '' || v === null || v === undefined) return 0;
+    if (typeof v === 'string') v = v.replace(/[$,\s]/g, '');
+    var x = Number(v);
+    return isNaN(x) ? 0 : x;
+  }
+  function r2(v) { return Math.round(n(v) * 100) / 100; }
+  function money(v) {
+    if (typeof fmtUtil === 'function') return fmtUtil(v);
+    if (typeof fmt === 'function') return fmt(v);
+    return n(v).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function norm(txt) {
+    var s = String(txt || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ').trim().toUpperCase();
+    var alias = {
+      'OLIVA RIVERA GOMEZ': 'OLIVIA RIVERA GOMEZ',
+      'JUAN DANIEL GARCIA PEREZ': 'JUAN DANIEL GARCIA MENDEZ'
+    };
+    return alias[s] || s;
+  }
+  function esc(txt) {
+    return String(txt || '').replace(/[&<>"]/g, function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch];
+    });
+  }
+  function utilidadTotalCampo(u) {
+    return r2(u && (u.total !== undefined ? u.total :
+      (u.interesTotal !== undefined ? u.interesTotal :
+      (u.totalInteres !== undefined ? u.totalInteres :
+      (u.utilidad !== undefined ? u.utilidad :
+      (u.interesMonto !== undefined ? u.interesMonto : 0))))));
+  }
+  function utilidadCobradoCampo(u) {
+    if (!u) return 0;
+    if (u.cobrado !== undefined) return r2(u.cobrado);
+    if (u.cobradoManual !== undefined) return r2(u.cobradoManual);
+    if (u.pagado !== undefined) return r2(u.pagado);
+    if (Array.isArray(u.pagos)) return r2(u.pagos.reduce(function(s, x){ return s + n(x); }, 0));
+    return r2(['ene1','ene2','feb1','feb2','mar1','mar2','abr1','abr2'].reduce(function(s, k){ return s + n(u[k]); }, 0));
+  }
+  function baseRows() {
+    if (typeof UTILIDADES_BASE !== 'undefined' && Array.isArray(UTILIDADES_BASE)) {
+      return UTILIDADES_BASE.map(function(x, i){
+        return { id: x.id || ('util_base_' + (i+1)), nombre: String(x.nombre || '').toUpperCase(), total: r2(x.total), cobrado: r2(x.cobrado), origen: 'base_2025' };
+      });
+    }
+    return [];
+  }
+  function movInteresPorNombre() {
+    var out = {};
+    ((window.DB && DB.movimientos) || []).forEach(function(m){
+      if (m && m.tipo === 'prestamo' && n(m.interesAbonado) > 0) {
+        var k = norm(m.socio || m.nombre || m.deudor || '');
+        if (!k) return;
+        out[k] = r2((out[k] || 0) + n(m.interesAbonado));
+      }
+    });
+    return out;
+  }
+  function baseCobradoPorNombre() {
+    var out = {};
+    baseRows().forEach(function(b){ out[norm(b.nombre)] = n(b.cobrado); });
+    return out;
+  }
+
+  window.totalUtilidad = function(u) { return utilidadTotalCampo(u); };
+  window.cobradoUtilidad = function(u) { return utilidadCobradoCampo(u); };
+  window.normUtilNombre = window.normUtilNombre || norm;
+
+  window.normalizarUtilidades = function() {
+    if (!window.DB) return [];
+    if (!Array.isArray(DB.utilidades)) DB.utilidades = [];
+
+    var raw = DB.utilidades.slice();
+    if (raw.length === 0) raw = baseRows();
+
+    // Mantener la base visible, pero sin duplicarla si el nombre ya existe.
+    var existentesRaw = {};
+    raw.forEach(function(u){ existentesRaw[norm(u.nombre || u.deudor)] = true; });
+    baseRows().forEach(function(b){
+      if (!existentesRaw[norm(b.nombre)]) raw.push(b);
+    });
+
+    var movs = movInteresPorNombre();
+    var baseCob = baseCobradoPorNombre();
+    var mapa = {};
+    var orden = [];
+
+    raw.forEach(function(u){
+      var nombre = String(u.nombre || u.deudor || '').trim().toUpperCase();
+      var key = norm(nombre);
+      if (!key || key === 'PAGADO / AJUSTE DE CENTAVOS' || key === 'PAGADO AJUSTE DE CENTAVOS' || key === 'AJUSTE DE CENTAVOS') return;
+      if (!mapa[key]) {
+        mapa[key] = {
+          id: u.id || ('util_' + Date.now() + '_' + orden.length),
+          nombre: nombre,
+          total: 0,
+          cobradoStored: 0,
+          cobradoManual: 0,
+          tieneCobradoDirecto: false,
+          origen: u.origen || 'manual',
+          prestamoIds: []
+        };
+        orden.push(key);
+      }
+      var row = mapa[key];
+      row.total = r2(row.total + utilidadTotalCampo(u));
+      if (u.cobrado !== undefined || u.pagado !== undefined || Array.isArray(u.pagos)) {
+        row.tieneCobradoDirecto = true;
+        row.cobradoStored = r2(row.cobradoStored + utilidadCobradoCampo(u));
+      }
+      if (u.cobradoManual !== undefined) row.cobradoManual = r2(row.cobradoManual + n(u.cobradoManual));
+      if (Array.isArray(u.prestamoIds)) {
+        u.prestamoIds.forEach(function(id){ if (row.prestamoIds.indexOf(id) === -1) row.prestamoIds.push(id); });
+      }
+      if (u.prestamoId && row.prestamoIds.indexOf(u.prestamoId) === -1) row.prestamoIds.push(u.prestamoId);
+      if (row.origen === 'manual' && u.origen) row.origen = u.origen;
+    });
+
+    DB.utilidades = orden.map(function(key, i){
+      var row = mapa[key];
+      var mov = n(movs[key]);
+      var candidatoMovimiento = r2((baseCob[key] || row.cobradoManual || 0) + mov);
+      var cobrado = Math.max(row.cobradoStored, row.cobradoManual, candidatoMovimiento, mov);
+      cobrado = Math.min(r2(cobrado), r2(row.total));
+      return {
+        id: row.id || ('util_' + (i+1)),
+        nombre: row.nombre,
+        total: r2(row.total),
+        cobrado: r2(cobrado),
+        origen: row.origen || 'manual',
+        prestamoIds: row.prestamoIds
+      };
+    }).filter(function(u){ return u.nombre && u.total >= 0; });
+
+    return DB.utilidades;
+  };
+
+  window.utilidadTotalPorNombre = function(nombre) {
+    window.normalizarUtilidades();
+    var key = norm(nombre);
+    return r2((DB.utilidades || []).filter(function(u){ return norm(u.nombre) === key; }).reduce(function(s, u){ return s + n(u.total); }, 0));
+  };
+  window.utilidadCobradoPorNombre = function(nombre) {
+    window.normalizarUtilidades();
+    var key = norm(nombre);
+    return r2((DB.utilidades || []).filter(function(u){ return norm(u.nombre) === key; }).reduce(function(s, u){ return s + n(u.cobrado); }, 0));
+  };
+  window.utilidadPendientePorNombre = function(nombre) {
+    return Math.max(0, r2(window.utilidadTotalPorNombre(nombre) - window.utilidadCobradoPorNombre(nombre)));
+  };
+  window.calcularTotalesUtilidades = function() {
+    window.normalizarUtilidades();
+    var total = 0, cobrado = 0, pendiente = 0, liquidados = 0;
+    (DB.utilidades || []).forEach(function(u){
+      var t = n(u.total), c = Math.min(n(u.cobrado), t), p = Math.max(0, r2(t - c));
+      total = r2(total + t);
+      cobrado = r2(cobrado + c);
+      pendiente = r2(pendiente + p);
+      if (t > 0 && p <= 0.009) liquidados++;
+    });
+    return { total: total, cobrado: cobrado, pendiente: pendiente, liquidados: liquidados, deudores: (DB.utilidades || []).length };
+  };
+  window.sincronizarAhorradorUtilidades = function(monto) {
+    if (!window.DB) return 0;
+    if (monto === undefined) monto = window.calcularTotalesUtilidades().cobrado;
+    if (!Array.isArray(DB.socios)) DB.socios = [];
+    var socioUtil = DB.socios.find(function(s){ return norm(s.nombre) === 'UTILIDADES'; });
+    if (!socioUtil) {
+      var maxId = DB.socios.reduce(function(mx, s){ return Math.max(mx, Number(s.id) || 0); }, 0);
+      socioUtil = { id: maxId + 1, nombre: 'UTILIDADES', tel: '', freq: 'especial', cuota: 0, ahorro: 0, activo: true, categoria: 'ESP' };
+      DB.socios.push(socioUtil);
+    }
+    socioUtil.nombre = 'UTILIDADES';
+    socioUtil.activo = true;
+    socioUtil.freq = 'especial';
+    socioUtil.categoria = 'ESP';
+    socioUtil.cuota = 0;
+    socioUtil.ahorro = r2(monto);
+    return socioUtil.ahorro;
+  };
+
+  window.actualizarTotalesUtilidadesUI = function(guardar) {
+    var t = window.calcularTotalesUtilidades();
+    var pct = t.total > 0 ? (t.cobrado / t.total * 100) : 0;
+    function setText(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; }
+    setText('util-total-kpi', '$' + money(t.total));
+    setText('util-cobrado-kpi', '$' + money(t.cobrado));
+    setText('util-pendiente-kpi', '$' + money(t.pendiente));
+    setText('util-cobrado-pct', pct.toFixed(1) + '% del total · enlazado a UTILIDADES');
+    setText('util-liquidados-kpi', String(t.liquidados));
+    setText('util-deudores-kpi', 'de ' + t.deudores + ' deudores');
+    setText('kpi-utilidades', money(t.total));
+    setText('kpi-utilidades-pend', money(t.pendiente));
+    setText('kpi-util-pendiente', '$' + money(t.pendiente));
+    var tf = document.getElementById('util-tfoot');
+    if (tf) {
+      tf.innerHTML = '<tr class="util-total-row">'
+        + '<td>TOTAL</td>'
+        + '<td class="mono">$' + money(t.total) + '</td>'
+        + '<td class="mono bad">$' + money(t.pendiente) + '</td>'
+        + '<td class="mono good">$' + money(t.cobrado) + '</td>'
+        + '<td class="mono">' + pct.toFixed(1) + '%</td><td></td><td></td></tr>';
+    }
+    window.sincronizarAhorradorUtilidades(t.cobrado);
+    if (guardar && typeof guardarEnLocal === 'function') guardarEnLocal();
+    return t;
+  };
+
+  window.renderUtilidades = function() {
+    window.normalizarUtilidades();
+    var tb = document.getElementById('util-tbody');
+    if (!tb) return;
+    tb.innerHTML = (DB.utilidades || []).map(function(u, i){
+      var total = n(u.total);
+      var cobrado = Math.min(n(u.cobrado), total);
+      var pendiente = Math.max(0, r2(total - cobrado));
+      var pct = total > 0 ? (cobrado / total * 100) : 0;
+      var liquidado = total > 0 && pendiente <= 0.009;
+      var parcial = cobrado > 0 && !liquidado;
+      var estado = liquidado ? '<span class="badge badge-green">✓ Liquidado</span>' : (parcial ? '<span class="badge badge-yellow">Parcial</span>' : '<span class="badge badge-orange">Pendiente</span>');
+      return '<tr id="util-row-' + i + '" class="' + (liquidado ? 'util-liquidado' : '') + '">'
+        + '<td><strong>' + esc(u.nombre) + '</strong></td>'
+        + '<td class="mono">$' + money(total) + '</td>'
+        + '<td class="mono" style="color:var(--rojo);font-weight:600;">' + (pendiente > 0 ? '$' + money(pendiente) : '—') + '</td>'
+        + '<td class="mono" style="color:var(--verde);font-weight:600;">' + (cobrado > 0 ? '$' + money(cobrado) : '—') + '</td>'
+        + '<td class="mono font-bold" style="color:' + (liquidado ? 'var(--verde)' : (parcial ? 'var(--naranja)' : 'var(--texto2)')) + ';">' + pct.toFixed(1) + '%</td>'
+        + '<td class="util-status">' + estado + '</td>'
+        + '<td><div class="util-actions-row"><button class="btn btn-secondary btn-sm" onclick="abrirEditarUtilidad(' + i + ')">Editar</button><button class="btn btn-danger btn-sm" onclick="confirmarEliminarUtilidad(' + i + ')">Eliminar</button></div></td>'
+        + '</tr>';
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--texto2);padding:24px;">Sin deudores registrados</td></tr>';
+    window.actualizarTotalesUtilidadesUI(false);
+  };
+
+  window.actualizarKpiUtilidades = function() {
+    return window.actualizarTotalesUtilidadesUI(false);
+  };
+
+  window.registrarUtilidadPorPrestamoNuevo = function(nombre, montoUtilidad, prestamoId) {
+    montoUtilidad = r2(montoUtilidad);
+    if (!nombre || montoUtilidad <= 0) return null;
+    window.normalizarUtilidades();
+    var key = norm(nombre);
+    var u = (DB.utilidades || []).find(function(x){ return norm(x.nombre) === key; });
+    if (!u) {
+      u = { id: 'util_' + Date.now() + '_' + Math.floor(Math.random() * 999), nombre: String(nombre).trim().toUpperCase(), total: 0, cobrado: 0, origen: 'prestamo', prestamoIds: [] };
+      DB.utilidades.push(u);
+    }
+    if (!Array.isArray(u.prestamoIds)) u.prestamoIds = [];
+    if (prestamoId && u.prestamoIds.indexOf(prestamoId) !== -1) return u;
+    u.total = r2(n(u.total) + montoUtilidad);
+    u.cobrado = Math.min(r2(n(u.cobrado)), r2(n(u.total)));
+    u.origen = u.origen || 'prestamo';
+    if (prestamoId) u.prestamoIds.push(prestamoId);
+    window.sincronizarAhorradorUtilidades();
+    return u;
+  };
+
+  window.aplicarAbonoUtilidad = function(nombre, monto, limiteInteres) {
+    window.normalizarUtilidades();
+    var disponible = r2(monto);
+    if (limiteInteres !== undefined && limiteInteres !== null && String(limiteInteres) !== '') {
+      disponible = Math.min(disponible, r2(limiteInteres));
+    }
+    var restante = disponible;
+    var abonado = 0;
+    var key = norm(nombre);
+    (DB.utilidades || []).forEach(function(u){
+      if (restante <= 0 || norm(u.nombre) !== key) return;
+      var pendiente = Math.max(0, r2(n(u.total) - n(u.cobrado)));
+      var abono = Math.min(restante, pendiente);
+      if (abono > 0) {
+        u.cobrado = r2(n(u.cobrado) + abono);
+        restante = r2(restante - abono);
+        abonado = r2(abonado + abono);
+      }
+    });
+    window.sincronizarAhorradorUtilidades();
+    return { interesAbonado: abonado, capitalAbonado: Math.max(0, r2(n(monto) - abonado)) };
+  };
+
+  window.prCalcularDesglose = function() {
+    var monto = n(document.getElementById('pr-monto') && document.getElementById('pr-monto').value);
+    var key = document.getElementById('pr-select') ? document.getElementById('pr-select').value : '';
+    var c = key && typeof obtenerConsolidado === 'function' ? obtenerConsolidado(key) : null;
+    var utilPend = c ? n(c.utilidadPendiente) : 0;
+    var interes = Math.min(monto, utilPend);
+    var capital = Math.max(0, r2(monto - interes));
+    var iEl = document.getElementById('pr-interes');
+    var cEl = document.getElementById('pr-capital-abono');
+    if (iEl) iEl.value = interes > 0 ? r2(interes) : '';
+    if (cEl) cEl.value = capital > 0 ? r2(capital) : '';
+  };
+  window.prAutoDesglose = window.prCalcularDesglose;
+  window.prActualizarCapital = function() {
+    var monto = n(document.getElementById('pr-monto') && document.getElementById('pr-monto').value);
+    var interes = Math.min(monto, n(document.getElementById('pr-interes') && document.getElementById('pr-interes').value));
+    var cEl = document.getElementById('pr-capital-abono');
+    if (cEl) cEl.value = Math.max(0, r2(monto - interes)) || '';
+  };
+  window.prActualizarInteres = function() {
+    var monto = n(document.getElementById('pr-monto') && document.getElementById('pr-monto').value);
+    var capital = Math.min(monto, n(document.getElementById('pr-capital-abono') && document.getElementById('pr-capital-abono').value));
+    var iEl = document.getElementById('pr-interes');
+    if (iEl) iEl.value = Math.max(0, r2(monto - capital)) || '';
+  };
+
+  window.procesarPrestamo = function() {
+    var key   = document.getElementById('pr-select') ? document.getElementById('pr-select').value : '';
+    var monto = n(document.getElementById('pr-monto') && document.getElementById('pr-monto').value);
+    var fecha = document.getElementById('pr-fecha') ? document.getElementById('pr-fecha').value : '';
+    var notas = document.getElementById('pr-notas') ? document.getElementById('pr-notas').value : '';
+    if (!key || !monto || !fecha) return;
+
+    var c = typeof obtenerConsolidado === 'function' ? obtenerConsolidado(key) : null;
+    if (!c) return;
+
+    var interesManualEl = document.getElementById('pr-interes');
+    var interesManual = interesManualEl && String(interesManualEl.value).trim() !== '' ? n(interesManualEl.value) : null;
+    var desglose = window.aplicarAbonoUtilidad(c.nombre, monto, interesManual);
+    var interesAbonado = desglose.interesAbonado;
+    var capitalAbonado = desglose.capitalAbonado;
+
+    var restante = capitalAbonado;
+    var prestamosOrdenados = (c.ids || []).map(function(id){ return DB.prestamos.find(function(x){ return x.id === id; }); }).filter(Boolean).sort(function(a,b){ return a.id - b.id; });
+    var todosLiquidados = true;
+    prestamosOrdenados.forEach(function(p){
+      if (restante <= 0) {
+        if (n(p.pendiente) > 0) todosLiquidados = false;
+        return;
+      }
+      var abono = Math.min(restante, n(p.pendiente));
+      p.pagado = r2(n(p.pagado) + abono);
+      p.pendiente = r2(n(p.pendiente) - abono);
+      restante = r2(restante - abono);
+      if (p.pendiente <= 0.009) { p.pendiente = 0; p.estado = 'liquidado'; }
+      else todosLiquidados = false;
+    });
+    if (restante > 0) todosLiquidados = false;
+
+    var prCuentaKey = document.getElementById('pr-cuenta') ? document.getElementById('pr-cuenta').value : '';
+    if (prCuentaKey && typeof CUENTAS !== 'undefined' && CUENTAS[prCuentaKey]) {
+      CUENTAS[prCuentaKey].saldo = r2(n(CUENTAS[prCuentaKey].saldo) + monto);
+      if (typeof renderCuentas === 'function') renderCuentas();
+    }
+    if (document.getElementById('pr-cuenta')) document.getElementById('pr-cuenta').value = '';
+
+    DB.movimientos.unshift({
+      tipo: 'prestamo', socio: c.nombre, monto: monto, fecha: fecha,
+      notas: notas || ((c.ids || []).length > 1 ? 'Abono consolidado (' + c.ids.length + ' préstamos)' : ''),
+      cuenta: prCuentaKey || null,
+      interesAbonado: interesAbonado || 0,
+      capitalAbonado: capitalAbonado || 0
+    });
+
+    var nuevo = typeof obtenerConsolidado === 'function' ? obtenerConsolidado(key) : { pendienteCapital: 0, utilidadPendiente: 0 };
+    var nuevoPendienteCapital = n(nuevo && (nuevo.pendienteCapital || nuevo.pendienteTotal));
+    var nuevoSaldoLiquidar = r2(nuevoPendienteCapital + n(nuevo && nuevo.utilidadPendiente));
+    var estado = (todosLiquidados && nuevoSaldoLiquidar <= 0.009) ? 'liquidado' : 'activo';
+    var msg = estado === 'liquidado' ? '¡Préstamo(s) liquidado(s)! 🎉' : 'Abono a préstamo';
+
+    var selPr = document.getElementById('pr-select');
+    if (selPr && typeof consolidarPrestamos === 'function') {
+      selPr.innerHTML = '<option value="">— Seleccionar préstamo activo —</option>';
+      consolidarPrestamos().forEach(function(cx){
+        var o = document.createElement('option');
+        o.value = cx.key;
+        var sx = DB.socios.find(function(x){ return x.id === cx.socioId; });
+        var nx = sx ? '#' + String(sx.id).padStart(2,'0') + ' — ' : '';
+        var mx = cx.ids.length > 1 ? ' (' + cx.ids.length + ' préstamos)' : '';
+        o.textContent = nx + cx.nombre + ' — $' + money(cx.pendienteTotal) + ' pendiente' + mx;
+        selPr.appendChild(o);
+      });
+    }
+    ['pr-monto','pr-interes','pr-capital-abono','pr-notas'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+    var info = document.getElementById('pr-info'); if (info) info.style.display = 'none';
+    var resumen = document.getElementById('pago-resumen'); if (resumen) resumen.innerHTML = '<div class="empty"><div class="icon">◎</div><p>Selecciona un préstamo</p></div>';
+
+    window.actualizarTotalesUtilidadesUI(false);
+    if (typeof renderPrestamos === 'function') renderPrestamos();
+    if (typeof renderDashboard === 'function') renderDashboard();
+    if (typeof guardarEnLocal === 'function') guardarEnLocal();
+    if (typeof mostrarReciboPrestamo === 'function') mostrarReciboPrestamo(c.nombre, monto, fecha, msg, nuevoPendienteCapital, n(nuevo && nuevo.utilidadPendiente), nuevoSaldoLiquidar, estado, notas);
+  };
+
+  window.guardarPrestamo = function() {
+    var esSocio = document.getElementById('np-grupo-socio') && document.getElementById('np-grupo-socio').style.display !== 'none';
+    var capital = n(document.getElementById('np-capital') && document.getElementById('np-capital').value);
+    var pagos = parseInt((document.getElementById('np-pagos') && document.getElementById('np-pagos').value) || '12', 10) || 12;
+    var fecha = document.getElementById('np-fecha') ? document.getElementById('np-fecha').value : '';
+    var notas = document.getElementById('np-notas-prestamo') ? document.getElementById('np-notas-prestamo').value.trim() : '';
+    var interesTotal = n(document.getElementById('np-interes-total') && document.getElementById('np-interes-total').value);
+    var npC = document.getElementById('np-capital');
+    if (npC) npC.style.borderColor = '';
+    if (!capital) { if (npC) { npC.style.borderColor='var(--rojo)'; npC.focus(); } return; }
+    if (!fecha) { var f = document.getElementById('np-fecha'); if (f) f.style.borderColor='var(--rojo)'; return; }
+
+    var nombre = '', socioId = null;
+    if (esSocio) {
+      var socioIdVal = parseInt((document.getElementById('np-socio') && document.getElementById('np-socio').value) || '0', 10);
+      if (!socioIdVal) { var ns = document.getElementById('np-socio'); if (ns) ns.style.borderColor='var(--rojo)'; return; }
+      var s = DB.socios.find(function(x){ return x.id === socioIdVal; });
+      if (!s) return;
+      nombre = s.nombre;
+      socioId = socioIdVal;
+    } else {
+      var nx = document.getElementById('np-nombre-externo');
+      nombre = nx ? nx.value.trim().toUpperCase() : '';
+      if (!nombre) { if (nx) { nx.style.borderColor='var(--rojo)'; nx.focus(); } return; }
+      if (!Array.isArray(DB._directorio)) DB._directorio = [];
+      var existeDir = DB._directorio.find(function(x){ return norm(x.nombre) === norm(nombre); });
+      if (!existeDir) {
+        var maxDir = DB._directorio.reduce(function(mx, x){ return Math.max(mx, Number(x.id) || 0); }, 0);
+        DB._directorio.push({ id: maxDir + 1, nombre: nombre, es_socio: false });
+        if (window._d && Array.isArray(_d._directorio)) _d._directorio = DB._directorio;
+      }
+    }
+
+    var newId = (DB.prestamos || []).length ? Math.max.apply(null, DB.prestamos.map(function(p){ return Number(p.id) || 0; })) + 1 : 1;
+    if (!Array.isArray(DB.prestamos)) DB.prestamos = [];
+    DB.prestamos.push({
+      id: newId,
+      socioId: socioId,
+      nombre: nombre,
+      capital: r2(capital),
+      monto: r2(capital),
+      tasa: 0,
+      interes: 0,
+      interesTotal: r2(interesTotal),
+      interesCobrado: 0,
+      interesPendiente: r2(interesTotal),
+      total: r2(capital),
+      montoTotal: r2(capital),
+      pagado: 0,
+      pendiente: r2(capital),
+      pagos: pagos,
+      freq: document.getElementById('np-freq-pago') ? document.getElementById('np-freq-pago').value : 'unico',
+      fecha: fecha,
+      notas: notas,
+      estado: 'activo'
+    });
+
+    if (interesTotal > 0) window.registrarUtilidadPorPrestamoNuevo(nombre, interesTotal, newId);
+
+    var npCuentaKey = document.getElementById('np-cuenta') ? document.getElementById('np-cuenta').value : '';
+    if (npCuentaKey && typeof CUENTAS !== 'undefined' && CUENTAS[npCuentaKey]) {
+      CUENTAS[npCuentaKey].saldo = r2(n(CUENTAS[npCuentaKey].saldo) - capital);
+      if (typeof renderCuentas === 'function') renderCuentas();
+    }
+    if (document.getElementById('np-cuenta')) document.getElementById('np-cuenta').value = '';
+
+    if (!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({
+      tipo: 'prestamo', socio: nombre, monto: 0, fecha: fecha,
+      notas: 'Préstamo otorgado: $' + (typeof fmt === 'function' ? fmt(capital) : money(capital)) + (interesTotal > 0 ? ' · Interés acordado: $' + money(interesTotal) : '') + (notas ? ' — ' + notas : ''),
+      cuenta: npCuentaKey || null,
+      prestamoOtorgado: r2(capital),
+      interesGenerado: r2(interesTotal)
+    });
+
+    if (typeof cerrarModal === 'function') cerrarModal('modal-prestamo');
+    ['np-socio','np-nombre-externo','np-interes-total','np-capital','np-pagos','np-notas-prestamo'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+    var prev = document.getElementById('np-socio-preview'); if (prev) prev.style.display = 'none';
+    var calc = document.getElementById('prestamo-calc'); if (calc) calc.style.display = 'none';
+    if (typeof npTipo === 'function') npTipo('socio');
+
+    window.actualizarTotalesUtilidadesUI(false);
+    if (typeof renderPrestamos === 'function') renderPrestamos();
+    if (typeof renderDashboard === 'function') renderDashboard();
+    if (typeof renderUtilidades === 'function' && document.getElementById('view-utilidades') && document.getElementById('view-utilidades').classList.contains('active')) renderUtilidades();
+    if (typeof renderPagos === 'function' && document.getElementById('view-pagos') && document.getElementById('view-pagos').classList.contains('active')) renderPagos();
+    if (typeof guardarEnLocal === 'function') guardarEnLocal();
+  };
+
+  // Migración visual al cargar: corrige la vista actual sin tocar Firebase automáticamente.
+  setTimeout(function(){
+    try {
+      if (!window.DB) return;
+      window.normalizarUtilidades();
+      window.actualizarTotalesUtilidadesUI(false);
+      if (document.getElementById('view-utilidades') && document.getElementById('view-utilidades').classList.contains('active')) window.renderUtilidades();
+      if (document.getElementById('view-dashboard') && document.getElementById('view-dashboard').classList.contains('active') && typeof renderDashboard === 'function') renderDashboard();
+      if (typeof guardarEnLocal === 'function') guardarEnLocal();
+    } catch(e) { console.warn('Parche utilidades:', e); }
+  }, 300);
+})();
+</script>
+
 </body></html>
