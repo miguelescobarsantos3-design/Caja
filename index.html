@@ -6307,13 +6307,27 @@ function guardarPrestamo() {
   const total = Math.round(capital * 100) / 100;
   const newId = DB.prestamos.length ? Math.max(...DB.prestamos.map(p=>p.id||0))+1 : 1;
 
+  // Leer interés total acordado
+  const interesTotal = parseFloat(document.getElementById('np-interes-total') ? document.getElementById('np-interes-total').value : 0) || 0;
+  const totalConInteres = capital + interesTotal;
+
   DB.prestamos.push({
     id: newId, socioId, nombre, capital,
-    interes: 0, total, pagado: 0, pendiente: capital,
+    interes: 0, total: totalConInteres, pagado: 0, pendiente: capital,
     pagos, freq: document.getElementById('np-freq-pago').value,
     fecha, notas, estado: 'activo'
   });
-  // El interés ya no se crea ni se calcula aquí. Se captura manualmente en Utilidades.
+
+  // Agregar a DB.utilidades si tiene interés acordado
+  if(interesTotal > 0) {
+    if(!DB.utilidades) DB.utilidades = [];
+    const existeUtil = DB.utilidades.find(function(u){ return (u.nombre||'').toUpperCase() === nombre.toUpperCase(); });
+    if(existeUtil) {
+      existeUtil.interesTotal = (existeUtil.interesTotal || existeUtil.total || 0) + interesTotal;
+    } else {
+      DB.utilidades.push({nombre: nombre, interesTotal: interesTotal, cobradoManual: 0});
+    }
+  }
 
   // Descontar de la cuenta bancaria seleccionada (sale dinero)
   const npCuentaKey = document.getElementById('np-cuenta') ? document.getElementById('np-cuenta').value : '';
@@ -6334,6 +6348,7 @@ function guardarPrestamo() {
   // Limpiar
   document.getElementById('np-socio').value = '';
   document.getElementById('np-nombre-externo').value = '';
+  if(document.getElementById('np-interes-total')) document.getElementById('np-interes-total').value = '';
   document.getElementById('np-capital').value = '';
   document.getElementById('np-pagos').value = '';
   document.getElementById('np-notas-prestamo').value = '';
