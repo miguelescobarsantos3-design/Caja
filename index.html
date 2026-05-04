@@ -4250,6 +4250,12 @@ function escucharCambios() {
         <label>Capital prestado ($)</label>
         <input type="number" id="np-capital" placeholder="5,000" oninput="calcularPrestamo()">
       </div>
+      <div class="form-group">
+        <label>💰 Interés total acordado ($)</label>
+        <input type="number" id="np-interes-total" placeholder="0" step="1"
+          style="background:#fdf0e8;border-color:#fed7aa;">
+        <small style="color:var(--texto2);font-size:11px;">Monto total de interés que cobrará este préstamo</small>
+      </div>
       <input type="hidden" id="np-tasa" value="0">
     </div>
     <div class="form-row">
