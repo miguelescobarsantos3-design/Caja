@@ -1290,7 +1290,25 @@ function escucharCambios() {
             </div>
             <div class="form-group">
               <label>Monto del abono ($)</label>
-              <input type="number" id="pr-monto" placeholder="0.00" step="0.01" oninput="prAutoDesglose()">
+              <input type="number" id="pr-monto" placeholder="0.00" step="0.01" oninput="prCalcularDesglose()">
+            </div>
+            <div class="form-group" style="background:#fff9ec;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px;">
+              <label style="font-weight:700;color:var(--naranja);font-size:12px;">DESGLOSE DEL ABONO</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+                <div>
+                  <label style="font-size:12px;color:var(--texto2);">💰 De interés (utilidades)</label>
+                  <input type="number" id="pr-interes" placeholder="0.00" step="0.01"
+                    style="margin-top:4px;background:#fdf0e8;border-color:#fed7aa;"
+                    oninput="prActualizarCapital()">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--texto2);">🏦 A capital</label>
+                  <input type="number" id="pr-capital-abono" placeholder="0.00" step="0.01"
+                    style="margin-top:4px;background:#f0fdf4;border-color:#bbf7d0;"
+                    oninput="prActualizarInteres()">
+                </div>
+              </div>
+              <p style="font-size:11px;color:var(--texto2);margin:6px 0 0;">El interés se suma a Utilidades · El resto descuenta del préstamo</p>
             </div>
             <div class="form-group">
               <label>Fecha</label>
@@ -8038,6 +8056,11 @@ function confirmarAporteCumple(){
       });
     }
   }
+  // Actualizar ahorro del socio especial CUMPLEAÑOS
+  const socioCumple = DB.socios.find(function(s){ return (s.nombre||'').toUpperCase() === 'CUMPLEAÑOS'; });
+  if(socioCumple) {
+    socioCumple.ahorro = getSaldoFondo ? getSaldoFondo() : (socioCumple.ahorro || 0) + monto;
+  }
   cerrarModal('modal-cumple-aporte');
   // Generar recibo de texto
   generarReciboCumple('aporte',aportante,monto,fecha,notas);
@@ -10080,6 +10103,44 @@ function guardarRapido() {
       setTimeout(function() { btn.innerHTML = '💾 Guardar'; btn.disabled = false; }, 1500);
     }
   }
+}
+
+function prCalcularDesglose() {
+  const monto = parseFloat(document.getElementById('pr-monto').value) || 0;
+  const interes = parseFloat(document.getElementById('pr-interes').value) || 0;
+  if(!interes) {
+    // Auto-calcular interés pendiente del préstamo
+    const key = document.getElementById('pr-select').value;
+    const c = key ? obtenerConsolidado && obtenerConsolidado(key) : null;
+    let interesPendiente = 0;
+    if(c) {
+      (c.ids||[]).forEach(function(id) {
+        const p = DB.prestamos.find(function(x){ return x.id === id; });
+        if(p && p.estado === 'activo') {
+          const totalP = p.total || p.capital || 0;
+          const capitalP = p.capital || 0;
+          const interesTotal = totalP - capitalP;
+          const fracPagado = totalP > 0 ? (p.pagado || 0) / totalP : 0;
+          const interesCobrado = Math.round(interesTotal * fracPagado);
+          interesPendiente += Math.max(0, interesTotal - interesCobrado);
+        }
+      });
+    }
+    const interesAbono = Math.min(monto, interesPendiente);
+    const capitalAbono = Math.max(0, monto - interesAbono);
+    document.getElementById('pr-interes').value = interesAbono > 0 ? interesAbono : '';
+    document.getElementById('pr-capital-abono').value = capitalAbono > 0 ? capitalAbono : monto;
+  }
+}
+function prActualizarCapital() {
+  const monto = parseFloat(document.getElementById('pr-monto').value) || 0;
+  const interes = parseFloat(document.getElementById('pr-interes').value) || 0;
+  document.getElementById('pr-capital-abono').value = Math.max(0, monto - interes) || '';
+}
+function prActualizarInteres() {
+  const monto = parseFloat(document.getElementById('pr-monto').value) || 0;
+  const capital = parseFloat(document.getElementById('pr-capital-abono').value) || 0;
+  document.getElementById('pr-interes').value = Math.max(0, monto - capital) || '';
 }
 </script>
 
