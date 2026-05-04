@@ -779,7 +779,7 @@ async function cargarDesdFirebase() {
 let _fbListener = null;
 function escucharCambios() {
   if(!_fbDb) return;
-  var _ultimoTs = parseInt(localStorage.getItem('caja_ts')||'0');
+  var _ultimoTs = 0; // Siempre detectar cambios desde Firebase al arrancar
   _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
     if(!snap.exists) return;
     var datos = snap.data();
@@ -8163,6 +8163,9 @@ function confirmarEntregaCumple(){
   DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños'});
   const c=(DB.cumple||[]).find(x=>x.nombre===nombre);if(c)c.entregado=true;
   DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,notas:'Entrega fondo cumpleaños'});
+  // Actualizar ahorro del socio especial CUMPLEAÑOS
+  const socioCumpleE = DB.socios.find(function(s){ return (s.nombre||'').toUpperCase() === 'CUMPLEAÑOS'; });
+  if(socioCumpleE) socioCumpleE.ahorro = getSaldoFondo();
   cerrarModal('modal-cumple-entrega');
   generarReciboCumple('entrega',nombre,monto,fecha,'Feliz cumpleaños 🎂');
   renderCumple();
