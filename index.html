@@ -778,49 +778,9 @@ async function cargarDesdFirebase() {
 // Escuchar cambios en tiempo real (otro dispositivo guarda)
 let _fbListener = null;
 function escucharCambios() {
-  if(!_fbDb) return;
-  var _ultimoTs = 0; // Siempre detectar cambios desde Firebase al arrancar
-  _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
-    if(!snap.exists) return;
-    var datos = snap.data();
-    if(!datos || !datos.ts) return;
-    if(datos.ts <= _ultimoTs) return;
-    // Verificar si YO fui quien guardó (evitar aplicar mis propios cambios)
-    var yoGuarde = sessionStorage.getItem('yo_guarde_ts');
-    if(yoGuarde && Math.abs(datos.ts - parseInt(yoGuarde)) < 15000) {
-      _ultimoTs = datos.ts;
-      return; // Fue este mismo dispositivo — ignorar
-    }
-    // Otro dispositivo guardó — aplicar cambios directamente
-    console.log('Cambio detectado desde otro dispositivo — actualizando...');
-    _ultimoTs = datos.ts;
-    DB.socios      = datos.socios      || DB.socios;
-    DB.prestamos   = datos.prestamos   || DB.prestamos;
-    if(typeof fixSocioIds==='function') fixSocioIds();
-    DB.tandas      = datos.tandas      || DB.tandas;
-    DB.movimientos = datos.movimientos || DB.movimientos;
-    DB.cumple      = datos.cumple      || DB.cumple;
-    DB.fondoCumple = datos.fondoCumple || DB.fondoCumple;
-    DB.configCumple= datos.configCumple|| DB.configCumple;
-    DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix;
-    DB.utilidades  = datos.utilidades  || DB.utilidades;
-    DB.recibos     = datos.recibos     || DB.recibos;
-    if(datos.cuentas && typeof aplicarCuentasPersistidas==='function') aplicarCuentasPersistidas(datos.cuentas);
-    // Guardar localmente con ts de Firebase
-    try {
-      var json = JSON.stringify(Object.assign({}, datos, {v:3}));
-      localStorage.setItem('caja_ahorro_2026', json);
-      localStorage.setItem('caja_ahorro_2026_backup_total', json);
-      localStorage.setItem('caja_ts', String(datos.ts));
-    } catch(e) {}
-    // Re-renderizar
-    if(typeof renderDashboard==='function') renderDashboard();
-    if(typeof renderSocios==='function') renderSocios();
-    if(typeof renderPrestamos==='function') renderPrestamos();
-    if(typeof renderAhorros==='function') renderAhorros();
-    if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
-    actualizarIndicadorSync('conectado');
-  }, function(err){ console.warn('Listener error:', err.message); });
+  // Listener desactivado — usar botón Sync desde nube para sincronizar
+  console.log('Listener desactivado. Usa el botón Sync para actualizar.');
+  return;
 }
 
     if('serviceWorker' in navigator) {
@@ -10099,6 +10059,8 @@ function abrirNuevoPrestamoDesdeFicha() {
 function guardarRapido() {
   const btn = document.getElementById('btn-guardar-sidebar');
   if(btn) { btn.innerHTML = '⏳ Guardando...'; btn.disabled = true; }
+  // Marcar que este dispositivo fue quien guardó
+  try { sessionStorage.setItem('yo_guarde_ts', String(Date.now())); } catch(e) {}
   try {
     asegurarCuentasEspeciales && asegurarCuentasEspeciales();
     guardarEnLocal && guardarEnLocal();
