@@ -11224,89 +11224,12 @@ function prActualizarInteres() {
 
 
 <script>
-// ═══════════════════════════════════════════════════════════════════
-// RESCATE FORZADO — Mayo 2026
-// Restaura datos, recibos y utilidades empaquetados en este HTML.
-// Limpia caché/localStorage viejo y sube la base buena a Firebase.
-// ═══════════════════════════════════════════════════════════════════
-(function(){
-  function pintarAvisoRescate(txt, ok){
-    try{
-      var old = document.getElementById('aviso-rescate-forzado');
-      if(old) old.remove();
-      var b = document.createElement('div');
-      b.id = 'aviso-rescate-forzado';
-      b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;padding:14px 16px;border-radius:12px;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-align:center;box-shadow:0 8px 28px rgba(0,0,0,.25);background:' + (ok ? '#0d7a5f' : '#c0392b') + ';color:#fff;';
-      b.textContent = txt;
-      document.body.appendChild(b);
-      setTimeout(function(){ try{ b.remove(); }catch(e){} }, 7000);
-    }catch(e){}
-  }
-
-  window.restaurarDesdeArchivoForzado = function(){
-    alert('\u26d4 FUNCI\u00d3N BLOQUEADA\n\nEsta funci\u00f3n est\u00e1 deshabilitada para evitar que el archivo viejo pise los datos de Firebase.\n\nUsa los scripts de consola para corregir datos espec\u00edficos.');
-    console.warn('\u26d4 restaurarDesdeArchivoForzado DESHABILITADO.');
-    return false;
-    try{
-      try {
-        localStorage.removeItem('caja_ahorro_2026');
-        localStorage.removeItem('caja_ahorro_2026_backup_total');
-        localStorage.removeItem('caja_ts');
-        localStorage.removeItem('caja_recuperacion_index_corregido_2026042802_aplicada');
-        localStorage.removeItem('caja_rescate_forzado_ok');
-      } catch(e) {}
-      try { sessionStorage.removeItem('yo_guarde_ts'); sessionStorage.removeItem('sync_en_proceso'); } catch(e) {}
-      try { if('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }); } catch(e) {}
-      try { if(window.caches) caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); }); } catch(e) {}
-
-      if(typeof cargarDatosIniciales === 'function') cargarDatosIniciales();
-      if(typeof fixSocioIds === 'function') fixSocioIds();
-      if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
-      if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
-      if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
-      if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
-
-      if(typeof guardarEnLocal === 'function') guardarEnLocal();
-      try { localStorage.setItem('caja_rescate_forzado_ok', new Date().toISOString()); } catch(e) {}
-      if(typeof iniciarFolioCounter === 'function') iniciarFolioCounter();
-      if(typeof renderDashboard === 'function') renderDashboard();
-      if(typeof renderSocios === 'function') renderSocios();
-      if(typeof renderPrestamos === 'function') renderPrestamos();
-      if(typeof renderAhorros === 'function') renderAhorros();
-      if(typeof renderRecibos === 'function') renderRecibos('todos');
-      if(typeof renderUtilidades === 'function') renderUtilidades();
-      if(typeof actualizarKpiUtilidades === 'function') actualizarKpiUtilidades();
-
-      setTimeout(function(){
-        try {
-          if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
-          pintarAvisoRescate('✅ Rescate forzado aplicado: datos, recibos y utilidades restaurados desde este archivo.', true);
-        } catch(e) {
-          pintarAvisoRescate('⚠️ Rescate local aplicado, pero no se pudo subir a Firebase: ' + e.message, false);
-        }
-      }, 1800);
-
-      console.log('RESCATE FORZADO OK', {
-        socios: DB.socios && DB.socios.length,
-        prestamos: DB.prestamos && DB.prestamos.length,
-        recibos: DB.recibos && DB.recibos.length,
-        utilidades: DB.utilidades && DB.utilidades.length,
-        movimientos: DB.movimientos && DB.movimientos.length
-      });
-      return true;
-    } catch(err) {
-      console.error('Error en rescate forzado:', err);
-      pintarAvisoRescate('❌ Error en rescate: ' + err.message, false);
-      alert('Error en rescate forzado: ' + err.message);
-      return false;
-    }
-  };
-
-  window.addEventListener('load', function(){
-    // Rescate forzado DESACTIVADO — los datos se cargan desde Firestore
-    // Para restaurar manualmente usa: window.restaurarDesdeArchivoForzado()
-    console.log('ℹ️ Rescate forzado desactivado. Datos cargados desde Firestore.');
-  });
-})();
+// RESCATE FORZADO — BLOQUEADO PERMANENTEMENTE
+window.restaurarDesdeArchivoForzado = function(){
+  alert('⛔ FUNCIÓN BLOQUEADA\n\nDeshabilitada para evitar que el archivo viejo pise Firebase.\n\nUsa scripts de consola para corregir datos.');
+  console.warn('⛔ restaurarDesdeArchivoForzado DESHABILITADO.');
+  return false;
+};
+console.log('ℹ️ Rescate forzado BLOQUEADO. Datos siempre desde Firestore.');
 </script>
 </body></html>
