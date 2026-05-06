@@ -627,36 +627,67 @@ function aplicarCuentasPersistidas(cuentasData) {
 function asegurarCuentasEspeciales() {
   try {
     if(!DB.socios) DB.socios = [];
+
     var baseSocios = (typeof _d !== 'undefined' && _d && Array.isArray(_d.socios)) ? _d.socios : [];
     var idsUsados = DB.socios.map(function(s){ return Number(s.id) || 0; });
     var nextId = idsUsados.length ? Math.max.apply(null, idsUsados) + 1 : 1;
 
     CUENTAS_ESPECIALES.forEach(function(nombreEsp) {
       var norm = normalizarNombreCaja(nombreEsp);
-      var existente = DB.socios.find(function(s){ return normalizarNombreCaja(s.nombre) === norm; });
+      var existente = DB.socios.find(function(s){
+        return normalizarNombreCaja(s.nombre) === norm;
+      });
+
       if(existente) {
-        existente.activo = true;
+        // IMPORTANTE:
+        // Ya no forzamos activo = true.
+        // Si el usuario ocultó CETES, Messi, Utilidades, etc.,
+        // se respeta ese estado.
+        if(existente.activo == null) existente.activo = true;
+
         if(existente.freq == null) existente.freq = 'quincenal';
         if(existente.tel == null) existente.tel = '';
         if(existente.ahorro == null) existente.ahorro = 0;
         return;
       }
 
-      var base = baseSocios.find(function(s){ return normalizarNombreCaja(s.nombre) === norm; });
-      var nuevo = base ? JSON.parse(JSON.stringify(base)) : { nombre: nombreEsp, tel: '', freq: 'quincenal', ahorro: 0, cuota: 0, activo: true };
+      var base = baseSocios.find(function(s){
+        return normalizarNombreCaja(s.nombre) === norm;
+      });
+
+      var nuevo = base
+        ? JSON.parse(JSON.stringify(base))
+        : {
+            nombre: nombreEsp,
+            tel: '',
+            freq: 'quincenal',
+            ahorro: 0,
+            cuota: 0,
+            activo: true
+          };
+
       var candidato = Number(nuevo.id) || 0;
+
       if(!candidato || DB.socios.some(function(s){ return Number(s.id) === candidato; })) {
         candidato = nextId++;
       }
+
       nuevo.id = candidato;
-      nuevo.activo = true;
+
+      // También aquí respetamos el estado si ya venía guardado.
+      if(nuevo.activo == null) nuevo.activo = true;
+
       if(nuevo.freq == null) nuevo.freq = 'quincenal';
       if(nuevo.tel == null) nuevo.tel = '';
       if(nuevo.ahorro == null) nuevo.ahorro = 0;
+
       DB.socios.push(nuevo);
     });
 
-    DB.socios.sort(function(a,b){ return (Number(a.id)||0) - (Number(b.id)||0); });
+    DB.socios.sort(function(a,b){
+      return (Number(a.id)||0) - (Number(b.id)||0);
+    });
+
   } catch(err) {
     console.warn('No se pudieron asegurar las cuentas especiales:', err.message);
   }
