@@ -4585,7 +4585,10 @@ function getMontoCumple() {
   return (cfg.participantes - 1) * cfg.aportacion; // 31 × $100 = $3,100
 }
 function getSaldoFondo() {
-  // Saldo = aportes - entregas
+  // Saldo = ahorro del socio CUMPLEAÑOS (fuente de verdad)
+  const sc = (DB.socios||[]).find(function(s){ return (s.nombre||'').toUpperCase()==='CUMPLEAÑOS'; });
+  if(sc) return sc.ahorro||0;
+  // Fallback: sumar fondoCumple
   return (DB.fondoCumple||[]).reduce(function(s,m){ return s+m.monto; }, 0);
 }
 let folioCounter = 1;
@@ -5130,7 +5133,11 @@ function renderCumple() {
       const deberiaHaber = totalFest - 1; // -1 por su propio cumpleaños
       const pendiente = Math.max(0, deberiaHaber - npagados);
       return {nombre:p.nombre, pagado, pendiente, npagados, deberiaHaber};
-    }).sort((a,b)=>b.pendiente-a.pendiente);
+    }).sort((a,b)=>{
+      const ia=fest.findIndex(f=>f.nombre.toUpperCase()===a.nombre.toUpperCase());
+      const ib=fest.findIndex(f=>f.nombre.toUpperCase()===b.nombre.toUpperCase());
+      return (ia===-1?999:ia)-(ib===-1?999:ib);
+    });
     lista.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;">'
       +'<thead><tr style="background:var(--gris2);">'
       +'<th style="padding:8px 10px;text-align:left;">Participante</th>'
@@ -8407,13 +8414,13 @@ function confirmarAporteCumple(){
   }
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   const socioCumple = DB.socios.find(function(s){ return (s.nombre||'').toUpperCase() === 'CUMPLEAÑOS'; });
-  if(socioCumple) {
-    socioCumple.ahorro = getSaldoFondo ? getSaldoFondo() : (socioCumple.ahorro || 0) + monto;
-  }
+  if(socioCumple) socioCumple.ahorro = getSaldoFondo();
   cerrarModal('modal-cumple-aporte');
   // Generar recibo de texto
   generarReciboCumple('aporte',aportante,monto,fecha,notas);
   renderCumple();
+  if(typeof guardarEnLocal==='function') guardarEnLocal();
+  if(typeof guardarEnFirebase==='function') guardarEnFirebase();
 }
 
 function generarReciboCumple(tipo, nombre, monto, fecha, notas) {
