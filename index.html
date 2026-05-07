@@ -13311,4 +13311,261 @@ window.guardarConfigT1000 = function() {
 })();
 </script>
 
+
+<script>
+// ══════════════════════════════════════════════════
+// FIX FINAL KPI FONDO ACUMULADO — 07/may/2026
+// Este bloque va al final para ganar sobre los parches anteriores.
+// ══════════════════════════════════════════════════
+(function(){
+  window.APP_FIX_KPI_FONDO = '2026-05-07-kpi-fondo-v3';
+
+  function n(v){
+    var x = Number(v);
+    return isNaN(x) ? 0 : x;
+  }
+
+  function moneyPlain(v){
+    v = n(v);
+    return (typeof fmt === 'function') ? fmt(v) : v.toLocaleString('es-MX', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function money(v){
+    return '$' + moneyPlain(v);
+  }
+
+  function norm(v){
+    return String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function getT300(){
+    if(!window.DB) return {quincenas:[], entregas:[], fondo:0, entregado:0};
+    if(typeof window.getTanda300 === 'function') {
+      try { return window.getTanda300(); } catch(e) {}
+    }
+    if(!DB.tanda300) DB.tanda300 = {quincenas:[], entregas:[], fondo:0, entregado:0};
+    DB.tanda300.quincenas = Array.isArray(DB.tanda300.quincenas) ? DB.tanda300.quincenas : [];
+    DB.tanda300.entregas  = Array.isArray(DB.tanda300.entregas)  ? DB.tanda300.entregas  : [];
+    return DB.tanda300;
+  }
+
+  function getT1000(){
+    if(!window.DB) return {quincenas:[], entregas:[], fondo:0, entregado:0};
+    if(typeof window.getTanda1000 === 'function') {
+      try { return window.getTanda1000(); } catch(e) {}
+    }
+    if(!DB.tanda1000) DB.tanda1000 = {quincenas:[], entregas:[], fondo:0, entregado:0};
+    DB.tanda1000.quincenas = Array.isArray(DB.tanda1000.quincenas) ? DB.tanda1000.quincenas : [];
+    DB.tanda1000.entregas  = Array.isArray(DB.tanda1000.entregas)  ? DB.tanda1000.entregas  : [];
+    return DB.tanda1000;
+  }
+
+  function sumaEntregas(t){
+    return (t.entregas || []).reduce(function(s,e){ return s + n(e && e.monto); }, 0);
+  }
+
+  function sumaAportesT300(t){
+    var total = 0;
+    (t.quincenas || []).forEach(function(q){
+      if(!q) return;
+      ['g1','g2'].forEach(function(gk){
+        var grupo = q[gk] || {};
+        Object.keys(grupo).forEach(function(k){
+          total += n(grupo[k]);
+        });
+      });
+    });
+    return total;
+  }
+
+  function sumaAportesT1000(t){
+    var total = 0;
+    (t.quincenas || []).forEach(function(q){
+      if(!q) return;
+      var pagos = q.pagos || {};
+      Object.keys(pagos).forEach(function(k){
+        total += n(pagos[k]);
+      });
+    });
+    return total;
+  }
+
+  function socioEspecial(nombre, saldo){
+    if(!window.DB) return null;
+    if(!Array.isArray(DB.socios)) DB.socios = [];
+    var objetivo = norm(nombre);
+    var socio = DB.socios.find(function(s){ return norm(s && s.nombre) === objetivo; });
+    if(!socio) {
+      var ids = DB.socios.map(function(s){ return n(s && s.id); });
+      var nextId = ids.length ? Math.max.apply(null, ids) + 1 : 1;
+      socio = {
+        id: nextId,
+        nombre: nombre,
+        tel: '',
+        freq: 'especial',
+        cuota: 0,
+        ahorro: 0,
+        categoria: 'ESP',
+        activo: true
+      };
+      DB.socios.push(socio);
+    }
+    socio.nombre = nombre;
+    socio.ahorro = Math.round(n(saldo) * 100) / 100;
+    socio.cuota = 0;
+    socio.freq = 'especial';
+    socio.categoria = 'ESP';
+    socio.activo = true;
+    if(socio.tel == null) socio.tel = '';
+    return socio;
+  }
+
+  function recalcularTandasEspeciales(){
+    var t300 = getT300();
+    var t1000 = getT1000();
+
+    t300.entregado = sumaEntregas(t300);
+    t300.fondo = sumaAportesT300(t300) - t300.entregado;
+
+    t1000.entregado = sumaEntregas(t1000);
+    t1000.fondo = sumaAportesT1000(t1000) - t1000.entregado;
+
+    if(window.DB) {
+      DB.tanda300 = t300;
+      DB.tanda1000 = t1000;
+    }
+
+    socioEspecial('TANDA 300', t300.fondo);
+    socioEspecial('TANDA 1000', t1000.fondo);
+
+    return {
+      t300: t300.fondo,
+      t1000: t1000.fondo,
+      entregado300: t300.entregado,
+      entregado1000: t1000.entregado
+    };
+  }
+
+  // Reemplazo fuerte: cualquier guardado/render que llame esta función recibirá el cálculo correcto.
+  window.sincronizarSociosTandasConFondos = function(){
+    return recalcularTandasEspeciales();
+  };
+
+  function refrescarKpiFondoAcumulado(){
+    if(!window.DB || !Array.isArray(DB.socios)) return 0;
+
+    try { if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales(); } catch(e) {}
+
+    try { recalcularTandasEspeciales(); } catch(e) {
+      console.warn('No se pudo recalcular tandas para KPI:', e.message);
+    }
+
+    try { if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo(); } catch(e) {}
+
+    try {
+      if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
+      if(typeof calcularTotalesUtilidades === 'function' && typeof sincronizarAhorradorUtilidades === 'function') {
+        var util = calcularTotalesUtilidades();
+        sincronizarAhorradorUtilidades(util.cobrado);
+      } else if(typeof sincronizarAhorradorUtilidades === 'function') {
+        sincronizarAhorradorUtilidades();
+      }
+    } catch(e) {}
+
+    var total = DB.socios.reduce(function(s,x){ return s + n(x && x.ahorro); }, 0);
+
+    var kpiAhorros = document.getElementById('kpi-ahorros');
+    if(kpiAhorros) kpiAhorros.textContent = moneyPlain(total);
+
+    var cAhorros = document.getElementById('c-ahorros');
+    if(cAhorros) cAhorros.textContent = money(total);
+
+    if(typeof CAJA_REF !== 'undefined' && CAJA_REF) {
+      CAJA_REF.ahorros_registrados = total;
+    }
+
+    return total;
+  }
+
+  function refrescarKpisTanda300(){
+    var t = getT300();
+    recalcularTandasEspeciales();
+
+    var kf = document.getElementById('t300-kpi-fondo');
+    var ke = document.getElementById('t300-kpi-entregado');
+
+    if(kf) kf.textContent = money(t.fondo);
+    if(ke) ke.textContent = money(t.entregado);
+
+    return t.fondo;
+  }
+
+  function refrescarTodo(){
+    try { refrescarKpisTanda300(); } catch(e) {}
+    try { refrescarKpiFondoAcumulado(); } catch(e) {}
+  }
+
+  window.refrescarKpiFondoAcumulado = refrescarKpiFondoAcumulado;
+  window.refrescarKpisTanda300 = refrescarKpisTanda300;
+  window.recalcularTandasEspeciales = recalcularTandasEspeciales;
+
+  function wrap(nombre, afterDelay){
+    var original = window[nombre];
+    if(typeof original !== 'function' || original.__fixKpiFondo) return;
+    var envuelta = function(){
+      var r;
+      try { r = original.apply(this, arguments); }
+      finally {
+        refrescarTodo();
+        setTimeout(refrescarTodo, afterDelay || 80);
+        setTimeout(refrescarTodo, 350);
+      }
+      return r;
+    };
+    envuelta.__fixKpiFondo = true;
+    window[nombre] = envuelta;
+  }
+
+  // Render y guardados donde se desactualizaba el KPI.
+  wrap('renderDashboard', 120);
+  wrap('renderTanda300', 120);
+  wrap('guardarAportesT300', 180);
+  wrap('guardarConfigT300', 180);
+  wrap('forzarSyncDesdeFirebase', 500);
+  wrap('guardarEnLocal', 120);
+  wrap('guardarDatos', 180);
+
+  // Actualización inmediata al salir de los modales de tanda.
+  document.addEventListener('click', function(ev){
+    var t = ev.target;
+    if(!t) return;
+    var txt = (t.textContent || '').toUpperCase();
+    if(txt.indexOf('GUARDAR') >= 0 || txt.indexOf('SINCRONIZAR') >= 0 || txt.indexOf('ACTUALIZAR') >= 0) {
+      setTimeout(refrescarTodo, 120);
+      setTimeout(refrescarTodo, 500);
+    }
+  }, true);
+
+  // Aplicar al cargar, al volver a la pestaña y después de que Firebase responda.
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(refrescarTodo, 50);
+    setTimeout(refrescarTodo, 500);
+    setTimeout(refrescarTodo, 1500);
+  });
+
+  window.addEventListener('focus', function(){ setTimeout(refrescarTodo, 80); });
+
+  setTimeout(refrescarTodo, 50);
+  setTimeout(refrescarTodo, 500);
+})();
+</script>
+
 </body></html>
