@@ -9882,12 +9882,14 @@ function normalizarVisibilidadSocios() {
     var listaG1 = document.getElementById('ta300-turnos-g1');
     if(listaG1){
       var g1Html = T300_G1.map(function(n, i){
-        var ya = sumaT300Grupo(t,1,n) >= monto300;
-        var bg = ya ? 'rgba(10,74,42,0.1)' : 'var(--gris)';
-        var txt = ya ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+        var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===1 && Number(e.turno)===i+1; });
+        var pagadoTurno = sumaT300Grupo(t,1,n);
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+        var bloqueado = cobro ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
-          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="1" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+(ya?'checked disabled':'')+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
-          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+'\x3C/span\x3E\x3C/span\x3E'
+          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="1" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
+          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
           +'\x3C/div\x3E';
       }).join('');
       listaG1.innerHTML = g1Html;
@@ -9896,12 +9898,14 @@ function normalizarVisibilidadSocios() {
     var listaG2 = document.getElementById('ta300-turnos-g2');
     if(listaG2){
       var g2Html = T300_G2.map(function(n, i){
-        var ya = sumaT300Grupo(t,2,n) >= monto300;
-        var bg = ya ? 'rgba(10,74,42,0.1)' : 'var(--gris)';
-        var txt = ya ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+        var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===2 && Number(e.turno)===i+1; });
+        var pagadoTurno = sumaT300Grupo(t,2,n);
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+        var bloqueado = cobro ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
-          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="2" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+(ya?'checked disabled':'')+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
-          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+'\x3C/span\x3E\x3C/span\x3E'
+          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="2" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
+          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
           +'\x3C/div\x3E';
       }).join('');
       listaG2.innerHTML = g2Html;
