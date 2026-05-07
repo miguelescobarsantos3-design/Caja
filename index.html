@@ -761,6 +761,30 @@ function actualizarIndicadorSync(estado) {
   }
 }
 
+
+// Ordena recibos del más reciente al más antiguo.
+// Primero toma fecha/fechaEmision y, si empatan, acomoda por folio descendente.
+function _fechaReciboTs(r) {
+  var f = (r && (r.fecha || r.fechaEmision)) ? String(r.fecha || r.fechaEmision).trim() : '';
+  if(!f) return 0;
+  var m = f.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]), 12, 0, 0).getTime();
+  m = f.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), 12, 0, 0).getTime();
+  var t = Date.parse(f);
+  return isNaN(t) ? 0 : t;
+}
+function ordenarRecibosRecientes(lista) {
+  return (lista || []).slice().sort(function(a, b) {
+    var tb = _fechaReciboTs(b);
+    var ta = _fechaReciboTs(a);
+    if(tb !== ta) return tb - ta;
+    var fb = parseInt((b && b.folio) || 0, 10) || 0;
+    var fa = parseInt((a && a.folio) || 0, 10) || 0;
+    return fb - fa;
+  });
+}
+
 // Guardar TODOS los datos en Firestore
 // ─── MERGE SEGURO: fusiona recibos y movimientos de dos fuentes sin perder nada ───
 function _mergeRecibos(locales, remotos) {
@@ -771,7 +795,7 @@ function _mergeRecibos(locales, remotos) {
   // Los que no tienen folio se conservan todos
   var sinFolio = (remotos||[]).filter(function(r){ return !r.folio; })
     .concat((locales||[]).filter(function(r){ return !r.folio; }));
-  return Object.values(mapa).concat(sinFolio);
+  return ordenarRecibosRecientes(Object.values(mapa).concat(sinFolio));
 }
 
 function _mergeMovimientos(locales, remotos) {
@@ -7283,9 +7307,10 @@ function capturaEstado(tipo, socio, monto) {
 
 function renderRecibos(filtro) {
   filtro = filtro || 'todos';
+  const recibosOrdenados = ordenarRecibosRecientes(DB.recibos || []);
   const lista = filtro === 'todos'
-    ? DB.recibos
-    : DB.recibos.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente');
+    ? recibosOrdenados
+    : recibosOrdenados.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente');
 
   const tipos = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', cumple:'badge-purple', tanda300:'badge-blue', tanda1000:'badge-blue'};
   const tipLabel = {ahorro:'Ahorro', prestamo:'Préstamo', tanda:'Tanda', cumple:'Cumpleaños', tanda300:'Tanda $300', tanda1000:'Tanda $1,000'};
