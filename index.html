@@ -12674,4 +12674,113 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
+
+<script>
+// ─── PARCHE: total aportado correcto en recibos Tanda $300 / $1,000 ───
+(function(){
+  function _norm(v){ return String(v || '').trim().toUpperCase(); }
+  function _fechaRecibo(r){
+    var txt = r && (r.fecha || r.fechaEmision || '');
+    var t = Date.parse(String(txt).slice(0,10) + 'T12:00:00');
+    return isNaN(t) ? 0 : t;
+  }
+  function _folioNum(r){
+    var n = parseInt((r && r.folio) || '0', 10);
+    return isNaN(n) ? 0 : n;
+  }
+  function _ordenarRecibosAsc(lista){
+    return (lista || []).slice().sort(function(a,b){
+      var da = _fechaRecibo(a), db = _fechaRecibo(b);
+      if(da !== db) return da - db;
+      return _folioNum(a) - _folioNum(b);
+    });
+  }
+  function _esTandaEspecial(tipo){
+    return tipo === 'tanda300' || tipo === 'tanda1000';
+  }
+  window.recalcularSaldosRecibosTandasEspeciales = function(){
+    if(!window.DB || !Array.isArray(DB.recibos)) return;
+    ['tanda300','tanda1000'].forEach(function(tipo){
+      var grupos = {};
+      DB.recibos.forEach(function(r){
+        if(!r || r.tipo !== tipo) return;
+        var key = _norm(r.socio);
+        if(!grupos[key]) grupos[key] = [];
+        grupos[key].push(r);
+      });
+      Object.keys(grupos).forEach(function(key){
+        var acumulado = 0;
+        _ordenarRecibosAsc(grupos[key]).forEach(function(r){
+          var monto = Number(r.monto) || 0;
+          if(String(r.estado || 'vigente').toLowerCase() !== 'cancelado') {
+            acumulado += monto;
+          }
+          r.saldo = acumulado;
+        });
+      });
+    });
+  };
+
+  window.obtenerSaldoReciboTandaEspecial = function(recibo){
+    if(!recibo || !_esTandaEspecial(recibo.tipo)) return Number(recibo && recibo.saldo) || 0;
+    try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
+    var r = (DB.recibos || []).find(function(x){ return x && x.folio === recibo.folio; }) || recibo;
+    return Number(r.saldo) || 0;
+  };
+
+  // Recalcular al cargar
+  try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) { console.warn('No se pudieron recalcular saldos de tandas:', e); }
+
+  // Parchear recibo emergente de tanda especial
+  if(typeof window.mostrarReciboTanda === 'function') {
+    var _mostrarReciboTandaOrig = window.mostrarReciboTanda;
+    window.mostrarReciboTanda = function(tipo, socio, monto, fecha, concepto, pagadoTotal, notas, folio){
+      if(_esTandaEspecial(tipo)) {
+        try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
+        if(!(Number(pagadoTotal) > 0)) {
+          var r = (window.DB && Array.isArray(DB.recibos))
+            ? DB.recibos.find(function(x){ return x && x.folio === folio; })
+            : null;
+          if(r) pagadoTotal = Number(r.saldo) || 0;
+        }
+      }
+      return _mostrarReciboTandaOrig(tipo, socio, monto, fecha, concepto, pagadoTotal, notas, folio);
+    };
+  }
+
+  // Parchear vista de recibos anteriores
+  if(typeof window.verReciboAnterior === 'function') {
+    var _verReciboAnteriorOrig = window.verReciboAnterior;
+    window.verReciboAnterior = function(folio){
+      var r = (window.DB && Array.isArray(DB.recibos))
+        ? DB.recibos.find(function(x){ return x && x.folio === folio; })
+        : null;
+      if(r && _esTandaEspecial(r.tipo)) {
+        try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
+        var saldo = Number(r.saldo) || 0;
+        var notas = r.estado === 'cancelado'
+          ? 'CANCELADO: ' + (r.motivoCancelacion || '—')
+          : (r.notas || '');
+        window.reciboActual = Object.assign({}, r, { saldo: saldo });
+        return window.mostrarReciboTanda(r.tipo, limpiarNombre ? limpiarNombre(r.socio) : r.socio, Number(r.monto) || 0, r.fecha, r.concepto || '', saldo, notas, r.folio);
+      }
+      return _verReciboAnteriorOrig(folio);
+    };
+  }
+
+  // Asegurar recálculo antes de guardar/sincronizar
+  ['guardarEnLocal','guardarEnFirebase','guardarDatos'].forEach(function(fnName){
+    if(typeof window[fnName] !== 'function') return;
+    var orig = window[fnName];
+    if(orig._parcheTandasEspeciales) return;
+    var patched = function(){
+      try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
+      return orig.apply(this, arguments);
+    };
+    patched._parcheTandasEspeciales = true;
+    window[fnName] = patched;
+  });
+})();
+</script>
+
 </body></html>
