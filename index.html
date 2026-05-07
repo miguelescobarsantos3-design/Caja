@@ -5524,7 +5524,7 @@ function normUtilNombre(txt) {
   return UTILIDADES_ALIAS[n] || n;
 }
 function escapeHtmlUtil(txt) {
-  return String(txt || '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  return String(txt || '').replace(/[&<>"]/g, ch => ({'&':'&amp;','\x3C':'&lt;','\x3E':'&gt;','"':'&quot;'}[ch]));
 }
 function clonarUtilidadesBase() {
   return UTILIDADES_BASE.map((r, i) => ({
@@ -9816,10 +9816,10 @@ function normalizarVisibilidadSocios() {
     m.classList.add('open');
   }
   function selectHtml(id,label,attrs,opciones){
-    return '<div class="form-group"><label>'+label+'</label><select id="'+id+'" '+(attrs||'')+'>'+opciones+'</select></div>';
+    return '\x3Cdiv class="form-group"\x3E\x3Clabel\x3E'+label+'\x3C/label\x3E\x3Cselect id="'+id+'" '+(attrs||'')+'\x3E'+opciones+'\x3C/select\x3E\x3C/div\x3E';
   }
   function inputHtml(id,label,tipo,valor){
-    return '<div class="form-group"><label>'+label+'</label><input type="'+tipo+'" id="'+id+'" value="'+esc(valor)+'"></div>';
+    return '\x3Cdiv class="form-group"\x3E\x3Clabel\x3E'+label+'\x3C/label\x3E\x3Cinput type="'+tipo+'" id="'+id+'" value="'+esc(valor)+'"\x3E\x3C/div\x3E';
   }
   function guardarYRefrescar(vista){
     try { if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos(); } catch(e) {}
@@ -11592,7 +11592,7 @@ function prActualizarInteres() {
   }
   function esc(txt) {
     return String(txt || '').replace(/[&<>"]/g, function(ch){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch];
+      return {'&':'&amp;','\x3C':'&lt;','\x3E':'&gt;','"':'&quot;'}[ch];
     });
   }
   function utilidadTotalCampo(u) {
@@ -12073,7 +12073,7 @@ function prActualizarInteres() {
     var x = Number(v);
     return isNaN(x) ? 0 : x;
   }
-  function esc(s){ return String(s || '').replace(/[&<>\"]/g, function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]; }); }
+  function esc(s){ return String(s || '').replace(/[&<>\"]/g, function(ch){ return {'&':'&amp;','\x3C':'&lt;','\x3E':'&gt;','"':'&quot;'}[ch]; }); }
   function money(v){
     v = r2(v);
     if(typeof fmtUtil === 'function') return fmtUtil(v);
