@@ -9645,6 +9645,7 @@ function normalizarVisibilidadSocios() {
         });
       });
     });
+    try { migrarAportesT300PorAportante(DB.tanda300); } catch(e) { console.warn('Migración Tanda $300 omitida:', e.message); }
     return DB.tanda300;
   };
 
@@ -9682,21 +9683,121 @@ function normalizarVisibilidadSocios() {
   function sumaEntregas(t){
     return (t.entregas || []).reduce(function(s,e){ return s + (Number(e.monto)||0); }, 0);
   }
+
+  // ── Tanda $300: separar QUIÉN APORTA de QUÉ TURNO CUBRE ──
+  // Formato nuevo: g1/g2["APORTANTE__TURNO_CUBIERTO"] = monto
+  // Formato viejo:  g1/g2["TURNO_CUBIERTO"] = monto
+  // El viejo subía el KPI, pero no el renglón del aportante. Ahí estaba el duende.
+  function claveT300(aportante, turno){
+    return String(aportante || '').trim().toUpperCase() + '__' + String(turno || '').trim().toUpperCase();
+  }
+  function esClaveCompuestaT300(k){ return String(k || '').indexOf('__') > -1; }
+  function aportanteClaveT300(k){ return esClaveCompuestaT300(k) ? String(k).split('__')[0] : String(k || ''); }
+  function turnoClaveT300(k){ return esClaveCompuestaT300(k) ? String(k).split('__').slice(1).join('__') : String(k || ''); }
+  function grupoKeyT300(grupo){ return Number(grupo) === 1 ? 'g1' : 'g2'; }
+
   function sumaT300Grupo(t, grupo, nombre){
-    // Suma todo lo recaudado EN el turno de este participante (cobrador)
-    // Incluye: clave exacta "nombre", claves compuestas "cualquiera__nombre"
-    var gk = grupo === 1 ? 'g1' : 'g2';
+    // Total aportado POR la persona dentro del grupo.
+    var gk = grupoKeyT300(grupo);
+    nombre = String(nombre || '').trim().toUpperCase();
     return (t.quincenas || []).reduce(function(s,q){
       var g = q[gk] || {};
       var suma = 0;
       Object.keys(g).forEach(function(k){
-        // Clave exacta del cobrador O clave compuesta "aportante__cobrador"
-        if(k === nombre || k.split('__').pop() === nombre) {
+        var kk = String(k || '').trim().toUpperCase();
+        if(kk === nombre || aportanteClaveT300(kk) === nombre) {
           suma += Number(g[k]) || 0;
         }
       });
       return s + suma;
     }, 0);
+  }
+  function sumaT300Turno(t, grupo, nombreTurno){
+    // Total reunido PARA el turno/cobrador seleccionado.
+    var gk = grupoKeyT300(grupo);
+    nombreTurno = String(nombreTurno || '').trim().toUpperCase();
+    return (t.quincenas || []).reduce(function(s,q){
+      var g = q[gk] || {};
+      var suma = 0;
+      Object.keys(g).forEach(function(k){
+        var kk = String(k || '').trim().toUpperCase();
+        if(kk === nombreTurno || turnoClaveT300(kk) === nombreTurno) {
+          suma += Number(g[k]) || 0;
+        }
+      });
+      return s + suma;
+    }, 0);
+  }
+  function sumaT300AportanteEnTurno(t, grupo, aportante, nombreTurno){
+    var gk = grupoKeyT300(grupo), key = claveT300(aportante, nombreTurno);
+    return (t.quincenas || []).reduce(function(s,q){ return s + Number((q[gk] && q[gk][key]) || 0); }, 0);
+  }
+  function parseTurnosT300Recibo(r){
+    var fuentes = [];
+    if(Array.isArray(r.turnos)) fuentes = fuentes.concat(r.turnos);
+    if(r.notas) fuentes = fuentes.concat(String(r.notas).split(','));
+    var vistos = {}, out = [];
+    fuentes.forEach(function(txt){
+      txt = String(txt || '');
+      var m = txt.match(/G\s*([12])\s*T\s*(\d+)\s*(?:\(([^)]*)\))?/i);
+      if(!m) return;
+      var grupo = parseInt(m[1],10), idx = parseInt(m[2],10);
+      var lista = grupo === 1 ? T300_G1 : T300_G2;
+      var nombre = (m[3] || lista[idx-1] || '').trim().toUpperCase();
+      if(!nombre) return;
+      var id = grupo + '|' + idx + '|' + nombre;
+      if(vistos[id]) return;
+      vistos[id] = true;
+      out.push({grupo:grupo, idx:idx, nombre:nombre});
+    });
+    return out;
+  }
+  function migrarAportesT300PorAportante(t){
+    if(!t || !Array.isArray(t.quincenas) || !Array.isArray(DB.recibos)) return false;
+    var cambio = false;
+    (DB.recibos || []).forEach(function(r){
+      if(!r || r.tipo !== 'tanda300' || String(r.estado || 'vigente').toLowerCase() === 'cancelado') return;
+      var aportante = String(r.socio || '').trim().toUpperCase();
+      if(!aportante) return;
+      var turnos = parseTurnosT300Recibo(r);
+      if(!turnos.length) return;
+      var fecha = r.fecha || hoy();
+      var montoTotal = Number(r.monto) || ((t.montoAporte || 300) * turnos.length);
+      var montoPorTurno = turnos.length ? (montoTotal / turnos.length) : (t.montoAporte || 300);
+      turnos.forEach(function(tu){
+        var gk = grupoKeyT300(tu.grupo);
+        var q = t.quincenas.find(function(x){ return x.fecha === fecha; });
+        if(!q){ q = {fecha:fecha,g1:{},g2:{}}; t.quincenas.push(q); }
+        if(!q[gk]) q[gk] = {};
+        var nueva = claveT300(aportante, tu.nombre);
+        var actual = Number(q[gk][nueva]) || 0;
+        var faltante = Math.max(0, montoPorTurno - actual);
+        if(faltante <= 0.001) return;
+        var legacyKey = tu.nombre;
+        var legacyVal = Number(q[gk][legacyKey]) || 0;
+        if(legacyVal > 0) {
+          var mover = Math.min(legacyVal, faltante);
+          q[gk][legacyKey] = legacyVal - mover;
+          if(Math.abs(q[gk][legacyKey]) < 0.001) delete q[gk][legacyKey];
+          q[gk][nueva] = actual + mover;
+          cambio = true;
+        } else {
+          var legacyAportanteVal = Number(q[gk][aportante]) || 0;
+          if(legacyAportanteVal > 0) {
+            var moverAportante = Math.min(legacyAportanteVal, faltante);
+            q[gk][aportante] = legacyAportanteVal - moverAportante;
+            if(Math.abs(q[gk][aportante]) < 0.001) delete q[gk][aportante];
+            q[gk][nueva] = actual + moverAportante;
+            cambio = true;
+          } else if(actual <= 0) {
+            // Si el detalle de quincenas se perdió pero sí existe el recibo, lo reconstruimos.
+            q[gk][nueva] = montoPorTurno;
+            cambio = true;
+          }
+        }
+      });
+    });
+    return cambio;
   }
   function sumaT1000Participante(t, idx){
     var k = T1000_P[idx] + '_' + idx;
@@ -9805,8 +9906,8 @@ function normalizarVisibilidadSocios() {
     var pG2 = T300_G2.map(function(n){ return sumaT300Grupo(t, 2, n); });
     var e1 = document.getElementById('t300-tabla-g1');
     var e2 = document.getElementById('t300-tabla-g2');
-    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, T300_G1.length, t.entregas, 1, 't300');
-    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, T300_G2.length, t.entregas, 2, 't300');
+    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, Math.max(0, T300_G1.length - 1), t.entregas, 1, 't300');
+    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, Math.max(0, T300_G2.length - 1), t.entregas, 2, 't300');
   };
 
   window.renderTanda1000 = function(){
@@ -9892,9 +9993,9 @@ function normalizarVisibilidadSocios() {
         var pagG1 = sumaT300Grupo(t,1,aportante), pagG2 = sumaT300Grupo(t,2,aportante);
         var pagado = pagG1 + pagG2;
         var totalPosible = 0;
-        if(T300_G1.indexOf(aportante)>=0) totalPosible += T300_G1.length * monto300;
-        if(T300_G2.indexOf(aportante)>=0) totalPosible += T300_G2.length * monto300;
-        // Si está en ambos grupos, restamos su propio turno duplicado
+        if(T300_G1.indexOf(aportante)>=0) totalPosible += Math.max(0, T300_G1.length - 1) * monto300;
+        if(T300_G2.indexOf(aportante)>=0) totalPosible += Math.max(0, T300_G2.length - 1) * monto300;
+        // En Tanda $300 son 10 aportes por grupo: no cuenta el turno propio.
         var pendiente = Math.max(0, totalPosible - pagado);
         infoEl.style.display = 'block';
         document.getElementById('ta300-pagado').textContent = '$'+fmt(pagado);
@@ -9908,10 +10009,11 @@ function normalizarVisibilidadSocios() {
     if(listaG1){
       var g1Html = T300_G1.map(function(n, i){
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===1 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Grupo(t,1,n);
-        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var pagadoTurno = sumaT300Turno(t,1,n);
+        var yaPagoEsteTurno = aportante ? sumaT300AportanteEnTurno(t,1,aportante,n) > 0 : false;
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : yaPagoEsteTurno ? 'rgba(26,122,90,0.13)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var bloqueado = cobro ? 'checked disabled' : '';
+        var bloqueado = (cobro || yaPagoEsteTurno) ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
           +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="1" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
           +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
@@ -9924,10 +10026,11 @@ function normalizarVisibilidadSocios() {
     if(listaG2){
       var g2Html = T300_G2.map(function(n, i){
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===2 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Grupo(t,2,n);
-        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var pagadoTurno = sumaT300Turno(t,2,n);
+        var yaPagoEsteTurno = aportante ? sumaT300AportanteEnTurno(t,2,aportante,n) > 0 : false;
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : yaPagoEsteTurno ? 'rgba(26,122,90,0.13)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var bloqueado = cobro ? 'checked disabled' : '';
+        var bloqueado = (cobro || yaPagoEsteTurno) ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
           +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="2" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
           +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
@@ -9966,7 +10069,8 @@ function normalizarVisibilidadSocios() {
       var q = t.quincenas.find(function(x){ return x.fecha === fecha; });
       if(!q){ q = {fecha:fecha,g1:{},g2:{}}; t.quincenas.push(q); }
       if(!q[gk]) q[gk] = {};
-      q[gk][nombre] = (Number(q[gk][nombre])||0) + monto300;
+      var key = claveT300(aportante, nombre);
+      q[gk][key] = (Number(q[gk][key])||0) + monto300;
       total += monto300;
     });
     // Registrar movimiento con recibo
@@ -10153,9 +10257,14 @@ function normalizarVisibilidadSocios() {
   };
 
   function filasAportesT300(grupo, nombre){
-    var t = window.getTanda300(), gk = grupo === 1 ? 'g1' : 'g2', rows = [];
+    var t = window.getTanda300(), gk = grupoKeyT300(grupo), rows = [];
+    nombre = String(nombre || '').trim().toUpperCase();
     (t.quincenas || []).forEach(function(q){
-      var monto = Number((q[gk] && q[gk][nombre]) || 0);
+      var monto = 0, g = q[gk] || {};
+      Object.keys(g).forEach(function(k){
+        var kk = String(k || '').trim().toUpperCase();
+        if(kk === nombre || aportanteClaveT300(kk) === nombre) monto += Number(g[k]) || 0;
+      });
       if(monto !== 0) rows.push({fecha:q.fecha, monto:monto});
     });
     return rows;
@@ -10217,14 +10326,21 @@ function normalizarVisibilidadSocios() {
   window.guardarAportesT300 = function(){
     var e = window._editAporteTanda || {};
     var t = window.getTanda300();
-    var gk = Number(e.grupo) === 1 ? 'g1' : 'g2';
-    var nombre = e.nombre;
-    (t.quincenas || []).forEach(function(q){ if(q[gk]) delete q[gk][nombre]; });
+    var gk = grupoKeyT300(e.grupo);
+    var nombre = String(e.nombre || '').trim().toUpperCase();
+    (t.quincenas || []).forEach(function(q){
+      if(!q[gk]) return;
+      Object.keys(q[gk]).forEach(function(k){
+        var kk = String(k || '').trim().toUpperCase();
+        if(kk === nombre || aportanteClaveT300(kk) === nombre) delete q[gk][k];
+      });
+    });
     leerFilasEditor().forEach(function(r){
       var q = t.quincenas.find(function(x){ return x.fecha === r.fecha; });
       if(!q){ q = {fecha:r.fecha,g1:{},g2:{}}; t.quincenas.push(q); }
       if(!q[gk]) q[gk] = {};
-      q[gk][nombre] = (Number(q[gk][nombre]) || 0) + r.monto;
+      var key = claveT300(nombre, 'MANUAL');
+      q[gk][key] = (Number(q[gk][key]) || 0) + r.monto;
     });
     limpiarQuincenasVaciasT300(t);
     cerrarModal('modal-editar-aportes-tanda');
