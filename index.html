@@ -761,30 +761,6 @@ function actualizarIndicadorSync(estado) {
   }
 }
 
-
-// Ordena recibos del más reciente al más antiguo.
-// Primero toma fecha/fechaEmision y, si empatan, acomoda por folio descendente.
-function _fechaReciboTs(r) {
-  var f = (r && (r.fecha || r.fechaEmision)) ? String(r.fecha || r.fechaEmision).trim() : '';
-  if(!f) return 0;
-  var m = f.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]), 12, 0, 0).getTime();
-  m = f.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), 12, 0, 0).getTime();
-  var t = Date.parse(f);
-  return isNaN(t) ? 0 : t;
-}
-function ordenarRecibosRecientes(lista) {
-  return (lista || []).slice().sort(function(a, b) {
-    var tb = _fechaReciboTs(b);
-    var ta = _fechaReciboTs(a);
-    if(tb !== ta) return tb - ta;
-    var fb = parseInt((b && b.folio) || 0, 10) || 0;
-    var fa = parseInt((a && a.folio) || 0, 10) || 0;
-    return fb - fa;
-  });
-}
-
 // Guardar TODOS los datos en Firestore
 // ─── MERGE SEGURO: fusiona recibos y movimientos de dos fuentes sin perder nada ───
 function _mergeRecibos(locales, remotos) {
@@ -795,7 +771,7 @@ function _mergeRecibos(locales, remotos) {
   // Los que no tienen folio se conservan todos
   var sinFolio = (remotos||[]).filter(function(r){ return !r.folio; })
     .concat((locales||[]).filter(function(r){ return !r.folio; }));
-  return ordenarRecibosRecientes(Object.values(mapa).concat(sinFolio));
+  return Object.values(mapa).concat(sinFolio);
 }
 
 function _mergeMovimientos(locales, remotos) {
@@ -7307,10 +7283,14 @@ function capturaEstado(tipo, socio, monto) {
 
 function renderRecibos(filtro) {
   filtro = filtro || 'todos';
-  const recibosOrdenados = ordenarRecibosRecientes(DB.recibos || []);
-  const lista = filtro === 'todos'
-    ? recibosOrdenados
-    : recibosOrdenados.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente');
+  const lista = (filtro === 'todos'
+    ? DB.recibos.slice()
+    : DB.recibos.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente'))
+    .sort(function(a, b){
+      // Ordenar por folio descendente (más reciente primero)
+      var fa = parseInt(a.folio) || 0, fb = parseInt(b.folio) || 0;
+      return fb - fa;
+    });
 
   const tipos = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', cumple:'badge-purple', tanda300:'badge-blue', tanda1000:'badge-blue'};
   const tipLabel = {ahorro:'Ahorro', prestamo:'Préstamo', tanda:'Tanda', cumple:'Cumpleaños', tanda300:'Tanda $300', tanda1000:'Tanda $1,000'};
@@ -9645,7 +9625,6 @@ function normalizarVisibilidadSocios() {
         });
       });
     });
-    try { migrarAportesT300PorAportante(DB.tanda300); } catch(e) { console.warn('Migración Tanda $300 omitida:', e.message); }
     return DB.tanda300;
   };
 
@@ -9683,121 +9662,21 @@ function normalizarVisibilidadSocios() {
   function sumaEntregas(t){
     return (t.entregas || []).reduce(function(s,e){ return s + (Number(e.monto)||0); }, 0);
   }
-
-  // ── Tanda $300: separar QUIÉN APORTA de QUÉ TURNO CUBRE ──
-  // Formato nuevo: g1/g2["APORTANTE__TURNO_CUBIERTO"] = monto
-  // Formato viejo:  g1/g2["TURNO_CUBIERTO"] = monto
-  // El viejo subía el KPI, pero no el renglón del aportante. Ahí estaba el duende.
-  function claveT300(aportante, turno){
-    return String(aportante || '').trim().toUpperCase() + '__' + String(turno || '').trim().toUpperCase();
-  }
-  function esClaveCompuestaT300(k){ return String(k || '').indexOf('__') > -1; }
-  function aportanteClaveT300(k){ return esClaveCompuestaT300(k) ? String(k).split('__')[0] : String(k || ''); }
-  function turnoClaveT300(k){ return esClaveCompuestaT300(k) ? String(k).split('__').slice(1).join('__') : String(k || ''); }
-  function grupoKeyT300(grupo){ return Number(grupo) === 1 ? 'g1' : 'g2'; }
-
   function sumaT300Grupo(t, grupo, nombre){
-    // Total aportado POR la persona dentro del grupo.
-    var gk = grupoKeyT300(grupo);
-    nombre = String(nombre || '').trim().toUpperCase();
+    // Suma todo lo recaudado EN el turno de este participante (cobrador)
+    // Incluye: clave exacta "nombre", claves compuestas "cualquiera__nombre"
+    var gk = grupo === 1 ? 'g1' : 'g2';
     return (t.quincenas || []).reduce(function(s,q){
       var g = q[gk] || {};
       var suma = 0;
       Object.keys(g).forEach(function(k){
-        var kk = String(k || '').trim().toUpperCase();
-        if(kk === nombre || aportanteClaveT300(kk) === nombre) {
+        // Clave exacta del cobrador O clave compuesta "aportante__cobrador"
+        if(k === nombre || k.split('__').pop() === nombre) {
           suma += Number(g[k]) || 0;
         }
       });
       return s + suma;
     }, 0);
-  }
-  function sumaT300Turno(t, grupo, nombreTurno){
-    // Total reunido PARA el turno/cobrador seleccionado.
-    var gk = grupoKeyT300(grupo);
-    nombreTurno = String(nombreTurno || '').trim().toUpperCase();
-    return (t.quincenas || []).reduce(function(s,q){
-      var g = q[gk] || {};
-      var suma = 0;
-      Object.keys(g).forEach(function(k){
-        var kk = String(k || '').trim().toUpperCase();
-        if(kk === nombreTurno || turnoClaveT300(kk) === nombreTurno) {
-          suma += Number(g[k]) || 0;
-        }
-      });
-      return s + suma;
-    }, 0);
-  }
-  function sumaT300AportanteEnTurno(t, grupo, aportante, nombreTurno){
-    var gk = grupoKeyT300(grupo), key = claveT300(aportante, nombreTurno);
-    return (t.quincenas || []).reduce(function(s,q){ return s + Number((q[gk] && q[gk][key]) || 0); }, 0);
-  }
-  function parseTurnosT300Recibo(r){
-    var fuentes = [];
-    if(Array.isArray(r.turnos)) fuentes = fuentes.concat(r.turnos);
-    if(r.notas) fuentes = fuentes.concat(String(r.notas).split(','));
-    var vistos = {}, out = [];
-    fuentes.forEach(function(txt){
-      txt = String(txt || '');
-      var m = txt.match(/G\s*([12])\s*T\s*(\d+)\s*(?:\(([^)]*)\))?/i);
-      if(!m) return;
-      var grupo = parseInt(m[1],10), idx = parseInt(m[2],10);
-      var lista = grupo === 1 ? T300_G1 : T300_G2;
-      var nombre = (m[3] || lista[idx-1] || '').trim().toUpperCase();
-      if(!nombre) return;
-      var id = grupo + '|' + idx + '|' + nombre;
-      if(vistos[id]) return;
-      vistos[id] = true;
-      out.push({grupo:grupo, idx:idx, nombre:nombre});
-    });
-    return out;
-  }
-  function migrarAportesT300PorAportante(t){
-    if(!t || !Array.isArray(t.quincenas) || !Array.isArray(DB.recibos)) return false;
-    var cambio = false;
-    (DB.recibos || []).forEach(function(r){
-      if(!r || r.tipo !== 'tanda300' || String(r.estado || 'vigente').toLowerCase() === 'cancelado') return;
-      var aportante = String(r.socio || '').trim().toUpperCase();
-      if(!aportante) return;
-      var turnos = parseTurnosT300Recibo(r);
-      if(!turnos.length) return;
-      var fecha = r.fecha || hoy();
-      var montoTotal = Number(r.monto) || ((t.montoAporte || 300) * turnos.length);
-      var montoPorTurno = turnos.length ? (montoTotal / turnos.length) : (t.montoAporte || 300);
-      turnos.forEach(function(tu){
-        var gk = grupoKeyT300(tu.grupo);
-        var q = t.quincenas.find(function(x){ return x.fecha === fecha; });
-        if(!q){ q = {fecha:fecha,g1:{},g2:{}}; t.quincenas.push(q); }
-        if(!q[gk]) q[gk] = {};
-        var nueva = claveT300(aportante, tu.nombre);
-        var actual = Number(q[gk][nueva]) || 0;
-        var faltante = Math.max(0, montoPorTurno - actual);
-        if(faltante <= 0.001) return;
-        var legacyKey = tu.nombre;
-        var legacyVal = Number(q[gk][legacyKey]) || 0;
-        if(legacyVal > 0) {
-          var mover = Math.min(legacyVal, faltante);
-          q[gk][legacyKey] = legacyVal - mover;
-          if(Math.abs(q[gk][legacyKey]) < 0.001) delete q[gk][legacyKey];
-          q[gk][nueva] = actual + mover;
-          cambio = true;
-        } else {
-          var legacyAportanteVal = Number(q[gk][aportante]) || 0;
-          if(legacyAportanteVal > 0) {
-            var moverAportante = Math.min(legacyAportanteVal, faltante);
-            q[gk][aportante] = legacyAportanteVal - moverAportante;
-            if(Math.abs(q[gk][aportante]) < 0.001) delete q[gk][aportante];
-            q[gk][nueva] = actual + moverAportante;
-            cambio = true;
-          } else if(actual <= 0) {
-            // Si el detalle de quincenas se perdió pero sí existe el recibo, lo reconstruimos.
-            q[gk][nueva] = montoPorTurno;
-            cambio = true;
-          }
-        }
-      });
-    });
-    return cambio;
   }
   function sumaT1000Participante(t, idx){
     var k = T1000_P[idx] + '_' + idx;
@@ -9893,7 +9772,6 @@ function normalizarVisibilidadSocios() {
     var ke = document.getElementById('t300-kpi-entregado');
     var kp = document.getElementById('t300-kpi-proximo');
     var km = document.getElementById('t300-kpi-monto');
-    if(kf) kf.textContent = dinero(t.fondo || 0);
     if(ke) ke.textContent = dinero(t.entregado || 0);
     if(km) km.textContent = dinero(monto300 * (T300_G1.length - 1)) + ' (×' + (T300_G1.length - 1) + ')';
     var nG1 = (t.entregas || []).filter(function(e){ return Number(e.grupo) === 1; }).length;
@@ -9904,10 +9782,15 @@ function normalizarVisibilidadSocios() {
     if(kp) kp.textContent = prox.join(' / ') || '—';
     var pG1 = T300_G1.map(function(n){ return sumaT300Grupo(t, 1, n); });
     var pG2 = T300_G2.map(function(n){ return sumaT300Grupo(t, 2, n); });
+    // Fondo = suma real de la tabla (lo que muestra) menos lo entregado
+    var totalTabla = pG1.reduce(function(s,v){ return s+v; },0) + pG2.reduce(function(s,v){ return s+v; },0);
+    t.fondo = totalTabla - (t.entregado || 0);
+    sincronizarSocioEspecial('TANDA 300', t.fondo);
+    if(kf) kf.textContent = dinero(t.fondo);
     var e1 = document.getElementById('t300-tabla-g1');
     var e2 = document.getElementById('t300-tabla-g2');
-    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, Math.max(0, T300_G1.length - 1), t.entregas, 1, 't300');
-    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, Math.max(0, T300_G2.length - 1), t.entregas, 2, 't300');
+    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, T300_G1.length, t.entregas, 1, 't300');
+    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, T300_G2.length, t.entregas, 2, 't300');
   };
 
   window.renderTanda1000 = function(){
@@ -9993,9 +9876,9 @@ function normalizarVisibilidadSocios() {
         var pagG1 = sumaT300Grupo(t,1,aportante), pagG2 = sumaT300Grupo(t,2,aportante);
         var pagado = pagG1 + pagG2;
         var totalPosible = 0;
-        if(T300_G1.indexOf(aportante)>=0) totalPosible += Math.max(0, T300_G1.length - 1) * monto300;
-        if(T300_G2.indexOf(aportante)>=0) totalPosible += Math.max(0, T300_G2.length - 1) * monto300;
-        // En Tanda $300 son 10 aportes por grupo: no cuenta el turno propio.
+        if(T300_G1.indexOf(aportante)>=0) totalPosible += T300_G1.length * monto300;
+        if(T300_G2.indexOf(aportante)>=0) totalPosible += T300_G2.length * monto300;
+        // Si está en ambos grupos, restamos su propio turno duplicado
         var pendiente = Math.max(0, totalPosible - pagado);
         infoEl.style.display = 'block';
         document.getElementById('ta300-pagado').textContent = '$'+fmt(pagado);
@@ -10009,11 +9892,10 @@ function normalizarVisibilidadSocios() {
     if(listaG1){
       var g1Html = T300_G1.map(function(n, i){
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===1 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Turno(t,1,n);
-        var yaPagoEsteTurno = aportante ? sumaT300AportanteEnTurno(t,1,aportante,n) > 0 : false;
-        var bg = cobro ? 'rgba(10,74,42,0.1)' : yaPagoEsteTurno ? 'rgba(26,122,90,0.13)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var pagadoTurno = sumaT300Grupo(t,1,n);
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var bloqueado = (cobro || yaPagoEsteTurno) ? 'checked disabled' : '';
+        var bloqueado = cobro ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
           +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="1" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
           +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
@@ -10026,11 +9908,10 @@ function normalizarVisibilidadSocios() {
     if(listaG2){
       var g2Html = T300_G2.map(function(n, i){
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===2 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Turno(t,2,n);
-        var yaPagoEsteTurno = aportante ? sumaT300AportanteEnTurno(t,2,aportante,n) > 0 : false;
-        var bg = cobro ? 'rgba(10,74,42,0.1)' : yaPagoEsteTurno ? 'rgba(26,122,90,0.13)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var pagadoTurno = sumaT300Grupo(t,2,n);
+        var bg = cobro ? 'rgba(10,74,42,0.1)' : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = cobro ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var bloqueado = (cobro || yaPagoEsteTurno) ? 'checked disabled' : '';
+        var bloqueado = cobro ? 'checked disabled' : '';
         return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
           +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="2" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
           +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E\x3C/span\x3E'
@@ -10069,8 +9950,7 @@ function normalizarVisibilidadSocios() {
       var q = t.quincenas.find(function(x){ return x.fecha === fecha; });
       if(!q){ q = {fecha:fecha,g1:{},g2:{}}; t.quincenas.push(q); }
       if(!q[gk]) q[gk] = {};
-      var key = claveT300(aportante, nombre);
-      q[gk][key] = (Number(q[gk][key])||0) + monto300;
+      q[gk][nombre] = (Number(q[gk][nombre])||0) + monto300;
       total += monto300;
     });
     // Registrar movimiento con recibo
@@ -10257,14 +10137,9 @@ function normalizarVisibilidadSocios() {
   };
 
   function filasAportesT300(grupo, nombre){
-    var t = window.getTanda300(), gk = grupoKeyT300(grupo), rows = [];
-    nombre = String(nombre || '').trim().toUpperCase();
+    var t = window.getTanda300(), gk = grupo === 1 ? 'g1' : 'g2', rows = [];
     (t.quincenas || []).forEach(function(q){
-      var monto = 0, g = q[gk] || {};
-      Object.keys(g).forEach(function(k){
-        var kk = String(k || '').trim().toUpperCase();
-        if(kk === nombre || aportanteClaveT300(kk) === nombre) monto += Number(g[k]) || 0;
-      });
+      var monto = Number((q[gk] && q[gk][nombre]) || 0);
       if(monto !== 0) rows.push({fecha:q.fecha, monto:monto});
     });
     return rows;
@@ -10326,21 +10201,14 @@ function normalizarVisibilidadSocios() {
   window.guardarAportesT300 = function(){
     var e = window._editAporteTanda || {};
     var t = window.getTanda300();
-    var gk = grupoKeyT300(e.grupo);
-    var nombre = String(e.nombre || '').trim().toUpperCase();
-    (t.quincenas || []).forEach(function(q){
-      if(!q[gk]) return;
-      Object.keys(q[gk]).forEach(function(k){
-        var kk = String(k || '').trim().toUpperCase();
-        if(kk === nombre || aportanteClaveT300(kk) === nombre) delete q[gk][k];
-      });
-    });
+    var gk = Number(e.grupo) === 1 ? 'g1' : 'g2';
+    var nombre = e.nombre;
+    (t.quincenas || []).forEach(function(q){ if(q[gk]) delete q[gk][nombre]; });
     leerFilasEditor().forEach(function(r){
       var q = t.quincenas.find(function(x){ return x.fecha === r.fecha; });
       if(!q){ q = {fecha:r.fecha,g1:{},g2:{}}; t.quincenas.push(q); }
       if(!q[gk]) q[gk] = {};
-      var key = claveT300(nombre, 'MANUAL');
-      q[gk][key] = (Number(q[gk][key]) || 0) + r.monto;
+      q[gk][nombre] = (Number(q[gk][nombre]) || 0) + r.monto;
     });
     limpiarQuincenasVaciasT300(t);
     cerrarModal('modal-editar-aportes-tanda');
@@ -12672,900 +12540,6 @@ window.guardarConfigT1000 = function() {
   if(typeof renderTanda1000 === 'function') renderTanda1000();
   if(typeof guardarNube === 'function') guardarNube();
 };
-</script>
-
-
-<script>
-// ─── PARCHE: total aportado correcto en recibos Tanda $300 / $1,000 ───
-(function(){
-  function _norm(v){ return String(v || '').trim().toUpperCase(); }
-  function _fechaRecibo(r){
-    var txt = r && (r.fecha || r.fechaEmision || '');
-    var t = Date.parse(String(txt).slice(0,10) + 'T12:00:00');
-    return isNaN(t) ? 0 : t;
-  }
-  function _folioNum(r){
-    var n = parseInt((r && r.folio) || '0', 10);
-    return isNaN(n) ? 0 : n;
-  }
-  function _ordenarRecibosAsc(lista){
-    return (lista || []).slice().sort(function(a,b){
-      var da = _fechaRecibo(a), db = _fechaRecibo(b);
-      if(da !== db) return da - db;
-      return _folioNum(a) - _folioNum(b);
-    });
-  }
-  function _esTandaEspecial(tipo){
-    return tipo === 'tanda300' || tipo === 'tanda1000';
-  }
-  window.recalcularSaldosRecibosTandasEspeciales = function(){
-    if(!window.DB || !Array.isArray(DB.recibos)) return;
-    ['tanda300','tanda1000'].forEach(function(tipo){
-      var grupos = {};
-      DB.recibos.forEach(function(r){
-        if(!r || r.tipo !== tipo) return;
-        var key = _norm(r.socio);
-        if(!grupos[key]) grupos[key] = [];
-        grupos[key].push(r);
-      });
-      Object.keys(grupos).forEach(function(key){
-        var acumulado = 0;
-        _ordenarRecibosAsc(grupos[key]).forEach(function(r){
-          var monto = Number(r.monto) || 0;
-          if(String(r.estado || 'vigente').toLowerCase() !== 'cancelado') {
-            acumulado += monto;
-          }
-          r.saldo = acumulado;
-        });
-      });
-    });
-  };
-
-  window.obtenerSaldoReciboTandaEspecial = function(recibo){
-    if(!recibo || !_esTandaEspecial(recibo.tipo)) return Number(recibo && recibo.saldo) || 0;
-    try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
-    var r = (DB.recibos || []).find(function(x){ return x && x.folio === recibo.folio; }) || recibo;
-    return Number(r.saldo) || 0;
-  };
-
-  // Recalcular al cargar
-  try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) { console.warn('No se pudieron recalcular saldos de tandas:', e); }
-
-  // Parchear recibo emergente de tanda especial
-  if(typeof window.mostrarReciboTanda === 'function') {
-    var _mostrarReciboTandaOrig = window.mostrarReciboTanda;
-    window.mostrarReciboTanda = function(tipo, socio, monto, fecha, concepto, pagadoTotal, notas, folio){
-      if(_esTandaEspecial(tipo)) {
-        try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
-        if(!(Number(pagadoTotal) > 0)) {
-          var r = (window.DB && Array.isArray(DB.recibos))
-            ? DB.recibos.find(function(x){ return x && x.folio === folio; })
-            : null;
-          if(r) pagadoTotal = Number(r.saldo) || 0;
-        }
-      }
-      return _mostrarReciboTandaOrig(tipo, socio, monto, fecha, concepto, pagadoTotal, notas, folio);
-    };
-  }
-
-  // Parchear vista de recibos anteriores
-  if(typeof window.verReciboAnterior === 'function') {
-    var _verReciboAnteriorOrig = window.verReciboAnterior;
-    window.verReciboAnterior = function(folio){
-      var r = (window.DB && Array.isArray(DB.recibos))
-        ? DB.recibos.find(function(x){ return x && x.folio === folio; })
-        : null;
-      if(r && _esTandaEspecial(r.tipo)) {
-        try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
-        var saldo = Number(r.saldo) || 0;
-        var notas = r.estado === 'cancelado'
-          ? 'CANCELADO: ' + (r.motivoCancelacion || '—')
-          : (r.notas || '');
-        window.reciboActual = Object.assign({}, r, { saldo: saldo });
-        return window.mostrarReciboTanda(r.tipo, limpiarNombre ? limpiarNombre(r.socio) : r.socio, Number(r.monto) || 0, r.fecha, r.concepto || '', saldo, notas, r.folio);
-      }
-      return _verReciboAnteriorOrig(folio);
-    };
-  }
-
-  // Asegurar recálculo antes de guardar/sincronizar
-  ['guardarEnLocal','guardarEnFirebase','guardarDatos'].forEach(function(fnName){
-    if(typeof window[fnName] !== 'function') return;
-    var orig = window[fnName];
-    if(orig._parcheTandasEspeciales) return;
-    var patched = function(){
-      try { window.recalcularSaldosRecibosTandasEspeciales(); } catch(e) {}
-      return orig.apply(this, arguments);
-    };
-    patched._parcheTandasEspeciales = true;
-    window[fnName] = patched;
-  });
-})();
-</script>
-
-
-<script>
-// ─── PARCHE: guardar edición de aportes y participantes de tandas ───
-(function(){
-  function _norm(v){ return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase(); }
-  function _hoy(){ return (typeof hoy === 'function') ? hoy() : new Date().toISOString().slice(0,10); }
-  function _fmt(n){ return (typeof fmt === 'function') ? fmt(n) : (Number(n)||0).toLocaleString('es-MX'); }
-  function _esc(s){ return (typeof esc === 'function') ? esc(s) : String(s == null ? '' : s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-  function _grupoKey(grupo){ return Number(grupo) === 1 ? 'g1' : 'g2'; }
-  function _claveT300(aportante, turno){ return _norm(aportante) + '__' + _norm(turno || 'MANUAL'); }
-  function _aportanteClave(k){ return String(k || '').indexOf('__') > -1 ? String(k).split('__')[0] : String(k || ''); }
-  function _turnoClave(k){ return String(k || '').indexOf('__') > -1 ? String(k).split('__').slice(1).join('__') : String(k || ''); }
-  function _mutarArray(dest, src){
-    if(!Array.isArray(dest)) return src || [];
-    dest.length = 0;
-    (src || []).forEach(function(x){ if(String(x||'').trim()) dest.push(String(x).trim().toUpperCase()); });
-    return dest;
-  }
-  function _getT300(){
-    var t = (typeof window.getTanda300 === 'function') ? window.getTanda300() : (DB.tanda300 || (DB.tanda300 = {fondo:0,entregado:0,entregas:[],quincenas:[]}));
-    t.quincenas = Array.isArray(t.quincenas) ? t.quincenas : [];
-    t.entregas = Array.isArray(t.entregas) ? t.entregas : [];
-    return t;
-  }
-  function _getT1000(){
-    var t = (typeof window.getTanda1000 === 'function') ? window.getTanda1000() : (DB.tanda1000 || (DB.tanda1000 = {fondo:0,entregado:0,entregas:[],quincenas:[]}));
-    t.quincenas = Array.isArray(t.quincenas) ? t.quincenas : [];
-    t.entregas = Array.isArray(t.entregas) ? t.entregas : [];
-    return t;
-  }
-  function _aplicarParticipantesGuardados(){
-    try {
-      var t300 = _getT300();
-      if(Array.isArray(t300.participantesG1) && window.T300_G1) _mutarArray(window.T300_G1, t300.participantesG1);
-      if(Array.isArray(t300.participantesG2) && window.T300_G2) _mutarArray(window.T300_G2, t300.participantesG2);
-      var t1000 = _getT1000();
-      if(Array.isArray(t1000.participantes) && window.T1000_P) _mutarArray(window.T1000_P, t1000.participantes);
-    } catch(e) { console.warn('No se pudieron aplicar participantes guardados:', e.message); }
-  }
-  function _sumaAportesT300(t){
-    var total = 0;
-    (t.quincenas || []).forEach(function(q){
-      ['g1','g2'].forEach(function(gk){
-        Object.keys(q[gk] || {}).forEach(function(k){ total += Number(q[gk][k]) || 0; });
-      });
-    });
-    return total;
-  }
-  function _sumaEntregas(t){ return (t.entregas || []).reduce(function(s,e){ return s + (Number(e.monto)||0); }, 0); }
-  function _sincronizarFondosTandas(){
-    try {
-      var t300 = _getT300();
-      t300.entregado = _sumaEntregas(t300);
-      t300.fondo = _sumaAportesT300(t300) - t300.entregado;
-      if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-    } catch(e) {}
-  }
-  function _guardarTodo(vista){
-    _sincronizarFondosTandas();
-    try { if(vista === 't300' && typeof window.renderTanda300 === 'function') window.renderTanda300(); } catch(e) {}
-    try { if(vista === 't1000' && typeof window.renderTanda1000 === 'function') window.renderTanda1000(); } catch(e) {}
-    try { if(typeof refrescarVistaActiva === 'function') refrescarVistaActiva(); } catch(e) {}
-    try { if(typeof guardarDatos === 'function') guardarDatos({fuente:vista}); else if(typeof guardarEnLocal === 'function') guardarEnLocal(); } catch(e) { console.warn('No se pudo guardar:', e.message); }
-    try { if(typeof guardarEnFirebase === 'function') guardarEnFirebase(); } catch(e) {}
-  }
-  function _leerFilasEditor(){
-    var modal = document.getElementById('modal-editar-aportes-tanda');
-    var rows = [];
-    if(!modal) return rows;
-    modal.querySelectorAll('.ta-row').forEach(function(r){
-      var fecha = ((r.querySelector('.ta-fecha') || {}).value || _hoy()).slice(0,10);
-      var monto = parseFloat((r.querySelector('.ta-monto') || {}).value);
-      if(!isNaN(monto) && monto !== 0) rows.push({fecha:fecha, monto:monto});
-    });
-    return rows;
-  }
-  function _cerrar(id){ try { if(typeof cerrarModal === 'function') cerrarModal(id); else { var m=document.getElementById(id); if(m) m.classList.remove('open'); } } catch(e){} }
-
-  _aplicarParticipantesGuardados();
-
-  // Guardar participantes: muta el mismo arreglo para que las funciones internas antiguas también vean el cambio.
-  window.guardarConfigT300 = function(){
-    var monto = parseInt((document.getElementById('t300-cfg-monto') || {}).value, 10) || 300;
-    var g1 = String((document.getElementById('t300-cfg-g1') || {}).value || '').split('\n').map(function(s){ return _norm(s); }).filter(Boolean);
-    var g2 = String((document.getElementById('t300-cfg-g2') || {}).value || '').split('\n').map(function(s){ return _norm(s); }).filter(Boolean);
-    if(!g1.length || !g2.length){ alert('Cada grupo debe tener al menos un participante.'); return; }
-    window.T300_G1 = _mutarArray(window.T300_G1 || [], g1);
-    window.T300_G2 = _mutarArray(window.T300_G2 || [], g2);
-    var t = _getT300();
-    t.montoAporte = monto;
-    t.participantesG1 = window.T300_G1.slice();
-    t.participantesG2 = window.T300_G2.slice();
-    DB.tanda300 = t;
-    _cerrar('modal-editar-t300');
-    _guardarTodo('t300');
-  };
-
-  window.guardarConfigT1000 = function(){
-    var monto = parseInt((document.getElementById('t1000-cfg-monto') || {}).value, 10) || 1000;
-    var p = String((document.getElementById('t1000-cfg-p') || {}).value || '').split('\n').map(function(s){ return _norm(s); }).filter(Boolean);
-    if(!p.length){ alert('Debe haber al menos un participante.'); return; }
-    window.T1000_P = _mutarArray(window.T1000_P || [], p);
-    var t = _getT1000();
-    t.montoAporte = monto;
-    t.participantes = window.T1000_P.slice();
-    DB.tanda1000 = t;
-    _cerrar('modal-editar-t1000');
-    _guardarTodo('t1000');
-  };
-
-  // Si se abre configuración, cargar desde DB si ya existía.
-  var _editarConfigT300Orig = window.editarConfigT300;
-  window.editarConfigT300 = function(){
-    _aplicarParticipantesGuardados();
-    if(typeof _editarConfigT300Orig === 'function') return _editarConfigT300Orig();
-  };
-  var _editarConfigT1000Orig = window.editarConfigT1000;
-  window.editarConfigT1000 = function(){
-    _aplicarParticipantesGuardados();
-    if(typeof _editarConfigT1000Orig === 'function') return _editarConfigT1000Orig();
-  };
-
-  // Antes de renderizar, reinyectar participantes guardados para que no regrese a la lista vieja.
-  var _renderT300Orig = window.renderTanda300;
-  if(typeof _renderT300Orig === 'function') {
-    window.renderTanda300 = function(){ _aplicarParticipantesGuardados(); return _renderT300Orig.apply(this, arguments); };
-  }
-  var _renderT1000Orig = window.renderTanda1000;
-  if(typeof _renderT1000Orig === 'function') {
-    window.renderTanda1000 = function(){ _aplicarParticipantesGuardados(); return _renderT1000Orig.apply(this, arguments); };
-  }
-
-  // Guardar edición de aportes Tanda $300: elimina el aporte anterior de esa persona/grupo y escribe el nuevo.
-  window.guardarAportesT300 = function(){
-    var e = window._editAporteTanda || {};
-    if(!e || e.tipo !== 't300'){ alert('No se encontró el participante a editar. Cierra y vuelve a abrir el editor.'); return; }
-    var t = _getT300();
-    var gk = _grupoKey(e.grupo);
-    var nombre = _norm(e.nombre || ((Number(e.grupo)===1 ? window.T300_G1 : window.T300_G2) || [])[e.idx]);
-    if(!nombre){ alert('No se encontró el nombre del participante.'); return; }
-
-    (t.quincenas || []).forEach(function(q){
-      if(!q[gk]) q[gk] = {};
-      Object.keys(q[gk]).forEach(function(k){
-        var kk = _norm(k);
-        if(kk === nombre || _aportanteClave(kk) === nombre) delete q[gk][k];
-      });
-    });
-
-    _leerFilasEditor().forEach(function(r){
-      var q = t.quincenas.find(function(x){ return x.fecha === r.fecha; });
-      if(!q){ q = {fecha:r.fecha, g1:{}, g2:{}}; t.quincenas.push(q); }
-      if(!q[gk]) q[gk] = {};
-      var key = _claveT300(nombre, 'MANUAL');
-      q[gk][key] = (Number(q[gk][key]) || 0) + (Number(r.monto) || 0);
-    });
-
-    t.quincenas = (t.quincenas || []).filter(function(q){ return Object.keys(q.g1 || {}).length || Object.keys(q.g2 || {}).length; });
-    DB.tanda300 = t;
-    _cerrar('modal-editar-aportes-tanda');
-    _guardarTodo('t300');
-  };
-
-  // Guardar edición de aportes Tanda $1,000 con persistencia real.
-  window.guardarAportesT1000 = function(){
-    var e = window._editAporteTanda || {};
-    if(!e || e.tipo !== 't1000'){ alert('No se encontró el participante a editar. Cierra y vuelve a abrir el editor.'); return; }
-    var t = _getT1000();
-    var nombre = _norm((window.T1000_P || [])[e.idx] || e.nombre);
-    var key = nombre + '_' + e.idx;
-    (t.quincenas || []).forEach(function(q){ if(q.pagos) delete q.pagos[key]; });
-    _leerFilasEditor().forEach(function(r){
-      var q = t.quincenas.find(function(x){ return x.fecha === r.fecha; });
-      if(!q){ q = {fecha:r.fecha, pagos:{}}; t.quincenas.push(q); }
-      if(!q.pagos) q.pagos = {};
-      q.pagos[key] = (Number(q.pagos[key]) || 0) + (Number(r.monto) || 0);
-    });
-    t.quincenas = (t.quincenas || []).filter(function(q){ return Object.keys(q.pagos || {}).length; });
-    DB.tanda1000 = t;
-    _cerrar('modal-editar-aportes-tanda');
-    _guardarTodo('t1000');
-  };
-
-  // Reaplicar después de sincronizar desde Firebase, por si entran participantes personalizados.
-  var _syncOrig = window.sincronizarDesdeFirebase;
-  if(typeof _syncOrig === 'function') {
-    window.sincronizarDesdeFirebase = async function(){
-      var r = await _syncOrig.apply(this, arguments);
-      _aplicarParticipantesGuardados();
-      try { if(typeof window.renderTanda300 === 'function') window.renderTanda300(); } catch(e) {}
-      try { if(typeof window.renderTanda1000 === 'function') window.renderTanda1000(); } catch(e) {}
-      return r;
-    };
-  }
-})();
-</script>
-
-
-<script>
-// ══════════════════════════════════════════════════
-// PARCHE FINAL TANDA $300: edición real de participantes y aportes
-// - Mantiene la misma referencia de participantes que usan las funciones internas.
-// - Evita que la migración por recibos deshaga ediciones manuales.
-// - Corrige Sync desde nube para traer tanda300/tanda1000.
-// ══════════════════════════════════════════════════
-(function(){
-  function norm(v){ return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase(); }
-  function esc2(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-  function money(n){ return '$' + ((typeof fmt === 'function') ? fmt(Number(n)||0) : (Number(n)||0).toLocaleString('es-MX')); }
-  function today(){ return (typeof hoy === 'function') ? hoy() : new Date().toISOString().slice(0,10); }
-  function closeModal(id){ try { if(typeof cerrarModal === 'function') cerrarModal(id); else { var m=document.getElementById(id); if(m) m.classList.remove('open'); } } catch(e){} }
-
-  // Capturar las referencias ORIGINALES. No reemplazarlas: mutarlas.
-  var G1 = Array.isArray(window.T300_G1) ? window.T300_G1 : [];
-  var G2 = Array.isArray(window.T300_G2) ? window.T300_G2 : [];
-  window.T300_G1 = G1;
-  window.T300_G2 = G2;
-
-  function mutateArray(arr, values){
-    if(!Array.isArray(arr)) arr = [];
-    arr.length = 0;
-    (values || []).forEach(function(x){
-      var n = norm(x);
-      if(n) arr.push(n);
-    });
-    return arr;
-  }
-
-  window.getTanda300 = function(){
-    if(!window.DB) return {fondo:0,entregado:0,entregas:[],quincenas:[],participantesG1:G1,participantesG2:G2};
-    if(!DB.tanda300) DB.tanda300 = {fondo:0,entregado:0,entregas:[],quincenas:[]};
-    DB.tanda300.quincenas = Array.isArray(DB.tanda300.quincenas) ? DB.tanda300.quincenas : [];
-    DB.tanda300.entregas = Array.isArray(DB.tanda300.entregas) ? DB.tanda300.entregas : [];
-    DB.tanda300.quincenas.forEach(function(q){
-      if(!q.g1) q.g1 = {};
-      if(!q.g2) q.g2 = {};
-      ['g1','g2'].forEach(function(gk){
-        Object.keys(q[gk] || {}).forEach(function(k){
-          if(Number(q[gk][k]) === 0) delete q[gk][k];
-        });
-      });
-    });
-    return DB.tanda300;
-  };
-
-  function aplicarParticipantesGuardados(){
-    var t = window.getTanda300();
-    if(Array.isArray(t.participantesG1)) mutateArray(G1, t.participantesG1);
-    if(Array.isArray(t.participantesG2)) mutateArray(G2, t.participantesG2);
-    window.T300_G1 = G1;
-    window.T300_G2 = G2;
-  }
-
-  function grupoKey(grupo){ return Number(grupo) === 1 ? 'g1' : 'g2'; }
-  function clave(aportante, turno){ return norm(aportante) + '__' + norm(turno || 'MANUAL'); }
-  function aportanteDeClave(k){ return String(k || '').indexOf('__') >= 0 ? norm(String(k).split('__')[0]) : norm(k); }
-
-  function sumaEntregas(t){
-    return (t.entregas || []).reduce(function(s,e){ return s + (Number(e.monto)||0); }, 0);
-  }
-  function sumaAportesTotal(t){
-    var total = 0;
-    (t.quincenas || []).forEach(function(q){
-      ['g1','g2'].forEach(function(gk){
-        Object.keys(q[gk] || {}).forEach(function(k){ total += Number(q[gk][k]) || 0; });
-      });
-    });
-    return total;
-  }
-  function sumaPersonaGrupo(t, grupo, nombre){
-    var gk = grupoKey(grupo), target = norm(nombre), total = 0;
-    (t.quincenas || []).forEach(function(q){
-      Object.keys((q && q[gk]) || {}).forEach(function(k){
-        var kk = norm(k);
-        if(kk === target || aportanteDeClave(kk) === target) total += Number(q[gk][k]) || 0;
-      });
-    });
-    return total;
-  }
-  function filasPersonaGrupo(t, grupo, nombre){
-    var gk = grupoKey(grupo), target = norm(nombre), porFecha = {};
-    (t.quincenas || []).forEach(function(q){
-      var fecha = q.fecha || today();
-      Object.keys((q && q[gk]) || {}).forEach(function(k){
-        var kk = norm(k);
-        if(kk === target || aportanteDeClave(kk) === target) {
-          porFecha[fecha] = (Number(porFecha[fecha]) || 0) + (Number(q[gk][k]) || 0);
-        }
-      });
-    });
-    return Object.keys(porFecha).sort().map(function(f){ return {fecha:f, monto:porFecha[f]}; });
-  }
-
-  function syncSocioTanda300(t){
-    try {
-      t.entregado = sumaEntregas(t);
-      t.fondo = sumaAportesTotal(t) - t.entregado;
-      t.participantesG1 = G1.slice();
-      t.participantesG2 = G2.slice();
-      if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-    } catch(e) { console.warn('No se pudo sincronizar fondo Tanda 300:', e.message); }
-  }
-  function saveAll(){
-    var t = window.getTanda300();
-    syncSocioTanda300(t);
-    try { if(typeof guardarEnLocal === 'function') guardarEnLocal(); } catch(e) { console.warn('Local no guardado:', e.message); }
-    try { if(typeof guardarEnFirebase === 'function') guardarEnFirebase(); } catch(e) { console.warn('Firebase no guardado:', e.message); }
-  }
-
-  function tabla(grupo, lista){
-    var t = window.getTanda300();
-    var cuota = Number(t.montoAporte) || 300;
-    var totalTurnos = Math.max(0, lista.length - 1);
-    var rows = lista.map(function(nombre, i){
-      var pagado = sumaPersonaGrupo(t, grupo, nombre);
-      var qnas = cuota > 0 ? Math.round(pagado / cuota) : 0;
-      var cobro = (t.entregas || []).find(function(e){ return Number(e.grupo) === Number(grupo) && Number(e.turno) === i + 1; });
-      var estado = cobro ? '<span class="badge badge-green">✓ Cobró</span>' : '<span class="badge badge-orange">Pendiente</span>';
-      return '<tr>'
-        + '<td class="mono text-sm">' + (i+1) + '</td>'
-        + '<td><strong>' + esc2(nombre) + '</strong></td>'
-        + '<td class="mono text-right" style="color:var(--verde);">' + money(pagado) + '</td>'
-        + '<td class="text-right">' + qnas + '/' + totalTurnos + '</td>'
-        + '<td>' + estado + '</td>'
-        + '<td style="text-align:right;"><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT300(' + grupo + ',' + i + ')">Editar aportes</button></td>'
-        + '</tr>';
-    }).join('');
-    return '<div class="table-wrapper"><table style="min-width:620px;">'
-      + '<thead><tr><th>#</th><th>Nombre</th><th class="text-right">Aportado</th><th class="text-right">Quincenas</th><th>Estado</th><th></th></tr></thead>'
-      + '<tbody>' + rows + '</tbody></table></div>';
-  }
-
-  window.renderTanda300 = function(){
-    aplicarParticipantesGuardados();
-    var t = window.getTanda300();
-    syncSocioTanda300(t);
-    var cuota = Number(t.montoAporte) || 300;
-    var entregado = sumaEntregas(t);
-    var fondo = sumaAportesTotal(t) - entregado;
-    t.entregado = entregado;
-    t.fondo = fondo;
-    var e;
-    e = document.getElementById('t300-kpi-fondo'); if(e) e.textContent = money(fondo);
-    e = document.getElementById('t300-kpi-entregado'); if(e) e.textContent = money(entregado);
-    e = document.getElementById('t300-kpi-monto'); if(e) e.textContent = money(cuota * Math.max(0, G1.length - 1)) + ' (×' + Math.max(0, G1.length - 1) + ')';
-    var nG1 = (t.entregas || []).filter(function(x){ return Number(x.grupo) === 1; }).length;
-    var nG2 = (t.entregas || []).filter(function(x){ return Number(x.grupo) === 2; }).length;
-    var prox = [];
-    if(nG1 < G1.length) prox.push('G1: ' + G1[nG1]);
-    if(nG2 < G2.length) prox.push('G2: ' + G2[nG2]);
-    e = document.getElementById('t300-kpi-proximo'); if(e) e.textContent = prox.join(' / ') || '—';
-    e = document.getElementById('t300-tabla-g1'); if(e) e.innerHTML = tabla(1, G1);
-    e = document.getElementById('t300-tabla-g2'); if(e) e.innerHTML = tabla(2, G2);
-  };
-
-  function crearEditorAportes(titulo, rows){
-    if(!rows.length) rows = [{fecha:today(), monto:Number(window.getTanda300().montoAporte)||300}];
-    var id = 'modal-editar-aportes-tanda';
-    var htmlRows = rows.map(function(r){
-      return '<div class="ta-row" style="display:grid;grid-template-columns:1fr 130px 36px;gap:8px;margin-bottom:8px;align-items:center;">'
-        + '<input type="date" class="ta-fecha" value="' + esc2(r.fecha || today()) + '">'
-        + '<input type="number" class="ta-monto" value="' + esc2(r.monto || 0) + '">'
-        + '<button type="button" onclick="this.closest(\'.ta-row\').remove()" title="Eliminar aporte" style="height:36px;border:none;border-radius:8px;background:var(--rojo-claro);color:var(--rojo);cursor:pointer;font-weight:800;">×</button>'
-        + '</div>';
-    }).join('');
-    var html = '<div class="modal" style="max-width:560px;">'
-      + '<h2>' + titulo + '</h2>'
-      + '<p class="text-sm" style="margin-bottom:12px;">Edita fecha y monto. Para borrar un aporte usa ×. Guarda y se recalcula la tanda.</p>'
-      + '<div id="' + id + '-rows">' + htmlRows + '</div>'
-      + '<button type="button" class="btn btn-secondary btn-sm" onclick="window.agregarFilaAporteT300Final()">+ Agregar renglón</button>'
-      + '<div class="modal-actions">'
-      + '<button class="btn btn-secondary" onclick="cerrarModal(\'' + id + '\')">Cancelar</button>'
-      + '<button class="btn btn-primary" onclick="window.guardarAportesT300()">Guardar</button>'
-      + '</div></div>';
-    var m = document.getElementById(id);
-    if(!m){ m = document.createElement('div'); m.id = id; m.className = 'modal-overlay'; document.body.appendChild(m); }
-    m.innerHTML = html;
-    m.classList.add('open');
-  }
-
-  window.agregarFilaAporteT300Final = function(){
-    var cont = document.getElementById('modal-editar-aportes-tanda-rows');
-    if(!cont) return;
-    cont.insertAdjacentHTML('beforeend', '<div class="ta-row" style="display:grid;grid-template-columns:1fr 130px 36px;gap:8px;margin-bottom:8px;align-items:center;">'
-      + '<input type="date" class="ta-fecha" value="' + today() + '">'
-      + '<input type="number" class="ta-monto" value="' + (Number(window.getTanda300().montoAporte)||300) + '">'
-      + '<button type="button" onclick="this.closest(\'.ta-row\').remove()" title="Eliminar aporte" style="height:36px;border:none;border-radius:8px;background:var(--rojo-claro);color:var(--rojo);cursor:pointer;font-weight:800;">×</button>'
-      + '</div>');
-  };
-
-  window.editarAportesT300 = function(grupo, idx){
-    aplicarParticipantesGuardados();
-    var lista = Number(grupo) === 1 ? G1 : G2;
-    var nombre = lista[idx];
-    if(!nombre){ alert('No encontré ese participante. Actualiza la página e intenta otra vez.'); return; }
-    window._editAporteTanda = {tipo:'t300', grupo:Number(grupo), idx:Number(idx), nombre:nombre};
-    crearEditorAportes('Editar aportes · Tanda $300 · G' + grupo + ' · ' + esc2(nombre), filasPersonaGrupo(window.getTanda300(), grupo, nombre));
-  };
-
-  function leerFilas(){
-    var out = [];
-    var modal = document.getElementById('modal-editar-aportes-tanda');
-    if(!modal) return out;
-    modal.querySelectorAll('.ta-row').forEach(function(row){
-      var fecha = ((row.querySelector('.ta-fecha') || {}).value || today()).slice(0,10);
-      var monto = parseFloat((row.querySelector('.ta-monto') || {}).value);
-      if(!isNaN(monto) && monto !== 0) out.push({fecha:fecha, monto:monto});
-    });
-    return out;
-  }
-
-  window.guardarAportesT300 = function(){
-    var e = window._editAporteTanda || {};
-    if(e.tipo !== 't300'){ alert('No se encontró el participante a editar. Cierra y vuelve a abrir.'); return; }
-    var t = window.getTanda300();
-    var gk = grupoKey(e.grupo);
-    var nombre = norm(e.nombre);
-    if(!nombre){ alert('No se encontró el nombre del participante.'); return; }
-
-    // Borrar todo lo anterior de ese participante en ese grupo.
-    (t.quincenas || []).forEach(function(q){
-      if(!q[gk]) q[gk] = {};
-      Object.keys(q[gk]).forEach(function(k){
-        var kk = norm(k);
-        if(kk === nombre || aportanteDeClave(kk) === nombre) delete q[gk][k];
-      });
-    });
-
-    // Reescribir lo capturado en el modal.
-    leerFilas().forEach(function(r){
-      var q = t.quincenas.find(function(x){ return x.fecha === r.fecha; });
-      if(!q){ q = {fecha:r.fecha, g1:{}, g2:{}}; t.quincenas.push(q); }
-      if(!q[gk]) q[gk] = {};
-      var k = clave(nombre, 'MANUAL');
-      q[gk][k] = (Number(q[gk][k]) || 0) + (Number(r.monto) || 0);
-    });
-
-    t.quincenas = (t.quincenas || []).filter(function(q){ return Object.keys(q.g1 || {}).length || Object.keys(q.g2 || {}).length; });
-    DB.tanda300 = t;
-    closeModal('modal-editar-aportes-tanda');
-    window.renderTanda300();
-    saveAll();
-    setTimeout(function(){ try { window.renderTanda300(); } catch(e){} }, 300);
-  };
-
-  window.editarConfigT300 = function(){
-    aplicarParticipantesGuardados();
-    var t = window.getTanda300();
-    var montoEl = document.getElementById('t300-cfg-monto'); if(montoEl) montoEl.value = Number(t.montoAporte) || 300;
-    var g1El = document.getElementById('t300-cfg-g1'); if(g1El) g1El.value = G1.join('\n');
-    var g2El = document.getElementById('t300-cfg-g2'); if(g2El) g2El.value = G2.join('\n');
-    var modal = document.getElementById('modal-editar-t300'); if(modal) modal.classList.add('open');
-  };
-
-  window.guardarConfigT300 = function(){
-    var monto = parseInt((document.getElementById('t300-cfg-monto') || {}).value, 10) || 300;
-    var g1Raw = String((document.getElementById('t300-cfg-g1') || {}).value || '');
-    var g2Raw = String((document.getElementById('t300-cfg-g2') || {}).value || '');
-    var g1 = g1Raw.split('\n').map(norm).filter(Boolean);
-    var g2 = g2Raw.split('\n').map(norm).filter(Boolean);
-    if(!g1.length || !g2.length){ alert('Cada grupo debe tener al menos un participante.'); return; }
-    mutateArray(G1, g1);
-    mutateArray(G2, g2);
-    window.T300_G1 = G1;
-    window.T300_G2 = G2;
-    var t = window.getTanda300();
-    t.montoAporte = monto;
-    t.participantesG1 = G1.slice();
-    t.participantesG2 = G2.slice();
-    DB.tanda300 = t;
-    closeModal('modal-editar-t300');
-    window.renderTanda300();
-    saveAll();
-  };
-
-  // Sync manual corregido: ahora sí trae tanda300/tanda1000 y refresca las vistas.
-  window.forzarSyncDesdeFirebase = function(){
-    if(typeof _fbDb === 'undefined' || !_fbDb) { alert('Sin conexión a Firebase'); return; }
-    if(sessionStorage.getItem('sync_en_proceso')) return;
-    sessionStorage.setItem('sync_en_proceso', '1');
-    try { actualizarIndicadorSync('guardando'); } catch(e){}
-    _fbDb.collection('caja').doc('datos').get().then(function(snap){
-      sessionStorage.removeItem('sync_en_proceso');
-      if(!snap.exists) { alert('No hay datos en Firebase'); return; }
-      var datos = snap.data() || {};
-      DB.socios      = datos.socios      || [];
-      DB.prestamos   = datos.prestamos   || [];
-      try { if(typeof fixSocioIds === 'function') fixSocioIds(); } catch(e){}
-      DB.tandas      = datos.tandas      || [];
-      DB.movimientos = datos.movimientos || [];
-      DB.cumple      = datos.cumple      || [];
-      DB.fondoCumple = datos.fondoCumple || [];
-      DB.configCumple= datos.configCumple|| {participantes:32, aportacion:100};
-      DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
-      DB.utilidades  = datos.utilidades  || [];
-      DB.recibos     = datos.recibos     || [];
-      DB.tandasGrupales = datos.tandasGrupales || [];
-      DB.tanda300    = datos.tanda300    || DB.tanda300 || null;
-      DB.tanda1000   = datos.tanda1000   || DB.tanda1000 || null;
-      try { if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas); } catch(e){}
-      aplicarParticipantesGuardados();
-      var nuevoTs = datos.ts || Date.now();
-      try {
-        var json = JSON.stringify(Object.assign({}, datos, {v:3, ts:nuevoTs + 1}));
-        localStorage.setItem('caja_ahorro_2026', json);
-        localStorage.setItem('caja_ahorro_2026_backup_total', json);
-        localStorage.setItem('caja_ts', String(nuevoTs + 1));
-      } catch(e) {}
-      try { if(typeof renderDashboard === 'function') renderDashboard(); } catch(e){}
-      try { if(typeof renderSocios === 'function') renderSocios(); } catch(e){}
-      try { if(typeof renderPrestamos === 'function') renderPrestamos(); } catch(e){}
-      try { if(typeof renderAhorros === 'function') renderAhorros(); } catch(e){}
-      try { if(typeof window.renderTanda300 === 'function') window.renderTanda300(); } catch(e){}
-      try { if(typeof window.renderTanda1000 === 'function') window.renderTanda1000(); } catch(e){}
-      try { actualizarIndicadorSync('conectado'); } catch(e){}
-      alert('✓ Datos actualizados desde Firebase (' + (DB.socios || []).length + ' socios)');
-    }).catch(function(e){
-      sessionStorage.removeItem('sync_en_proceso');
-      alert('Error: ' + e.message);
-      try { actualizarIndicadorSync('sin_conexion'); } catch(err){}
-    });
-  };
-
-  // Aplicar al cargar y dejar vista lista.
-  try { aplicarParticipantesGuardados(); } catch(e){}
-})();
-</script>
-
-
-<script>
-// ══════════════════════════════════════════════════
-// FIX FINAL KPI FONDO ACUMULADO — 07/may/2026
-// Este bloque va al final para ganar sobre los parches anteriores.
-// ══════════════════════════════════════════════════
-(function(){
-  window.APP_FIX_KPI_FONDO = '2026-05-07-kpi-fondo-v3';
-
-  function n(v){
-    var x = Number(v);
-    return isNaN(x) ? 0 : x;
-  }
-
-  function moneyPlain(v){
-    v = n(v);
-    return (typeof fmt === 'function') ? fmt(v) : v.toLocaleString('es-MX', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-  }
-
-  function money(v){
-    return '$' + moneyPlain(v);
-  }
-
-  function norm(v){
-    return String(v || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g,'')
-      .replace(/\s+/g,' ')
-      .trim()
-      .toUpperCase();
-  }
-
-  function getT300(){
-    if(!window.DB) return {quincenas:[], entregas:[], fondo:0, entregado:0};
-    if(typeof window.getTanda300 === 'function') {
-      try { return window.getTanda300(); } catch(e) {}
-    }
-    if(!DB.tanda300) DB.tanda300 = {quincenas:[], entregas:[], fondo:0, entregado:0};
-    DB.tanda300.quincenas = Array.isArray(DB.tanda300.quincenas) ? DB.tanda300.quincenas : [];
-    DB.tanda300.entregas  = Array.isArray(DB.tanda300.entregas)  ? DB.tanda300.entregas  : [];
-    return DB.tanda300;
-  }
-
-  function getT1000(){
-    if(!window.DB) return {quincenas:[], entregas:[], fondo:0, entregado:0};
-    if(typeof window.getTanda1000 === 'function') {
-      try { return window.getTanda1000(); } catch(e) {}
-    }
-    if(!DB.tanda1000) DB.tanda1000 = {quincenas:[], entregas:[], fondo:0, entregado:0};
-    DB.tanda1000.quincenas = Array.isArray(DB.tanda1000.quincenas) ? DB.tanda1000.quincenas : [];
-    DB.tanda1000.entregas  = Array.isArray(DB.tanda1000.entregas)  ? DB.tanda1000.entregas  : [];
-    return DB.tanda1000;
-  }
-
-  function sumaEntregas(t){
-    return (t.entregas || []).reduce(function(s,e){ return s + n(e && e.monto); }, 0);
-  }
-
-  function sumaAportesT300(t){
-    var total = 0;
-    (t.quincenas || []).forEach(function(q){
-      if(!q) return;
-      ['g1','g2'].forEach(function(gk){
-        var grupo = q[gk] || {};
-        Object.keys(grupo).forEach(function(k){
-          total += n(grupo[k]);
-        });
-      });
-    });
-    return total;
-  }
-
-  function sumaAportesT1000(t){
-    var total = 0;
-    (t.quincenas || []).forEach(function(q){
-      if(!q) return;
-      var pagos = q.pagos || {};
-      Object.keys(pagos).forEach(function(k){
-        total += n(pagos[k]);
-      });
-    });
-    return total;
-  }
-
-  function socioEspecial(nombre, saldo){
-    if(!window.DB) return null;
-    if(!Array.isArray(DB.socios)) DB.socios = [];
-    var objetivo = norm(nombre);
-    var socio = DB.socios.find(function(s){ return norm(s && s.nombre) === objetivo; });
-    if(!socio) {
-      var ids = DB.socios.map(function(s){ return n(s && s.id); });
-      var nextId = ids.length ? Math.max.apply(null, ids) + 1 : 1;
-      socio = {
-        id: nextId,
-        nombre: nombre,
-        tel: '',
-        freq: 'especial',
-        cuota: 0,
-        ahorro: 0,
-        categoria: 'ESP',
-        activo: true
-      };
-      DB.socios.push(socio);
-    }
-    socio.nombre = nombre;
-    socio.ahorro = Math.round(n(saldo) * 100) / 100;
-    socio.cuota = 0;
-    socio.freq = 'especial';
-    socio.categoria = 'ESP';
-    socio.activo = true;
-    if(socio.tel == null) socio.tel = '';
-    return socio;
-  }
-
-  function recalcularTandasEspeciales(){
-    var t300 = getT300();
-    var t1000 = getT1000();
-
-    t300.entregado = sumaEntregas(t300);
-    t300.fondo = sumaAportesT300(t300) - t300.entregado;
-
-    t1000.entregado = sumaEntregas(t1000);
-    t1000.fondo = sumaAportesT1000(t1000) - t1000.entregado;
-
-    if(window.DB) {
-      DB.tanda300 = t300;
-      DB.tanda1000 = t1000;
-    }
-
-    socioEspecial('TANDA 300', t300.fondo);
-    socioEspecial('TANDA 1000', t1000.fondo);
-
-    return {
-      t300: t300.fondo,
-      t1000: t1000.fondo,
-      entregado300: t300.entregado,
-      entregado1000: t1000.entregado
-    };
-  }
-
-  // Reemplazo fuerte: cualquier guardado/render que llame esta función recibirá el cálculo correcto.
-  window.sincronizarSociosTandasConFondos = function(){
-    return recalcularTandasEspeciales();
-  };
-
-  function refrescarKpiFondoAcumulado(){
-    if(!window.DB || !Array.isArray(DB.socios)) return 0;
-
-    try { if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales(); } catch(e) {}
-
-    try { recalcularTandasEspeciales(); } catch(e) {
-      console.warn('No se pudo recalcular tandas para KPI:', e.message);
-    }
-
-    try { if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo(); } catch(e) {}
-
-    try {
-      if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
-      if(typeof calcularTotalesUtilidades === 'function' && typeof sincronizarAhorradorUtilidades === 'function') {
-        var util = calcularTotalesUtilidades();
-        sincronizarAhorradorUtilidades(util.cobrado);
-      } else if(typeof sincronizarAhorradorUtilidades === 'function') {
-        sincronizarAhorradorUtilidades();
-      }
-    } catch(e) {}
-
-    var total = DB.socios.reduce(function(s,x){ return s + n(x && x.ahorro); }, 0);
-
-    var kpiAhorros = document.getElementById('kpi-ahorros');
-    if(kpiAhorros) kpiAhorros.textContent = moneyPlain(total);
-
-    var cAhorros = document.getElementById('c-ahorros');
-    if(cAhorros) cAhorros.textContent = money(total);
-
-    if(typeof CAJA_REF !== 'undefined' && CAJA_REF) {
-      CAJA_REF.ahorros_registrados = total;
-    }
-
-    return total;
-  }
-
-  function refrescarKpisTanda300(){
-    var t = getT300();
-    recalcularTandasEspeciales();
-
-    var kf = document.getElementById('t300-kpi-fondo');
-    var ke = document.getElementById('t300-kpi-entregado');
-
-    if(kf) kf.textContent = money(t.fondo);
-    if(ke) ke.textContent = money(t.entregado);
-
-    return t.fondo;
-  }
-
-  function refrescarTodo(){
-    try { refrescarKpisTanda300(); } catch(e) {}
-    try { refrescarKpiFondoAcumulado(); } catch(e) {}
-  }
-
-  window.refrescarKpiFondoAcumulado = refrescarKpiFondoAcumulado;
-  window.refrescarKpisTanda300 = refrescarKpisTanda300;
-  window.recalcularTandasEspeciales = recalcularTandasEspeciales;
-
-  function wrap(nombre, afterDelay){
-    var original = window[nombre];
-    if(typeof original !== 'function' || original.__fixKpiFondo) return;
-    var envuelta = function(){
-      var r;
-      try { r = original.apply(this, arguments); }
-      finally {
-        refrescarTodo();
-        setTimeout(refrescarTodo, afterDelay || 80);
-        setTimeout(refrescarTodo, 350);
-      }
-      return r;
-    };
-    envuelta.__fixKpiFondo = true;
-    window[nombre] = envuelta;
-  }
-
-  // Render y guardados donde se desactualizaba el KPI.
-  wrap('renderDashboard', 120);
-  wrap('renderTanda300', 120);
-  wrap('guardarAportesT300', 180);
-  wrap('guardarConfigT300', 180);
-  wrap('forzarSyncDesdeFirebase', 500);
-  wrap('guardarEnLocal', 120);
-  wrap('guardarDatos', 180);
-
-  // Actualización inmediata al salir de los modales de tanda.
-  document.addEventListener('click', function(ev){
-    var t = ev.target;
-    if(!t) return;
-    var txt = (t.textContent || '').toUpperCase();
-    if(txt.indexOf('GUARDAR') >= 0 || txt.indexOf('SINCRONIZAR') >= 0 || txt.indexOf('ACTUALIZAR') >= 0) {
-      setTimeout(refrescarTodo, 120);
-      setTimeout(refrescarTodo, 500);
-    }
-  }, true);
-
-  // Aplicar al cargar, al volver a la pestaña y después de que Firebase responda.
-  document.addEventListener('DOMContentLoaded', function(){
-    setTimeout(refrescarTodo, 50);
-    setTimeout(refrescarTodo, 500);
-    setTimeout(refrescarTodo, 1500);
-  });
-
-  window.addEventListener('focus', function(){ setTimeout(refrescarTodo, 80); });
-
-  setTimeout(refrescarTodo, 50);
-  setTimeout(refrescarTodo, 500);
-})();
 </script>
 
 </body></html>
