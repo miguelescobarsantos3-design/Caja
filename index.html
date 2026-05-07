@@ -9602,12 +9602,11 @@ function normalizarVisibilidadSocios() {
   function dinero(n){ return '$' + (typeof fmt === 'function' ? fmt(Number(n)||0) : (Number(n)||0).toLocaleString('es-MX')); }
   function hoy(){ return new Date().toISOString().slice(0,10); }
   function esc(v){
-    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; });
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','\x3C':'&lt;','\x3E':'&gt;','"':'&quot;'}[c]; });
   }
 
   window.getTanda300 = function(){
     if(!DB.tanda300) {
-<<<<<<< HEAD
       DB.tanda300 = { fondo:0, entregado:0, entregas:[], quincenas:[] };
     }
     DB.tanda300.quincenas = Array.isArray(DB.tanda300.quincenas) ? DB.tanda300.quincenas : [];
@@ -9621,21 +9620,6 @@ function normalizarVisibilidadSocios() {
         });
       });
     });
-=======
-      DB.tanda300 = {
-        fondo: 3900,
-        entregado: 0,
-        entregas: [],
-        quincenas: [{
-          fecha: '2026-05-06',
-          g1: {HAROLDO:0,'JUAN ANTONIO':300,'ERI ROMERO':0,NANCY:0,UBALDO:300,CARBALLO:300,RAFAEL:300,GERMAN:300,MIGUEL:0,RAMON:300,JULIO:300},
-          g2: {'JUAN ANTONIO':300,'JUAN ANTONIO B':0,WILBER:0,JORGE:0,UBALDO:300,CARBALLO:300,MIGUEL:0,RAFAEL:300,EUGENIO:0,RAMON:300,SANTIAGO:300}
-        }]
-      };
-    }
-    DB.tanda300.quincenas = Array.isArray(DB.tanda300.quincenas) ? DB.tanda300.quincenas : [];
-    DB.tanda300.entregas = Array.isArray(DB.tanda300.entregas) ? DB.tanda300.entregas : [];
->>>>>>> 5199880dcf43e409622f840d4114cb041e50581f
     return DB.tanda300;
   };
 
