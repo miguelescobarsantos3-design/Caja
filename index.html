@@ -9816,7 +9816,7 @@ function normalizarVisibilidadSocios() {
     var km = document.getElementById('t1000-kpi-monto');
     if(kf) kf.textContent = dinero(t.fondo || 0);
     if(ke) ke.textContent = dinero(t.entregado || 0);
-    if(km) km.textContent = dinero(monto1000 * T1000_P.length) + ' (×' + T1000_P.length + ')';
+    if(km) km.textContent = dinero(monto1000 * (T1000_P.length - 1)) + ' (×' + (T1000_P.length - 1) + ')';
     var nE = (t.entregas || []).length;
     if(kp) kp.textContent = nE < T1000_P.length ? T1000_P[nE] : '—';
     var pagos = T1000_P.map(function(n,i){
