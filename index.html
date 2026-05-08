@@ -9752,23 +9752,26 @@ function normalizarVisibilidadSocios() {
       var quincenas = cuota > 0 ? Math.round(pagado / cuota) : 0;
       var cobro = (entregas || []).find(function(e){ return Number(e.turno) === i + 1 && (!grupo || Number(e.grupo) === Number(grupo)); });
       var estado = cobro
-        ? '<span class="badge badge-green">✓ Cobró</span>'
-        : '<span class="badge badge-orange">Pendiente</span>';
+        ? '\x3Cspan class="badge badge-green"\x3E✓ Cobró\x3C/span\x3E'
+        : '\x3Cspan class="badge badge-orange"\x3EPendiente\x3C/span\x3E';
       var editar = tipo === 't300'
-        ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT300('+grupo+','+i+')">Editar aportes</button>'
-        : '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT1000('+i+')">Editar aportes</button>';
-      return '<tr>'
-        + '<td class="mono text-sm">'+(i+1)+'</td>'
-        + '<td><strong>'+esc(n)+'</strong></td>'
-        + '<td class="mono text-right" style="color:var(--verde);">'+dinero(pagado)+'</td>'
-        + '<td class="text-right">'+quincenas+'/'+totalTurnos+'</td>'
-        + '<td>'+estado+'</td>'
-        + '<td style="text-align:right;">'+editar+'</td>'
-        + '</tr>';
+        ? '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT300('+grupo+','+i+')"\x3EEditar aportes\x3C/button\x3E'
+        : '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT1000('+i+')"\x3EEditar aportes\x3C/button\x3E';
+      var eliminar = cobro ? '' : (tipo === 't300'
+        ? '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.eliminarParticipanteT300('+grupo+','+i+')" style="background:var(--rojo-claro);color:var(--rojo);margin-left:4px;" title="Eliminar participante"\x3E✕\x3C/button\x3E'
+        : '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.eliminarParticipanteT1000('+i+')" style="background:var(--rojo-claro);color:var(--rojo);margin-left:4px;" title="Eliminar participante"\x3E✕\x3C/button\x3E');
+      return '\x3Ctr\x3E'
+        + '\x3Ctd class="mono text-sm"\x3E'+(i+1)+'\x3C/td\x3E'
+        + '\x3Ctd\x3E\x3Cstrong\x3E'+esc(n)+'\x3C/strong\x3E\x3C/td\x3E'
+        + '\x3Ctd class="mono text-right" style="color:var(--verde);"\x3E'+dinero(pagado)+'\x3C/td\x3E'
+        + '\x3Ctd class="text-right"\x3E'+quincenas+'/'+totalTurnos+'\x3C/td\x3E'
+        + '\x3Ctd\x3E'+estado+'\x3C/td\x3E'
+        + '\x3Ctd style="text-align:right;"\x3E'+editar+eliminar+'\x3C/td\x3E'
+        + '\x3C/tr\x3E';
     }).join('');
-    return '<div class="table-wrapper"><table style="min-width:620px;">'
-      + '<thead><tr><th>#</th><th>Nombre</th><th class="text-right">Aportado</th><th class="text-right">Quincenas</th><th>Estado</th><th></th></tr></thead>'
-      + '<tbody>'+rows+'</tbody></table></div>';
+    return '\x3Cdiv class="table-wrapper"\x3E\x3Ctable style="min-width:620px;"\x3E'
+      + '\x3Cthead\x3E\x3Ctr\x3E\x3Cth\x3E#\x3C/th\x3E\x3Cth\x3ENombre\x3C/th\x3E\x3Cth class="text-right"\x3EAportado\x3C/th\x3E\x3Cth class="text-right"\x3EQuincenas\x3C/th\x3E\x3Cth\x3EEstado\x3C/th\x3E\x3Cth\x3E\x3C/th\x3E\x3C/tr\x3E\x3C/thead\x3E'
+      + '\x3Ctbody\x3E'+rows+'\x3C/tbody\x3E\x3C/table\x3E\x3C/div\x3E';
   }
 
   window.renderTanda300 = function(){
@@ -9816,7 +9819,10 @@ function normalizarVisibilidadSocios() {
     if(km) km.textContent = dinero(monto1000 * T1000_P.length) + ' (×' + T1000_P.length + ')';
     var nE = (t.entregas || []).length;
     if(kp) kp.textContent = nE < T1000_P.length ? T1000_P[nE] : '—';
-    var pagos = T1000_P.map(function(n,i){ return sumaT1000Aportante(t, n); });
+    var pagos = T1000_P.map(function(n,i){
+      // Calcular por idx para manejar nombres duplicados como NANCY
+      return (t.movimientos||[]).filter(function(m){ return m.idx===i; }).reduce(function(s,m){ return s+m.monto; },0);
+    });
     var tb = document.getElementById('t1000-tabla');
     if(tb) tb.innerHTML = tablaTanda(T1000_P, pagos, monto1000, T1000_P.length, t.entregas, null, 't1000');
   };
@@ -9975,6 +9981,37 @@ function normalizarVisibilidadSocios() {
   };
 
   window.actualizarPartT300 = function(){ window._ta300RefrescarTurnos(); };
+
+  window.eliminarParticipanteT300 = function(grupo, idx){
+    var lista = grupo === 1 ? T300_G1 : T300_G2;
+    var nombre = lista[idx];
+    if(!confirm('¿Eliminar a '+nombre+' del Grupo '+grupo+'? Sus aportes también se eliminarán.')) return;
+    // Eliminar movimientos de este participante en este grupo
+    var t = window.getTanda300();
+    t.movimientos = (t.movimientos||[]).filter(function(m){
+      return !(m.grupo === grupo && (m.aportante === nombre || m.cobrador === nombre));
+    });
+    // Eliminar del array de participantes
+    lista.splice(idx, 1);
+    guardarYRefrescar('t300');
+    if(typeof guardarEnLocal==='function') guardarEnLocal();
+    if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  };
+
+  window.eliminarParticipanteT1000 = function(idx){
+    var nombre = T1000_P[idx];
+    if(!confirm('¿Eliminar a '+nombre+' (T'+(idx+1)+')? Sus aportes también se eliminarán.')) return;
+    var t = window.getTanda1000();
+    // Eliminar movimientos de este turno
+    t.movimientos = (t.movimientos||[]).filter(function(m){ return m.idx !== idx; });
+    // Reindexar movimientos de turnos posteriores
+    t.movimientos.forEach(function(m){ if(m.idx > idx) m.idx--; });
+    // Eliminar del array
+    T1000_P.splice(idx, 1);
+    guardarYRefrescar('t1000');
+    if(typeof guardarEnLocal==='function') guardarEnLocal();
+    if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  };
 
   window.abrirEntregaT300 = function(){
     var t = window.getTanda300();
