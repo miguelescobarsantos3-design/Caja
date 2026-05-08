@@ -9787,8 +9787,12 @@ function normalizarVisibilidadSocios() {
     if(nG1 < T300_G1.length) prox.push('G1: ' + T300_G1[nG1]);
     if(nG2 < T300_G2.length) prox.push('G2: ' + T300_G2[nG2]);
     if(kp) kp.textContent = prox.join(' / ') || '—';
-    var pG1 = T300_G1.map(function(n){ return sumaT300Aportante(t, n); });
-    var pG2 = T300_G2.map(function(n){ return sumaT300Aportante(t, n); });
+    var pG1 = T300_G1.map(function(n){
+      return (t.movimientos||[]).filter(function(m){ return m.aportante===n && m.grupo===1; }).reduce(function(s,m){ return s+m.monto; },0);
+    });
+    var pG2 = T300_G2.map(function(n){
+      return (t.movimientos||[]).filter(function(m){ return m.aportante===n && m.grupo===2; }).reduce(function(s,m){ return s+m.monto; },0);
+    });
     // Fondo = total aportado menos entregado
     t.fondo = sumaAportesT300(t) - (t.entregado || 0);
     sincronizarSocioEspecial('TANDA 300', t.fondo);
