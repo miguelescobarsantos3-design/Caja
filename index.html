@@ -12593,4 +12593,16 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
+<!-- Eliminar Service Worker viejo para forzar actualización -->
+<script>
+if('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    regs.forEach(function(reg) { reg.unregister(); console.log('SW eliminado:', reg.scope); });
+  });
+  caches.keys().then(function(keys) {
+    keys.forEach(function(key) { caches.delete(key); console.log('Cache eliminado:', key); });
+  });
+}
+</script>
+
 </body></html>
