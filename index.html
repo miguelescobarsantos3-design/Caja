@@ -908,26 +908,26 @@ async function cargarDesdFirebase() {
     var recibosFinales     = _mergeRecibos(DB.recibos, datos.recibos);
     var movimientosFinales = _mergeMovimientos(DB.movimientos, datos.movimientos);
 
+    // Socios, préstamos y configs SIEMPRE vienen de Firebase (fuente de verdad)
+    DB.socios       = datos.socios       || [];
+    DB.prestamos    = datos.prestamos     || [];
+    DB.tandas       = datos.tandas        || [];
+    DB.cumple       = datos.cumple        || [];
+    DB.fondoCumple  = datos.fondoCumple   || [];
+    DB.configCumple = datos.configCumple  || {aportacion:100, participantes:32};
+    DB.cumpleMatrix = datos.cumpleMatrix  || {festejados:[], participantes:[]};
+    DB.utilidades   = (datos.utilidades||[]).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+    DB._directorio  = datos._directorio   || [];
+    DB.tandasGrupales = datos.tandasGrupales || [];
+    DB.tanda300   = datos.tanda300   || DB.tanda300   || null;
+    DB.tanda1000  = datos.tanda1000  || DB.tanda1000  || null;
+    if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') {
+      aplicarCuentasPersistidas(datos.cuentas);
+    }
     if(tsFirebase > tsLocal) {
-      // Firebase es más reciente — usar sus socios, préstamos, saldos, configs
-      DB.socios       = datos.socios       || [];
-      DB.prestamos    = datos.prestamos     || [];
-      DB.tandas       = datos.tandas        || [];
-      DB.cumple       = datos.cumple        || [];
-      DB.fondoCumple  = datos.fondoCumple   || [];
-      DB.configCumple = datos.configCumple  || {aportacion:100, participantes:32};
-      DB.cumpleMatrix = datos.cumpleMatrix  || {festejados:[], participantes:[]};
-      DB.utilidades   = (datos.utilidades||[]).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
-      DB._directorio  = datos._directorio   || [];
-      DB.tandasGrupales = datos.tandasGrupales || [];
-      DB.tanda300   = datos.tanda300   || DB.tanda300   || null;
-      DB.tanda1000  = datos.tanda1000  || DB.tanda1000  || null;
-      if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') {
-        aplicarCuentasPersistidas(datos.cuentas);
-      }
       console.log('✅ Datos base cargados desde Firestore (más recientes)', {socios: DB.socios.length, ts: tsFirebase});
     } else {
-      console.log('ℹ️ localStorage más reciente — manteniendo datos base locales');
+      console.log('ℹ️ Firebase usado como fuente de verdad para socios/préstamos', {socios: DB.socios.length});
     }
 
     // En ambos casos, aplicar el merge de recibos y movimientos
