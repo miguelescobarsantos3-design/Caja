@@ -11433,12 +11433,13 @@ function forzarSyncDesdeFirebase() {
   if(sessionStorage.getItem('sync_en_proceso')) return;
   sessionStorage.setItem('sync_en_proceso', '1');
   actualizarIndicadorSync('guardando');
+  // Resetear ts local a 0 para que Firebase siempre gane
+  try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
   _fbDb.collection('caja').doc('datos').get().then(function(snap) {
     sessionStorage.removeItem('sync_en_proceso');
     if(!snap.exists) { alert('No hay datos en Firebase'); return; }
     const datos = snap.data();
     if(!datos) return;
-    // Aplicar datos de Firebase DIRECTAMENTE a DB (sin recargar)
     DB.socios      = datos.socios      || [];
     DB.prestamos   = datos.prestamos   || [];
     if(typeof fixSocioIds==='function') fixSocioIds();
@@ -11450,8 +11451,9 @@ function forzarSyncDesdeFirebase() {
     DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
     DB.utilidades  = datos.utilidades  || [];
     DB.recibos     = datos.recibos     || [];
+    DB.tanda300    = datos.tanda300    || null;
+    DB.tanda1000   = datos.tanda1000   || null;
     if(datos.cuentas && typeof aplicarCuentasPersistidas==='function') aplicarCuentasPersistidas(datos.cuentas);
-    // Guardar en localStorage con ts de Firebase para que no haya conflicto
     var nuevoTs = datos.ts || Date.now();
     try {
       var json = JSON.stringify(Object.assign({}, datos, {v:3, ts: nuevoTs + 1}));
@@ -11459,13 +11461,15 @@ function forzarSyncDesdeFirebase() {
       localStorage.setItem('caja_ahorro_2026_backup_total', json);
       localStorage.setItem('caja_ts', String(nuevoTs + 1));
     } catch(e) {}
-    // Re-renderizar todo sin recargar
     if(typeof renderDashboard==='function') renderDashboard();
     if(typeof renderSocios==='function') renderSocios();
     if(typeof renderPrestamos==='function') renderPrestamos();
     if(typeof renderAhorros==='function') renderAhorros();
+    if(typeof renderTanda300==='function') renderTanda300();
+    if(typeof renderTanda1000==='function') renderTanda1000();
+    if(typeof renderUtilidades==='function') renderUtilidades();
     actualizarIndicadorSync('conectado');
-    alert('✓ Datos actualizados desde Firebase (' + DB.socios.length + ' socios)');
+    alert('✓ Datos actualizados desde Firebase (' + DB.socios.length + ' socios, ' + DB.recibos.length + ' recibos)');
   }).catch(function(e) {
     sessionStorage.removeItem('sync_en_proceso');
     alert('Error: ' + e.message);
