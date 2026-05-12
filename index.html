@@ -997,7 +997,7 @@ function escucharCambios() {
     if(typeof renderSocios==='function') renderSocios();
     if(typeof renderPrestamos==='function') renderPrestamos();
     if(typeof renderAhorros==='function') renderAhorros();
-    if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
+    if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false); else if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
     actualizarIndicadorSync('conectado');
   }, function(err){ console.warn('Listener error:', err.message); });
 }
@@ -10372,6 +10372,7 @@ function normalizarVisibilidadSocios() {
           if(typeof renderPrestamos==='function') renderPrestamos();
           if(typeof renderAhorros==='function') renderAhorros();
           if(typeof renderRecibos==='function') renderRecibos('todos');
+          if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false);
           console.log('✅ App actualizada con datos de Firestore');
         }
       });
