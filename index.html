@@ -9712,11 +9712,6 @@ function normalizarVisibilidadSocios() {
   }
   function recalcularT1000(){
     var t = window.getTanda1000();
-    var monto = t.montoAporte || 1000;
-    var n = (window.T1000_P || []).length;
-    // El cobrador no aporta en su turno, así que cada entrega
-    // corresponde a (n-1) aportes. El fondo correcto es lo recaudado
-    // MENOS lo ya entregado. Usamos la suma real de aportes registrados.
     t.entregado = sumaEntregas(t);
     var totalAportado = sumaAportesT1000(t);
     // El fondo nunca puede ser negativo: si se entregó más de lo recaudado
@@ -10173,13 +10168,13 @@ function normalizarVisibilidadSocios() {
     guardarYRefrescar('t1000');
   };
 
-  function filasAportesT300(grupo, cobrador){
-    // Devuelve movimientos donde este cobrador recibió aportes en su grupo
+  function filasAportesT300(grupo, nombre){
+    // Devuelve TODOS los aportes de este participante en este grupo (como aportante)
     var t = window.getTanda300();
     return (t.movimientos || [])
       .map(function(m, i){ return {idx:i, m:m}; })
-      .filter(function(x){ return x.m.grupo === grupo && x.m.cobrador === cobrador; })
-      .map(function(x){ return {fecha:x.m.fecha, monto:x.m.monto, aportante:x.m.aportante, idx:x.idx}; });
+      .filter(function(x){ return x.m.grupo === grupo && x.m.aportante === nombre; })
+      .map(function(x){ return {fecha:x.m.fecha, monto:x.m.monto, aportante:x.m.aportante, cobrador:x.m.cobrador, idx:x.idx}; });
   }
   function filasAportesT1000(idx){
     var t = window.getTanda1000();
@@ -10238,23 +10233,23 @@ function normalizarVisibilidadSocios() {
     var e = window._editAporteTanda || {};
     var t = window.getTanda300();
     var grupo = Number(e.grupo);
-    var cobrador = e.nombre;
+    var nombre = e.nombre;
     // Obtener índices de movimientos que se conservan (los que no fueron eliminados del DOM)
     var modal = document.getElementById('modal-editar-aportes-tanda');
     var idxConservados = [];
     if(modal) modal.querySelectorAll('.ta-row[data-mov-idx]').forEach(function(r){
       idxConservados.push(parseInt(r.dataset.movIdx, 10));
     });
-    // Eliminar todos los movimientos de este turno que no estén en idxConservados
+    // Eliminar todos los movimientos de este aportante en este grupo que no estén en idxConservados
     t.movimientos = (t.movimientos || []).filter(function(m, i){
-      if(m.grupo === grupo && m.cobrador === cobrador) return idxConservados.indexOf(i) >= 0;
+      if(m.grupo === grupo && m.aportante === nombre) return idxConservados.indexOf(i) >= 0;
       return true;
     });
     // Agregar filas nuevas (sin data-mov-idx)
     if(modal) modal.querySelectorAll('.ta-row:not([data-mov-idx])').forEach(function(r){
       var fecha = (r.querySelector('.ta-fecha')||{}).value || hoy();
       var monto = parseFloat((r.querySelector('.ta-monto')||{}).value) || 0;
-      if(monto > 0) t.movimientos.push({aportante:cobrador, cobrador:cobrador, grupo:grupo, monto:monto, fecha:fecha, notas:'Manual'});
+      if(monto > 0) t.movimientos.push({aportante:nombre, cobrador:nombre, grupo:grupo, monto:monto, fecha:fecha, notas:'Manual'});
     });
     cerrarModal('modal-editar-aportes-tanda');
     guardarYRefrescar('t300');
