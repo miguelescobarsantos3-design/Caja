@@ -10149,7 +10149,7 @@ function normalizarVisibilidadSocios() {
     var opts = nE < T1000_P.length ? '<option value="'+nE+'">Turno '+(nE+1)+': '+esc(T1000_P[nE])+'</option>' : '<option value="">Todos han cobrado</option>';
     var cuerpo = '<div class="form-row">'
       + inputHtml('t1000e-fecha','Fecha','date',hoy())
-      + inputHtml('t1000e-monto','Monto','number',T1000_P.length * 1000)
+      + inputHtml('t1000e-monto','Monto','number',(T1000_P.length - 1) * 1000)
       + '</div>'
       + selectHtml('t1000e-sel','Turno a entregar','',opts);
     crearModal('modal-t1000e','Entregar Tanda $1,000',cuerpo,'window.guardarEntregaT1000');
@@ -10157,7 +10157,7 @@ function normalizarVisibilidadSocios() {
   window.guardarEntregaT1000 = function(){
     var idx = parseInt(document.getElementById('t1000e-sel').value,10);
     if(isNaN(idx)) return;
-    var monto = parseFloat(document.getElementById('t1000e-monto').value) || (T1000_P.length * 1000);
+    var monto = parseFloat(document.getElementById('t1000e-monto').value) || ((T1000_P.length - 1) * 1000);
     var fecha = document.getElementById('t1000e-fecha').value || hoy();
     var t = window.getTanda1000();
     t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:T1000_P[idx]});
