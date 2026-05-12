@@ -9712,8 +9712,16 @@ function normalizarVisibilidadSocios() {
   }
   function recalcularT1000(){
     var t = window.getTanda1000();
+    var monto = t.montoAporte || 1000;
+    var n = (window.T1000_P || []).length;
+    // El cobrador no aporta en su turno, así que cada entrega
+    // corresponde a (n-1) aportes. El fondo correcto es lo recaudado
+    // MENOS lo ya entregado. Usamos la suma real de aportes registrados.
     t.entregado = sumaEntregas(t);
-    t.fondo = sumaAportesT1000(t) - t.entregado;
+    var totalAportado = sumaAportesT1000(t);
+    // El fondo nunca puede ser negativo: si se entregó más de lo recaudado
+    // es un error de captura de datos, mostramos 0.
+    t.fondo = Math.max(0, totalAportado - t.entregado);
     return t;
   }
 
