@@ -7661,10 +7661,9 @@ function abrirFichaSocio(socioId) {
   document.getElementById('ficha-nombre').textContent = s.nombre;
   document.getElementById('ficha-meta').textContent   = 'Socio #' + String(s.id).padStart(2,'0') + ' · ' + s.freq;
 
-  // Préstamo activo — buscar por socioId primero, luego por nombre exacto
-  const nombreSocio = s.nombre.toLowerCase();
+  // Préstamo activo — buscar solo por socioId
   const prsActivos = DB.prestamos.filter(p =>
-    (p.socioId === socioId || p.nombre.toLowerCase() === nombreSocio) && p.estado === 'activo'
+    p.socioId === socioId && p.estado === 'activo'
   );
   const pr = prsActivos.length ? prsActivos[0] : null;
   const prSaldoTotal = prsActivos.reduce((sum,p) => sum + p.pendiente, 0);
@@ -7729,7 +7728,7 @@ function abrirFichaSocio(socioId) {
     document.getElementById('ficha-btn-ec').style.display = 'inline-flex';
     document.getElementById('ficha-btn-ec').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEstadoCuenta(prsActivos[0].id); };
   } else {
-    const liquidados = DB.prestamos.filter(p => p.nombre.toLowerCase() === s.nombre.toLowerCase() && p.estado === 'liquidado');
+    const liquidados = DB.prestamos.filter(p => p.socioId === socioId && p.estado === 'liquidado');
     pContent.innerHTML = liquidados.length
       ? `<div style="text-align:center;padding:20px;color:var(--verde);">
           <div style="font-size:28px;margin-bottom:8px;">✓</div>
