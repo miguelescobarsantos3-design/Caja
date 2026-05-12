@@ -4939,28 +4939,11 @@ function renderDashboard() {
   document.getElementById('kpi-socios-count').textContent = DB.socios.filter(s=>s.activo).length + ' socios activos';
   document.getElementById('kpi-prestamos').textContent = fmt(prestPendiente);
   document.getElementById('kpi-presta-count').textContent = DB.prestamos.filter(p=>p.estado==='activo').length + ' préstamos activos';
-  // Calcular pendiente de utilidades
+  // Calcular pendiente de utilidades — usar siempre calcularTotalesUtilidades
   (function() {
-    const src = DB.utilidades || [];
-    let pend = 44680; // valor base
-    if(src.length > 0) {
-      const cobMov = {};
-      (DB.movimientos||[]).forEach(function(m){
-        if(m.tipo==='prestamo' && m.interesAbonado>0){
-          const n=(m.socio||'').toUpperCase().trim();
-          cobMov[n]=(cobMov[n]||0)+m.interesAbonado;
-        }
-      });
-      pend = 0;
-      src.forEach(function(u){
-        const tot=u.interesTotal||u.total||0;
-        const man=u.cobradoManual||u.cobrado||0;
-        const mov=cobMov[(u.nombre||'').toUpperCase().trim()]||0;
-        pend+=Math.max(0,tot-Math.min(man+mov,tot));
-      });
-    }
-    const elP=document.getElementById('kpi-util-pendiente');
-    if(elP) elP.textContent='$'+fmt(Math.round(pend));
+    var pend = utilTot.pendiente || 0;
+    var elP = document.getElementById('kpi-util-pendiente');
+    if(elP) elP.textContent = '$' + fmt(Math.round(pend));
   })();
   document.getElementById('kpi-utilidades').textContent = (typeof fmtUtil === 'function') ? fmtUtil(utilidades) : fmt(utilidades);
   const elPend = document.getElementById('kpi-utilidades-pend');
