@@ -2785,32 +2785,43 @@ function escucharCambios() {
 
   <!-- ─── PRÉSTAMOS ─── -->
   <div class="content view" id="view-prestamos">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div>
-        <span class="badge badge-orange" style="font-size:13px;padding:8px 14px;">Solo capital de préstamos activos</span>
+    <!-- KPIs — misma estructura que Ahorros -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);max-width:700px;margin-bottom:24px;">
+      <div class="kpi kpi-orange">
+        <div class="kpi-accent"></div>
+        <div class="kpi-label">Capital pendiente</div>
+        <div class="kpi-value mono" id="prestamos-total-activos">$0</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <button class="btn btn-primary" onclick="abrirNuevoPrestamo()">+ Nuevo préstamo</button>
+      <div class="kpi kpi-blue">
+        <div class="kpi-accent"></div>
+        <div class="kpi-label">Préstamos activos</div>
+        <div class="kpi-value" id="prestamos-total-activos-count">—</div>
       </div>
-    </div>
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Capital pendiente en préstamos activos</div>
-          <div class="card-subtitle"><span id="prestamos-total-activos-count">—</span> préstamos activos</div>
-        </div>
-        <div class="mono" id="prestamos-total-activos" style="font-size:28px;font-weight:700;color:var(--naranja);">$0</div>
+      <div class="kpi kpi-yellow">
+        <div class="kpi-accent"></div>
+        <div class="kpi-label">Promedio por deudor</div>
+        <div class="kpi-value mono" id="pr-kpi-prom">$0</div>
       </div>
     </div>
     <div class="card">
+      <div class="card-header">
+        <div class="card-title">Préstamos por deudor</div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div class="search-bar" style="width:240px;">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="pr-search" placeholder="Buscar deudor..." oninput="renderPrestamos()" autocomplete="off">
+          </div>
+          <button class="btn btn-primary" onclick="abrirNuevoPrestamo()">+ Nuevo préstamo</button>
+        </div>
+      </div>
       <table>
         <thead>
           <tr>
+            <th>#</th>
             <th>Deudor</th>
-            <th>Préstamo</th>
+            <th>Préstamo original</th>
             <th>Pagado capital</th>
             <th>Pendiente capital</th>
-            <th>Estado</th>
             <th></th>
           </tr>
         </thead>
@@ -5154,13 +5165,25 @@ function renderPrestamos(filtro) {
   filtro = 'activo';
   const tb = document.getElementById('prestamos-tbody');
   const consolidadosBase = consolidarTodos('activo');
-  const consolidados = consolidadosBase.filter(c => !ocultarConsolidadoEnPrestamos(c));
-  const totalPendienteActivos = consolidados.reduce((s, c) => s + (c.pendienteTotal || 0), 0);
-  const totalActivosCount = consolidados.filter(c => (c.pendienteTotal || 0) > 0).length;
+  const consolidadosTodos = consolidadosBase.filter(c => !ocultarConsolidadoEnPrestamos(c));
+
+  // Filtro de búsqueda
+  const q = (document.getElementById('pr-search') || {value:''}).value.toLowerCase().trim();
+  const consolidados = q
+    ? consolidadosTodos.filter(c => c.nombre.toLowerCase().includes(q))
+    : consolidadosTodos;
+
+  const totalPendienteActivos = consolidadosTodos.reduce((s, c) => s + (c.pendienteTotal || 0), 0);
+  const totalActivosCount = consolidadosTodos.filter(c => (c.pendienteTotal || 0) > 0).length;
+  const promedio = totalActivosCount > 0 ? Math.round(totalPendienteActivos / totalActivosCount) : 0;
+
   const totalEl = document.getElementById('prestamos-total-activos');
   const countEl = document.getElementById('prestamos-total-activos-count');
+  const promEl = document.getElementById('pr-kpi-prom');
   if (totalEl) totalEl.textContent = '$' + fmt(totalPendienteActivos);
   if (countEl) countEl.textContent = totalActivosCount;
+  if (promEl) promEl.textContent = '$' + fmt(promedio);
+
   const kpiPrestamos = document.getElementById('kpi-prestamos');
   const kpiPrestaCount = document.getElementById('kpi-presta-count');
   if (kpiPrestamos) kpiPrestamos.textContent = fmt(totalPendienteActivos);
@@ -5171,28 +5194,32 @@ function renderPrestamos(filtro) {
     const socioDir = DB.socios.find(s => s.nombre.toLowerCase() === c.nombre.toLowerCase());
     const clienteId = socioDir ? socioDir.id : (dirEntry ? dirEntry.id : null);
     const socioInactivo = socioDir && socioDir.activo === false;
-    const numStr = clienteId ? String(clienteId).padStart(3,'0') : '—';
+    const numStr = clienteId ? String(clienteId).padStart(2,'0') : '—';
+    // Badge igual al de ahorros: azul con formato #01
     const numBadge = clienteId
-      ? '<span class="badge badge-blue mono" style="font-size:11px;margin-right:6px;">#' + numStr + '</span>'
-      : '<span class="badge bgr mono" style="font-size:11px;margin-right:6px;">EXT</span>';
+      ? '<span class="badge mono" style="font-size:12px;background:var(--azul);color:#fff;">#' + numStr + '</span>'
+      : '<span class="badge badge-gray mono" style="font-size:12px;">EXT</span>';
     const multiTag = c.ids.length > 1
       ? ' <span class="badge badge-gray" style="font-size:10px;">' + c.ids.length + ' créd.</span>'
       : '';
     const inactivoTag = socioInactivo ? ' <span class="badge badge-red" style="font-size:10px;">Inactivo</span>' : '';
     const prId = DB.prestamos.find(p => c.ids.includes(p.id) && p.estado === 'activo') || DB.prestamos.find(p => c.ids.includes(p.id));
+    // Porcentaje pagado
+    const pct = c.capitalTotal > 0 ? ((c.pagadoTotal / c.capitalTotal) * 100).toFixed(1) : '0.0';
     return '<tr>'
-      + '<td>' + numBadge + '<strong class="link-cliente" data-nombre="' + c.nombre + '" style="cursor:pointer;color:var(--azul);text-decoration:underline dotted;">' + c.nombre + '</strong>' + multiTag + inactivoTag + '</td>'
-      + '<td class="mono">$' + fmt(c.capitalTotal) + '</td>'
-      + '<td><span class="badge badge-green mono">$' + fmt(c.pagadoTotal) + '</span></td>'
+      + '<td>' + numBadge + '</td>'
+      + '<td><strong class="link-cliente" data-nombre="' + c.nombre + '" style="cursor:pointer;color:var(--azul);text-decoration:underline dotted;">' + c.nombre + '</strong>' + multiTag + inactivoTag + '</td>'
+      + '<td class="mono font-bold">$' + fmt(c.capitalTotal) + '</td>'
+      + '<td class="mono">$' + fmt(c.pagadoTotal) + '</td>'
       + '<td><span class="badge badge-orange mono">$' + fmt(c.pendienteCapital || c.pendienteTotal || 0) + '</span></td>'
-      + '<td><span class="badge badge-orange">activo</span></td>'
+      + '<td><span class="badge badge-orange">' + pct + '%</span></td>'
       + '<td style="display:flex;gap:6px;">'
         + '<button class="btn btn-secondary btn-sm pr-pago-btn" data-key="' + c.key + '">Pago</button>'
         + '<button class="btn btn-secondary btn-sm pr-edit-btn" data-id="' + (prId ? prId.id : '') + '" data-key="' + c.key + '" title="Editar">✏️</button>'
         + '<button class="btn btn-secondary btn-sm pr-ec-btn" data-id="' + (prId ? prId.id : '') + '" data-nombre="' + c.nombre + '">📄 Estado</button>'
       + '</td>'
       + '</tr>';
-  }).join('') || '<tr><td colspan="6"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
+  }).join('') || '<tr><td colspan="7"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
   const ptb = document.getElementById('prestamos-tbody');
   if(ptb) {
     ptb._delegado = true;
