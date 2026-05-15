@@ -12627,17 +12627,28 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
-<!-- Eliminar Service Worker viejo para forzar actualización -->
+<!-- Service Worker: desregistrar viejos y registrar nuevo en orden -->
 <script>
 if('serviceWorker' in navigator) {
+  // Primero desregistrar todos los SW viejos y limpiar caché,
+  // luego registrar el nuevo — evita el InvalidStateError de claim()
   navigator.serviceWorker.getRegistrations().then(function(regs) {
-    regs.forEach(function(reg) { reg.unregister(); console.log('SW eliminado:', reg.scope); });
-  });
-  caches.keys().then(function(keys) {
-    keys.forEach(function(key) { caches.delete(key); console.log('Cache eliminado:', key); });
-  });
-  // Registrar nuevo SW que siempre carga de red
-  navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    var unregistros = regs.map(function(reg) {
+      console.log('SW eliminado:', reg.scope);
+      return reg.unregister();
+    });
+    return Promise.all(unregistros);
+  }).then(function() {
+    return caches.keys();
+  }).then(function(keys) {
+    return Promise.all(keys.map(function(key) {
+      console.log('Cache eliminado:', key);
+      return caches.delete(key);
+    }));
+  }).then(function() {
+    // Solo registrar el nuevo SW después de que los viejos estén eliminados
+    return navigator.serviceWorker.register('./sw.js');
+  }).then(function(reg) {
     console.log('✅ SW registrado:', reg.scope);
   }).catch(function(e) {
     console.log('SW error:', e);
