@@ -1681,10 +1681,7 @@ function escucharCambios() {
   <div class="content view" id="view-socios">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
       <p style="color:var(--texto2);font-size:14px;" id="socios-count-label">58 socios registrados</p>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="abrirUnificarSocios()">🔗 Unificar socios</button>
-        <button class="btn btn-primary" onclick="abrirNuevoSocio()">+ Nuevo socio</button>
-      </div>
+      <button class="btn btn-primary" onclick="abrirNuevoSocio()">+ Nuevo socio</button>
     </div>
     <div class="card">
       <table>
@@ -4505,35 +4502,6 @@ function escucharCambios() {
   </div>
 </div>
 
-<!-- ─── MODAL UNIFICAR SOCIOS ─── -->
-<div class="modal-overlay" id="modal-unificar-socios">
-  <div class="modal" style="width:540px;max-width:96vw;">
-    <h2>🔗 Unificar socios</h2>
-    <p style="color:var(--texto2);font-size:13px;margin-bottom:16px;">Fusiona dos registros en uno solo. El socio <strong>principal</strong> conserva su ahorro y se le asignan los préstamos del secundario. El secundario se elimina.</p>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Socio principal (conservar)</label>
-        <select id="unif-principal" onchange="unificarPreview()">
-          <option value="">— Seleccionar —</option>
-        </select>
-        <div id="unif-info-principal" style="margin-top:6px;font-size:12px;color:var(--texto2);"></div>
-      </div>
-      <div class="form-group">
-        <label>Socio a absorber (eliminar)</label>
-        <select id="unif-secundario" onchange="unificarPreview()">
-          <option value="">— Seleccionar —</option>
-        </select>
-        <div id="unif-info-secundario" style="margin-top:6px;font-size:12px;color:var(--texto2);"></div>
-      </div>
-    </div>
-    <div id="unif-preview" style="display:none;background:var(--amarillo-claro);border:1px solid var(--amarillo);border-radius:var(--radio-sm);padding:12px 14px;font-size:13px;margin-bottom:16px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="cerrarModal('modal-unificar-socios')">Cancelar</button>
-      <button class="btn btn-primary" id="unif-btn-confirmar" onclick="confirmarUnificar()" disabled style="background:var(--rojo);">⚠️ Unificar y eliminar secundario</button>
-    </div>
-  </div>
-</div>
-
 <!-- ─── MODAL NUEVO PRÉSTAMO ─── -->
 <div class="modal-overlay" id="modal-prestamo">
   <div class="modal" style="width:520px;max-width:96vw;">
@@ -6687,10 +6655,7 @@ function guardarSocio() {
   [nsN, nsC].forEach(el => el.style.borderColor = '');
   if(!nombre) { nsN.style.borderColor='var(--rojo)'; nsN.focus(); return; }
   if(!cuota)  { nsC.style.borderColor='var(--rojo)'; nsC.focus(); return; }
-  var _idsUsados = DB.socios.map(function(s){ return Number(s.id)||0; });
-  var _nextId = _idsUsados.length ? Math.max.apply(null, _idsUsados) + 1 : 1;
-  while(_idsUsados.indexOf(_nextId) !== -1) _nextId++;
-  DB.socios.push({ id: _nextId, nombre, tel, cuota, freq, ahorro:0, fecha, activo:true, ocultarAhorros:false, ocultarPrestamos:false });
+  DB.socios.push({ id: DB.socios.length+1, nombre, tel, cuota, freq, ahorro:0, fecha, activo:true, ocultarAhorros:false, ocultarPrestamos:false });
   cerrarModal('modal-socio');
   renderSocios();
 }
@@ -7306,6 +7271,15 @@ function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
   document.getElementById('recibo-fecha').textContent = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   document.getElementById('recibo-concepto').textContent = concepto;
   document.getElementById('recibo-saldo').textContent = tipo==='ahorro' ? '$'+fmt(saldo) : tipo==='prestamo' ? '$'+fmt(saldo)+' restante' : '$'+fmt(monto);
+  // Limpiar campos de préstamo para evitar que queden datos de operaciones anteriores
+  var _labelSaldo = document.getElementById('recibo-saldo-label');
+  if(_labelSaldo) _labelSaldo.textContent = tipo==='ahorro' ? 'Saldo acumulado' : tipo==='prestamo' ? 'Saldo pendiente' : 'Monto';
+  var _elSaldo = document.getElementById('recibo-saldo');
+  if(_elSaldo) _elSaldo.style.color = tipo==='ahorro' ? 'var(--verde)' : 'var(--naranja)';
+  var _rowAnt = document.getElementById('recibo-row-saldo-ant');
+  if(_rowAnt && tipo==='ahorro') _rowAnt.style.display = 'none';
+  var _rowDeuda = document.getElementById('recibo-row-total-deuda');
+  if(_rowDeuda && tipo==='ahorro') _rowDeuda.style.display = 'none';
   const rn = document.getElementById('recibo-row-notas');
   if(notas){ rn.style.display='flex'; document.getElementById('recibo-notas').textContent=notas; } else { rn.style.display='none'; }
   document.getElementById('recibo-overlay').classList.add('open');
@@ -12662,117 +12636,21 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
-<!-- Service Worker: desregistrar viejos y registrar nuevo en orden -->
+<!-- Eliminar Service Worker viejo para forzar actualización -->
 <script>
 if('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(function(regs) {
-    var unregistros = regs.map(function(reg) {
-      console.log('SW eliminado:', reg.scope);
-      return reg.unregister();
-    });
-    return Promise.all(unregistros);
-  }).then(function() {
-    return caches.keys();
-  }).then(function(keys) {
-    return Promise.all(keys.map(function(key) {
-      console.log('Cache eliminado:', key);
-      return caches.delete(key);
-    }));
-  }).then(function() {
-    return navigator.serviceWorker.register('./sw.js');
-  }).then(function(reg) {
+    regs.forEach(function(reg) { reg.unregister(); console.log('SW eliminado:', reg.scope); });
+  });
+  caches.keys().then(function(keys) {
+    keys.forEach(function(key) { caches.delete(key); console.log('Cache eliminado:', key); });
+  });
+  // Registrar nuevo SW que siempre carga de red
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
     console.log('✅ SW registrado:', reg.scope);
   }).catch(function(e) {
     console.log('SW error:', e);
   });
-}
-</script>
-
-<!-- ─── UNIFICAR SOCIOS ─── -->
-<script>
-function abrirUnificarSocios() {
-  var socios = DB.socios.filter(function(s){ return s.activo && !s.categoria; });
-  socios.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); });
-  function opts(sel) {
-    var s = document.getElementById(sel);
-    s.innerHTML = '<option value="">— Seleccionar —</option>';
-    socios.forEach(function(sc) {
-      var o = document.createElement('option');
-      o.value = sc.id;
-      o.textContent = '#' + String(sc.id).padStart(2,'0') + ' ' + sc.nombre;
-      s.appendChild(o);
-    });
-  }
-  opts('unif-principal');
-  opts('unif-secundario');
-  document.getElementById('unif-preview').style.display = 'none';
-  document.getElementById('unif-btn-confirmar').disabled = true;
-  document.getElementById('unif-info-principal').textContent = '';
-  document.getElementById('unif-info-secundario').textContent = '';
-  document.getElementById('modal-unificar-socios').classList.add('open');
-}
-
-function unificarPreview() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
-  var btn = document.getElementById('unif-btn-confirmar');
-  var prev = document.getElementById('unif-preview');
-  prev.style.display = 'none';
-  btn.disabled = true;
-
-  function infoSocio(id, elId) {
-    var s = DB.socios.find(function(x){ return x.id === id; });
-    var el = document.getElementById(elId);
-    if(!s) { el.textContent = ''; return; }
-    var prs = (DB.prestamos||[]).filter(function(p){ return p.socioId === id && p.estado === 'activo'; });
-    var totalPrs = prs.reduce(function(t,p){ return t + (p.pendiente||0); }, 0);
-    el.textContent = 'Ahorro: $' + (s.ahorro||0).toLocaleString('es-MX') + (totalPrs ? ' | Préstamos activos: $' + totalPrs.toLocaleString('es-MX') : ' | Sin préstamos activos');
-  }
-  if(idP) infoSocio(idP, 'unif-info-principal');
-  if(idS) infoSocio(idS, 'unif-info-secundario');
-
-  if(!idP || !idS || idP === idS) return;
-  var p = DB.socios.find(function(x){ return x.id === idP; });
-  var s = DB.socios.find(function(x){ return x.id === idS; });
-  if(!p || !s) return;
-
-  var prsS = (DB.prestamos||[]).filter(function(pr){ return pr.socioId === idS; });
-  var ahorroFinal = (p.ahorro||0) + (s.ahorro||0);
-
-  prev.style.display = 'block';
-  prev.innerHTML = '<strong>Resultado de la unificación:</strong><br>' +
-    '• <strong>' + p.nombre + '</strong> (#' + p.id + ') conserva su ID y ahorro<br>' +
-    '• Ahorro combinado: <strong>$' + ahorroFinal.toLocaleString('es-MX') + '</strong><br>' +
-    '• ' + prsS.length + ' préstamo(s) de <em>' + s.nombre + '</em> se reasignan al principal<br>' +
-    '• <strong>' + s.nombre + '</strong> (#' + s.id + ') será eliminado';
-  btn.disabled = false;
-}
-
-function confirmarUnificar() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
-  if(!idP || !idS || idP === idS) return;
-
-  var p = DB.socios.find(function(x){ return x.id === idP; });
-  var s = DB.socios.find(function(x){ return x.id === idS; });
-  if(!p || !s) return;
-
-  if(!confirm('¿Confirmas unificar?\n\nPRINCIPAL: ' + p.nombre + ' (#' + p.id + ')\nABSORBER: ' + s.nombre + ' (#' + s.id + ')\n\nEsta acción no se puede deshacer.')) return;
-
-  // 1. Sumar ahorro del secundario al principal
-  p.ahorro = (p.ahorro||0) + (s.ahorro||0);
-
-  // 2. Reasignar todos los préstamos del secundario al principal
-  (DB.prestamos||[]).forEach(function(pr){
-    if(pr.socioId === idS) { pr.socioId = idP; pr.nombre = p.nombre; }
-  });
-
-  // 3. Eliminar socio secundario
-  DB.socios = DB.socios.filter(function(x){ return x.id !== idS; });
-
-  cerrarModal('modal-unificar-socios');
-  if(typeof guardarDatos === 'function') guardarDatos({ render: true, firebase: true });
-  alert('✅ Socios unificados correctamente.\n' + s.nombre + ' fue absorbido por ' + p.nombre + '.');
 }
 </script>
 
