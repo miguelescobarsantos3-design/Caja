@@ -723,19 +723,21 @@ let _fbApp = null, _fbDb = null, _fbConectado = false;
 
 function iniciarFirebase() {
   try {
-    if(typeof firebase === 'undefined') { console.warn('Firebase SDK no cargado'); actualizarIndicadorSync('sin_conexion'); return; }
+    if(typeof firebase === 'undefined') {
+      console.warn('Firebase SDK no cargado');
+      actualizarIndicadorSync('sin_conexion');
+      return;
+    }
     _fbApp = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(FB_CONFIG);
     _fbDb  = firebase.firestore();
     _fbConectado = true;
-    // MODO SEGURO: los datos locales mandan. No descargar datos viejos de la nube al abrir.
-    window.CAJA_LOCAL_GANA = true;
     actualizarIndicadorSync('conectado');
-    console.log('Firebase conectado ✓ — modo local gana');
-    // Después de cargar localStorage/HTML, subimos ese estado a nube.
-    setTimeout(function(){
-      try { if(typeof guardarDatos === 'function') guardarDatos({render:false, fuente:'inicio-local-gana'}); }
-      catch(e){ console.warn('No se pudo subir estado local:', e.message); }
-    }, 800);
+    console.log('Firebase conectado ✓ — nube como fuente de verdad');
+
+    // IMPORTANTE:
+    // Al abrir la app NO subimos automáticamente los datos locales.
+    // Primero se descarga Firebase y luego se escucha en tiempo real.
+    // Así la PC puede mandar cambios al celular sin que el cel los pise al abrir.
   } catch(e) {
     console.warn('Firebase error:', e.message);
     _fbConectado = false;
@@ -837,6 +839,7 @@ async function guardarEnFirebase() {
       ts:             Date.now(),
       _dispositivo:   window._dispositivoId || 'desconocido'
     };
+    try { sessionStorage.setItem('yo_guarde_ts', String(datos.ts)); } catch(e) {}
     await _fbDb.collection('caja').doc('datos').set(datos);
     localStorage.setItem('caja_ts', String(datos.ts));
     actualizarIndicadorSync('guardado');
@@ -953,54 +956,72 @@ async function cargarDesdFirebase() {
 let _fbListener = null;
 function escucharCambios() {
   if(!_fbDb) return;
-  var _ultimoTs = 0; // Siempre detectar cambios desde Firebase al arrancar
-  _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
+  if(_fbListener) return; // evitar duplicar escuchas
+
+  var _ultimoTs = 0; // detectar también el primer estado que llegue de Firebase
+  _fbListener = _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
     if(!snap.exists) return;
     var datos = snap.data();
     if(!datos || !datos.ts) return;
     if(datos.ts <= _ultimoTs) return;
-    // Verificar si YO fui quien guardó (evitar aplicar mis propios cambios)
+
+    // Si el cambio lo guardó este mismo dispositivo, no hace falta re-aplicarlo.
     var yoGuarde = sessionStorage.getItem('yo_guarde_ts');
-    if(yoGuarde && Math.abs(datos.ts - parseInt(yoGuarde)) < 15000) {
+    var mismoDispositivo = datos._dispositivo && window._dispositivoId && datos._dispositivo === window._dispositivoId;
+    if(mismoDispositivo || (yoGuarde && Math.abs(datos.ts - parseInt(yoGuarde)) < 15000)) {
       _ultimoTs = datos.ts;
-      return; // Fue este mismo dispositivo — ignorar
+      return;
     }
-    // Otro dispositivo guardó — aplicar cambios directamente
-    console.log('Cambio detectado desde otro dispositivo — actualizando...');
+
+    console.log('☁ Cambio detectado en Firebase — actualizando este dispositivo...', datos.ts);
     _ultimoTs = datos.ts;
-    DB.socios      = datos.socios      || DB.socios;
-    DB.prestamos   = datos.prestamos   || DB.prestamos;
+
+    DB.socios      = datos.socios      || DB.socios      || [];
+    DB.prestamos   = datos.prestamos   || DB.prestamos   || [];
     if(typeof fixSocioIds==='function') fixSocioIds();
-    DB.tandas      = datos.tandas      || DB.tandas;
-    DB.movimientos = datos.movimientos || DB.movimientos;
-    DB.cumple      = datos.cumple      || DB.cumple;
-    DB.fondoCumple = datos.fondoCumple || DB.fondoCumple;
-    DB.configCumple= datos.configCumple|| DB.configCumple;
-    DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix;
-    DB.tanda300    = datos.tanda300    || DB.tanda300 || null;
-    DB.tanda1000   = datos.tanda1000   || DB.tanda1000 || null;
+    DB.tandas      = datos.tandas      || DB.tandas      || [];
+    DB.movimientos = datos.movimientos || DB.movimientos || [];
+    DB.cumple      = datos.cumple      || DB.cumple      || [];
+    DB.fondoCumple = datos.fondoCumple || DB.fondoCumple || [];
+    DB.configCumple= datos.configCumple|| DB.configCumple|| {participantes:32, aportacion:100};
+    DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix|| {festejados:[], participantes:[]};
+    DB.tanda300    = datos.tanda300    || DB.tanda300    || null;
+    DB.tanda1000   = datos.tanda1000   || DB.tanda1000   || null;
     DB.tandasGrupales = datos.tandasGrupales || DB.tandasGrupales || [];
-    DB.utilidades  = (datos.utilidades||DB.utilidades).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
-    DB.recibos     = datos.recibos     || DB.recibos;
+    DB.utilidades  = (datos.utilidades||DB.utilidades||[]).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+    DB.recibos     = datos.recibos     || DB.recibos     || [];
+    DB._directorio = datos._directorio  || DB._directorio || [];
     if(datos.cuentas && typeof aplicarCuentasPersistidas==='function') aplicarCuentasPersistidas(datos.cuentas);
+
     if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-    // Guardar localmente con ts de Firebase
+    if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
+    if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
+
     try {
       var json = JSON.stringify(Object.assign({}, datos, {v:3}));
       localStorage.setItem('caja_ahorro_2026', json);
       localStorage.setItem('caja_ahorro_2026_backup_total', json);
       localStorage.setItem('caja_ts', String(datos.ts));
     } catch(e) {}
-    // Re-renderizar
-    if(typeof renderDashboard==='function') renderDashboard();
-    if(typeof renderSocios==='function') renderSocios();
-    if(typeof renderPrestamos==='function') renderPrestamos();
-    if(typeof renderAhorros==='function') renderAhorros();
-    if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false); else if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
+
+    if(typeof refrescarVistaActiva==='function') refrescarVistaActiva();
+    else {
+      if(typeof renderDashboard==='function') renderDashboard();
+      if(typeof renderSocios==='function') renderSocios();
+      if(typeof renderPrestamos==='function') renderPrestamos();
+      if(typeof renderAhorros==='function') renderAhorros();
+      if(typeof renderTanda300==='function') renderTanda300();
+      if(typeof renderTanda1000==='function') renderTanda1000();
+      if(typeof renderUtilidades==='function') renderUtilidades();
+    }
     actualizarIndicadorSync('conectado');
-  }, function(err){ console.warn('Listener error:', err.message); });
+    if(typeof toast === 'function') toast('☁ Datos actualizados desde la nube');
+  }, function(err){
+    console.warn('Listener Firebase error:', err.message);
+    actualizarIndicadorSync('sin_conexion');
+  });
 }
 
     if('serviceWorker' in navigator) {
@@ -10439,14 +10460,19 @@ function normalizarVisibilidadSocios() {
           // Re-renderizar con datos frescos de Firebase
           if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
           if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-          if(typeof renderDashboard==='function') renderDashboard();
-          if(typeof renderSocios==='function') renderSocios();
-          if(typeof renderPrestamos==='function') renderPrestamos();
-          if(typeof renderAhorros==='function') renderAhorros();
+          if(typeof refrescarVistaActiva==='function') refrescarVistaActiva();
+          else {
+            if(typeof renderDashboard==='function') renderDashboard();
+            if(typeof renderSocios==='function') renderSocios();
+            if(typeof renderPrestamos==='function') renderPrestamos();
+            if(typeof renderAhorros==='function') renderAhorros();
+          }
           if(typeof renderRecibos==='function') renderRecibos('todos');
           if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false);
           console.log('✅ App actualizada con datos de Firestore');
         }
+        // Activar actualización inmediata entre PC y celular.
+        if(typeof escucharCambios === 'function') escucharCambios();
       });
     }
   }, 2000);
@@ -11508,49 +11534,35 @@ function forzarSyncDesdeFirebase() {
   if(sessionStorage.getItem('sync_en_proceso')) return;
   sessionStorage.setItem('sync_en_proceso', '1');
   actualizarIndicadorSync('guardando');
-  // Resetear ts local a 0 para que Firebase siempre gane
+
+  // Forzar que Firebase gane en este dispositivo.
   try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
-  _fbDb.collection('caja').doc('datos').get().then(function(snap) {
+
+  cargarDesdFirebase().then(function(ok) {
     sessionStorage.removeItem('sync_en_proceso');
-    if(!snap.exists) { alert('No hay datos en Firebase'); return; }
-    const datos = snap.data();
-    if(!datos) return;
-    DB.socios      = datos.socios      || [];
-    DB.prestamos   = datos.prestamos   || [];
-    if(typeof fixSocioIds==='function') fixSocioIds();
-    DB.tandas      = datos.tandas      || [];
-    DB.movimientos = datos.movimientos || [];
-    DB.cumple      = datos.cumple      || [];
-    DB.fondoCumple = datos.fondoCumple || [];
-    DB.configCumple= datos.configCumple|| {participantes:32, aportacion:100};
-    DB.cumpleMatrix= datos.cumpleMatrix|| {festejados:[], participantes:[]};
-    DB.utilidades  = datos.utilidades  || [];
-    DB.recibos     = datos.recibos     || [];
-    DB.tanda300    = datos.tanda300    || null;
-    DB.tanda1000   = datos.tanda1000   || null;
-    if(datos.cuentas && typeof aplicarCuentasPersistidas==='function') aplicarCuentasPersistidas(datos.cuentas);
-    var nuevoTs = datos.ts || Date.now();
-    try {
-      var json = JSON.stringify(Object.assign({}, datos, {v:3, ts: nuevoTs + 1}));
-      localStorage.setItem('caja_ahorro_2026', json);
-      localStorage.setItem('caja_ahorro_2026_backup_total', json);
-      localStorage.setItem('caja_ts', String(nuevoTs + 1));
-    } catch(e) {}
-    if(typeof renderDashboard==='function') renderDashboard();
-    if(typeof renderSocios==='function') renderSocios();
-    if(typeof renderPrestamos==='function') renderPrestamos();
-    if(typeof renderAhorros==='function') renderAhorros();
-    if(typeof renderTanda300==='function') renderTanda300();
-    if(typeof renderTanda1000==='function') renderTanda1000();
-    if(typeof renderUtilidades==='function') renderUtilidades();
+    if(!ok) { alert('No se pudieron cargar datos desde Firebase'); return; }
+
+    if(typeof refrescarVistaActiva==='function') refrescarVistaActiva();
+    else {
+      if(typeof renderDashboard==='function') renderDashboard();
+      if(typeof renderSocios==='function') renderSocios();
+      if(typeof renderPrestamos==='function') renderPrestamos();
+      if(typeof renderAhorros==='function') renderAhorros();
+      if(typeof renderTanda300==='function') renderTanda300();
+      if(typeof renderTanda1000==='function') renderTanda1000();
+      if(typeof renderUtilidades==='function') renderUtilidades();
+    }
+
+    if(typeof escucharCambios === 'function') escucharCambios();
     actualizarIndicadorSync('conectado');
-    alert('✓ Datos actualizados desde Firebase (' + DB.socios.length + ' socios, ' + DB.recibos.length + ' recibos)');
+    alert('✓ Datos actualizados desde Firebase (' + (DB.socios?DB.socios.length:0) + ' socios, ' + (DB.recibos?DB.recibos.length:0) + ' recibos)');
   }).catch(function(e) {
     sessionStorage.removeItem('sync_en_proceso');
     alert('Error: ' + e.message);
     actualizarIndicadorSync('sin_conexion');
   });
 }
+
 function abrirNuevoPrestamoDesdeFicha() {
   const s = DB.socios.find(x => x.id === _fichaId);
   if(!s) return;
