@@ -1681,10 +1681,7 @@ function escucharCambios() {
   <div class="content view" id="view-socios">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
       <p style="color:var(--texto2);font-size:14px;" id="socios-count-label">58 socios registrados</p>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="abrirUnificarSocios()">🔗 Unificar socios</button>
-        <button class="btn btn-primary" onclick="abrirNuevoSocio()">+ Nuevo socio</button>
-      </div>
+      <button class="btn btn-primary" onclick="abrirNuevoSocio()">+ Nuevo socio</button>
     </div>
     <div class="card">
       <table>
@@ -4202,7 +4199,6 @@ function escucharCambios() {
       <button class="btn btn-secondary" id="ficha-btn-nuevo-prestamo" onclick="abrirNuevoPrestamoDesdeFicha()" style="background:#fff3e0;color:#e65100;border:1px solid #ffb74d;">📋 Nuevo préstamo</button>
       <button class="btn btn-primary" id="ficha-btn-pago" onclick="">+ Registrar pago</button>
     </div>
-    <div id="ficha-similares-container" style="display:none;padding:0 24px 16px;"></div>
   </div>
 </div>
 
@@ -4506,35 +4502,6 @@ function escucharCambios() {
   </div>
 </div>
 
-<!-- ─── MODAL UNIFICAR SOCIOS ─── -->
-<div class="modal-overlay" id="modal-unificar-socios">
-  <div class="modal" style="width:540px;max-width:96vw;">
-    <h2>🔗 Unificar socios</h2>
-    <p style="color:var(--texto2);font-size:13px;margin-bottom:16px;">Fusiona dos registros en uno solo. El socio <strong>principal</strong> conserva su ahorro y se le asignan los préstamos del secundario. El secundario se elimina.</p>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Socio principal (conservar)</label>
-        <select id="unif-principal" onchange="unificarPreview()">
-          <option value="">— Seleccionar —</option>
-        </select>
-        <div id="unif-info-principal" style="margin-top:6px;font-size:12px;color:var(--texto2);"></div>
-      </div>
-      <div class="form-group">
-        <label>Socio a absorber (eliminar)</label>
-        <select id="unif-secundario" onchange="unificarPreview()">
-          <option value="">— Seleccionar —</option>
-        </select>
-        <div id="unif-info-secundario" style="margin-top:6px;font-size:12px;color:var(--texto2);"></div>
-      </div>
-    </div>
-    <div id="unif-preview" style="display:none;background:var(--amarillo-claro,#fffde7);border:1px solid var(--amarillo,#f9a825);border-radius:var(--radio-sm);padding:12px 14px;font-size:13px;margin-bottom:16px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="cerrarModal('modal-unificar-socios')">Cancelar</button>
-      <button class="btn btn-primary" id="unif-btn-confirmar" onclick="confirmarUnificar()" disabled style="background:var(--rojo);">⚠️ Unificar y eliminar secundario</button>
-    </div>
-  </div>
-</div>
-
 <!-- ─── MODAL NUEVO PRÉSTAMO ─── -->
 <div class="modal-overlay" id="modal-prestamo">
   <div class="modal" style="width:520px;max-width:96vw;">
@@ -4562,9 +4529,8 @@ function escucharCambios() {
     <!-- Externo -->
     <div class="form-group" id="np-grupo-externo" style="display:none;">
       <label>Nombre del deudor</label>
-      <input type="text" id="np-nombre-externo" placeholder="Nombre completo" oninput="previewNumeroExterno(this.value); detectarNombreSimilarPrestamo(this.value)">
+      <input type="text" id="np-nombre-externo" placeholder="Nombre completo" oninput="previewNumeroExterno(this.value)">
       <div id="np-num-externo-preview" style="font-size:12px;margin-top:6px;color:var(--texto2);display:none;"></div>
-      <div id="np-similares-alerta" style="display:none;margin-top:8px;background:var(--amarillo-claro,#fffde7);border:1px solid var(--amarillo,#f9a825);border-radius:8px;padding:10px 12px;font-size:12px;"></div>
     </div>
 
     <div class="form-row">
@@ -5079,10 +5045,16 @@ function socioEsInactivo(s) {
   return !!(s && s.activo === false);
 }
 function ocultarSocioEnAhorros(s) {
-  return !!(s && s.activo === false && s.ocultarAhorros !== false);
+  if(!s) return false;
+  if(s.ocultarAhorros === true) return true;
+  if(s.activo === false && s.ocultarAhorros !== false) return true;
+  return false;
 }
 function ocultarSocioEnPrestamos(s) {
-  return !!(s && s.activo === false && s.ocultarPrestamos !== false);
+  if(!s) return false;
+  if(s.ocultarPrestamos === true) return true;
+  if(s.activo === false && s.ocultarPrestamos !== false) return true;
+  return false;
 }
 function socioVisibleEnAhorros(s) {
   return !ocultarSocioEnAhorros(s);
@@ -7840,11 +7812,6 @@ function abrirFichaSocio(socioId) {
   document.getElementById('ficha-btn-pago').onclick   = () => { cerrarModal('modal-ficha-socio'); abrirPagoSocio(s.id); };
   document.getElementById('ficha-btn-editar').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEditarSocio(s.id); };
 
-  // Detectar nombres similares y mostrar alerta de unificación
-  if(typeof detectarSimilaresEnFicha === 'function') {
-    detectarSimilaresEnFicha(s.nombre, 'ficha-similares-container');
-  }
-
   // Activar tab ahorro por defecto
   fichaTab('ahorro');
   document.getElementById('modal-ficha-socio').classList.add('open');
@@ -8010,11 +7977,7 @@ function guardarEdicionSocio() {
   s.activo  = document.getElementById('edit-activo').value === 'true';
   s.ocultarAhorros = document.getElementById('edit-ocultar-ahorros') ? document.getElementById('edit-ocultar-ahorros').value === 'true' : false;
   s.ocultarPrestamos = document.getElementById('edit-ocultar-prestamos') ? document.getElementById('edit-ocultar-prestamos').value === 'true' : false;
-  if(s.activo !== false) {
-    // Si está activo, siempre se muestra. Guardamos los switches apagados para evitar confusiones después.
-    s.ocultarAhorros = false;
-    s.ocultarPrestamos = false;
-  }
+  // Respetar la selección del usuario aunque el socio esté activo (por ejemplo socios que solo tienen préstamos)
 
   // Actualizar nombre en movimientos si cambió
   if(nombreAnterior !== nombre) {
@@ -12666,229 +12629,21 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
-<!-- Service Worker: desregistrar viejos y registrar nuevo en orden -->
+<!-- Eliminar Service Worker viejo para forzar actualización -->
 <script>
 if('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(function(regs) {
-    return Promise.all(regs.map(function(reg) { console.log('SW eliminado:', reg.scope); return reg.unregister(); }));
-  }).then(function() {
-    return caches.keys();
-  }).then(function(keys) {
-    return Promise.all(keys.map(function(key) { console.log('Cache eliminado:', key); return caches.delete(key); }));
-  }).then(function() {
-    return navigator.serviceWorker.register('./sw.js');
-  }).then(function(reg) {
+    regs.forEach(function(reg) { reg.unregister(); console.log('SW eliminado:', reg.scope); });
+  });
+  caches.keys().then(function(keys) {
+    keys.forEach(function(key) { caches.delete(key); console.log('Cache eliminado:', key); });
+  });
+  // Registrar nuevo SW que siempre carga de red
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
     console.log('✅ SW registrado:', reg.scope);
-  }).catch(function(e) { console.log('SW error:', e); });
-}
-</script>
-
-<!-- ─── NÚMERO DE SOCIO PARA EXTERNOS + DETECCIÓN DE NOMBRES SIMILARES ─── -->
-<script>
-// Similitud entre dos cadenas (0 a 1)
-function _similitud(a, b) {
-  a = a.toUpperCase().replace(/\s+/g,' ').trim();
-  b = b.toUpperCase().replace(/\s+/g,' ').trim();
-  if(a === b) return 1;
-  // Palabras en común / total palabras
-  var pa = a.split(' '), pb = b.split(' ');
-  var comunes = pa.filter(function(w){ return w.length > 2 && pb.includes(w); }).length;
-  var total = Math.max(pa.length, pb.length);
-  return comunes / total;
-}
-
-// Obtener número (#id) de un deudor externo desde el directorio
-function getNumeroExterno(nombre) {
-  var dir = DB._directorio || [];
-  var entry = dir.find(function(x){ return x.nombre.toUpperCase() === nombre.toUpperCase(); });
-  return entry ? entry.id : null;
-}
-
-// Detectar nombres similares al escribir en el campo de deudor externo
-function detectarNombreSimilarPrestamo(valor) {
-  var alerta = document.getElementById('np-similares-alerta');
-  if(!alerta) return;
-  var nombre = valor.trim().toUpperCase();
-  if(nombre.length < 4) { alerta.style.display='none'; return; }
-
-  // Buscar en socios y directorio
-  var candidatos = [];
-  (DB.socios||[]).forEach(function(s) {
-    if(s.categoria) return;
-    var sim = _similitud(nombre, s.nombre);
-    if(sim >= 0.5 && s.nombre.toUpperCase() !== nombre) candidatos.push({nombre: s.nombre, id: s.id, tipo: 'socio', sim: sim});
+  }).catch(function(e) {
+    console.log('SW error:', e);
   });
-  (DB._directorio||[]).forEach(function(d) {
-    if(d.nombre.toUpperCase() === nombre) return;
-    var sim = _similitud(nombre, d.nombre);
-    if(sim >= 0.5) candidatos.push({nombre: d.nombre, id: d.id, tipo: d.es_socio?'socio':'externo', sim: sim});
-  });
-
-  // Quitar duplicados y ordenar por similitud
-  var vistos = {};
-  candidatos = candidatos.filter(function(c){
-    if(vistos[c.nombre]) return false;
-    vistos[c.nombre] = true;
-    return true;
-  }).sort(function(a,b){ return b.sim - a.sim; }).slice(0, 3);
-
-  if(!candidatos.length) { alerta.style.display='none'; return; }
-
-  var html = '<strong>⚠️ Nombres similares encontrados:</strong><br>';
-  candidatos.forEach(function(c) {
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">'
-      + '<span>#' + String(c.id).padStart(2,'0') + ' ' + c.nombre + ' <span style="color:var(--texto2);">(' + Math.round(c.sim*100) + '% similar)</span></span>'
-      + '<button onclick="usarNombreExistente(\'' + c.nombre.replace(/'/g,"\\'") + '\')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--verde);background:transparent;color:var(--verde);cursor:pointer;">Usar este</button>'
-      + '</div>';
-  });
-  html += '<div style="margin-top:8px;font-size:11px;color:var(--texto2);">¿Es la misma persona? Usa "Usar este" para evitar duplicados, o continúa si es alguien diferente.</div>';
-  alerta.innerHTML = html;
-  alerta.style.display = 'block';
-}
-
-// Usar nombre existente desde la sugerencia
-function usarNombreExistente(nombre) {
-  var campo = document.getElementById('np-nombre-externo');
-  if(campo) {
-    campo.value = nombre;
-    previewNumeroExterno(nombre);
-    document.getElementById('np-similares-alerta').style.display = 'none';
-  }
-}
-
-// Detectar nombres similares al abrir la ficha de un socio
-function detectarSimilaresEnFicha(nombreSocio, contenedorId) {
-  var contenedor = document.getElementById(contenedorId);
-  if(!contenedor) return;
-  var candidatos = [];
-  (DB.socios||[]).forEach(function(s) {
-    if(s.nombre.toUpperCase() === nombreSocio.toUpperCase() || s.categoria) return;
-    var sim = _similitud(nombreSocio, s.nombre);
-    if(sim >= 0.5) candidatos.push({nombre: s.nombre, id: s.id, sim: sim});
-  });
-  (DB.prestamos||[]).forEach(function(p) {
-    if(!p.nombre || p.nombre.toUpperCase() === nombreSocio.toUpperCase()) return;
-    var sim = _similitud(nombreSocio, p.nombre);
-    if(sim >= 0.5) candidatos.push({nombre: p.nombre, id: p.socioId, sim: sim});
-  });
-  var vistos = {};
-  candidatos = candidatos.filter(function(c){
-    if(vistos[c.nombre]) return false;
-    vistos[c.nombre] = true;
-    return true;
-  }).sort(function(a,b){ return b.sim - a.sim; }).slice(0, 2);
-
-  if(!candidatos.length) { contenedor.style.display='none'; return; }
-  var html = '<div style="background:var(--amarillo-claro,#fffde7);border:1px solid var(--amarillo,#f9a825);border-radius:8px;padding:10px 14px;font-size:12px;margin-top:10px;">'
-    + '<strong>⚠️ Posibles duplicados:</strong><br>';
-  candidatos.forEach(function(c) {
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">'
-      + '<span>' + (c.id ? '#' + String(c.id).padStart(2,'0') + ' ' : '') + c.nombre + '</span>'
-      + '<button onclick="abrirUnificarConNombre(\'' + nombreSocio.replace(/'/g,"\\'") + '\',\'' + c.nombre.replace(/'/g,"\\'") + '\')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:none;background:var(--verde);color:#fff;cursor:pointer;">🔗 Unificar</button>'
-      + '</div>';
-  });
-  html += '</div>';
-  contenedor.innerHTML = html;
-  contenedor.style.display = 'block';
-}
-
-// Abrir modal de unificar con nombres preseleccionados
-function abrirUnificarConNombre(principal, secundario) {
-  abrirUnificarSocios();
-  setTimeout(function() {
-    var selP = document.getElementById('unif-principal');
-    var selS = document.getElementById('unif-secundario');
-    if(selP) {
-      Array.from(selP.options).forEach(function(o){ if(o.text.toUpperCase().includes(principal.toUpperCase())) selP.value = o.value; });
-    }
-    if(selS) {
-      Array.from(selS.options).forEach(function(o){ if(o.text.toUpperCase().includes(secundario.toUpperCase())) selS.value = o.value; });
-    }
-    unificarPreview();
-  }, 100);
-}
-</script>
-
-<!-- ─── UNIFICAR SOCIOS ─── -->
-<script>
-function abrirUnificarSocios() {
-  var socios = DB.socios.filter(function(s){ return s.activo && !s.categoria; });
-  socios.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); });
-  function opts(sel) {
-    var s = document.getElementById(sel);
-    s.innerHTML = '<option value="">— Seleccionar —</option>';
-    socios.forEach(function(sc) {
-      var o = document.createElement('option');
-      o.value = sc.id;
-      o.textContent = '#' + String(sc.id).padStart(2,'0') + ' ' + sc.nombre;
-      s.appendChild(o);
-    });
-  }
-  opts('unif-principal');
-  opts('unif-secundario');
-  document.getElementById('unif-preview').style.display = 'none';
-  document.getElementById('unif-btn-confirmar').disabled = true;
-  document.getElementById('unif-info-principal').textContent = '';
-  document.getElementById('unif-info-secundario').textContent = '';
-  document.getElementById('modal-unificar-socios').classList.add('open');
-}
-
-function unificarPreview() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
-  var btn = document.getElementById('unif-btn-confirmar');
-  var prev = document.getElementById('unif-preview');
-  prev.style.display = 'none';
-  btn.disabled = true;
-
-  function infoSocio(id, elId) {
-    var s = DB.socios.find(function(x){ return x.id === id; });
-    var el = document.getElementById(elId);
-    if(!s) { el.textContent = ''; return; }
-    var prs = (DB.prestamos||[]).filter(function(p){ return p.socioId === id && p.estado === 'activo'; });
-    var totalPrs = prs.reduce(function(t,p){ return t + (p.pendiente||0); }, 0);
-    el.textContent = 'Ahorro: $' + (s.ahorro||0).toLocaleString('es-MX') + (totalPrs ? ' | Préstamos activos: $' + totalPrs.toLocaleString('es-MX') : ' | Sin préstamos activos');
-  }
-  if(idP) infoSocio(idP, 'unif-info-principal');
-  if(idS) infoSocio(idS, 'unif-info-secundario');
-
-  if(!idP || !idS || idP === idS) return;
-  var p = DB.socios.find(function(x){ return x.id === idP; });
-  var s = DB.socios.find(function(x){ return x.id === idS; });
-  if(!p || !s) return;
-
-  var prsS = (DB.prestamos||[]).filter(function(pr){ return pr.socioId === idS; });
-  var ahorroFinal = (p.ahorro||0) + (s.ahorro||0);
-
-  prev.style.display = 'block';
-  prev.innerHTML = '<strong>Resultado de la unificación:</strong><br>'
-    + '• <strong>' + p.nombre + '</strong> (#' + p.id + ') conserva su ID y ahorro<br>'
-    + '• Ahorro combinado: <strong>$' + ahorroFinal.toLocaleString('es-MX') + '</strong><br>'
-    + '• ' + prsS.length + ' préstamo(s) de <em>' + s.nombre + '</em> se reasignan al principal<br>'
-    + '• <strong>' + s.nombre + '</strong> (#' + s.id + ') será eliminado';
-  btn.disabled = false;
-}
-
-function confirmarUnificar() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
-  if(!idP || !idS || idP === idS) return;
-
-  var p = DB.socios.find(function(x){ return x.id === idP; });
-  var s = DB.socios.find(function(x){ return x.id === idS; });
-  if(!p || !s) return;
-
-  if(!confirm('¿Confirmas unificar?\n\nPRINCIPAL: ' + p.nombre + ' (#' + p.id + ')\nABSORBER: ' + s.nombre + ' (#' + s.id + ')\n\nEsta acción no se puede deshacer.')) return;
-
-  p.ahorro = (p.ahorro||0) + (s.ahorro||0);
-  (DB.prestamos||[]).forEach(function(pr){
-    if(pr.socioId === idS) { pr.socioId = idP; pr.nombre = p.nombre; }
-  });
-  DB.socios = DB.socios.filter(function(x){ return x.id !== idS; });
-
-  cerrarModal('modal-unificar-socios');
-  if(typeof guardarDatos === 'function') guardarDatos({ render: true, firebase: true });
-  alert('✅ Socios unificados correctamente.\n' + s.nombre + ' fue absorbido por ' + p.nombre + '.');
 }
 </script>
 
