@@ -7162,7 +7162,6 @@ function renderCuentas() {
           </div>
           <div style="font-size:11px;color:var(--texto2);margin-top:4px;">${pct}% del total</div>
         </div>
-        <button onclick="eliminarCuenta('${k}')" style="margin-top:10px;width:100%;padding:5px;background:none;border:1px solid var(--rojo);color:var(--rojo);border-radius:6px;font-size:11px;cursor:pointer;">🗑 Eliminar</button>
       </div>
     </div>`;
   }).join('');
@@ -7178,7 +7177,7 @@ function renderCuentas() {
       <td style="color:var(--texto2);font-size:13px;">${c.nombre}</td>
       <td class="text-right mono font-bold" style="color:${esCero?'var(--gris3)':'var(--texto)'};">$${fmt(c.saldo)}</td>
       <td class="text-right"><span class="badge badge-gray">${pct}%</span></td>
-      <td class="text-right"><button onclick="eliminarCuenta('${k}')" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:13px;" title="Eliminar cuenta">🗑</button></td>
+
     </tr>`;
   }).join('');
 
@@ -12671,7 +12670,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(function(regs) {
-    return Promise.all(regs.map(function(r){ console.log('SW eliminado:',r.scope); return r.unregister(); }));
+    return Promise.all(regs.map(function(r){ return r.unregister(); }));
   }).then(function(){ return caches.keys(); })
   .then(function(keys){ return Promise.all(keys.map(function(k){ return caches.delete(k); })); })
   .then(function(){ return navigator.serviceWorker.register('./sw.js'); })
@@ -12693,21 +12692,20 @@ function _similitud(a,b){
 
 function _todosLosRegistros(){
   var lista=[];
-  (DB.socios||[]).forEach(function(s){
-    if(!s.categoria) lista.push({id:s.id,nombre:s.nombre,tipo:'socio',ahorro:s.ahorro||0,activo:s.activo});
-  });
   var yaEnSocios={};
-  (DB.socios||[]).forEach(function(s){ yaEnSocios[(s.nombre||'').toUpperCase()]=true; });
+  (DB.socios||[]).forEach(function(s){
+    if(!s.categoria){ lista.push({id:s.id,nombre:s.nombre,tipo:'socio',ahorro:s.ahorro||0}); yaEnSocios[(s.nombre||'').toUpperCase()]=true; }
+  });
   (DB._directorio||[]).forEach(function(d){
     if(!yaEnSocios[(d.nombre||'').toUpperCase()]){
       var prs=(DB.prestamos||[]).filter(function(p){ return p.socioId===d.id&&p.estado==='activo'; });
-      if(prs.length>0) lista.push({id:d.id,nombre:d.nombre,tipo:'externo',ahorro:0,activo:true});
+      if(prs.length>0) lista.push({id:d.id,nombre:d.nombre,tipo:'externo',ahorro:0});
     }
   });
   (DB.prestamos||[]).forEach(function(p){
     if(!p.socioId&&p.nombre&&p.estado==='activo'){
       var ya=lista.find(function(x){ return (x.nombre||'').toUpperCase()===(p.nombre||'').toUpperCase(); });
-      if(!ya) lista.push({id:null,nombre:p.nombre,tipo:'externo',ahorro:0,activo:true});
+      if(!ya) lista.push({id:null,nombre:p.nombre,tipo:'externo',ahorro:0});
     }
   });
   return lista.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); });
@@ -12840,12 +12838,11 @@ function unificarPreview(){
     if(s.tipo==='socio') return pr.socioId===s.id;
     return (pr.nombre||'').toUpperCase()===(s.nombre||'').toUpperCase()&&!pr.socioId;
   });
-  var infoP='';
+  var infoP='', infoS=prsS.length+' prestamo(s)';
   if(p.tipo==='socio'){
     var sp=DB.socios.find(function(x){ return x.id===p.id; });
     if(sp) infoP='Ahorro: $'+(sp.ahorro||0).toLocaleString('es-MX');
   }
-  var infoS=prsS.length+' prestamo(s)';
   document.getElementById('unif-info-principal').textContent=infoP;
   document.getElementById('unif-info-secundario').textContent=infoS;
   prev.style.display='block';
@@ -12863,10 +12860,7 @@ function confirmarUnificar(){
   var p=_parseUnifVal(vP), s=_parseUnifVal(vS);
   if(!p||!s) return;
   if(!confirm('Confirmas unificar? PRINCIPAL: '+p.nombre+' ABSORBER: '+s.nombre+' - No se puede deshacer.')) return;
-
   var socioP=p.tipo==='socio'?DB.socios.find(function(x){ return x.id===p.id; }):null;
-
-  // Reasignar prestamos del secundario al principal
   (DB.prestamos||[]).forEach(function(pr){
     var match=false;
     if(s.tipo==='socio'&&pr.socioId===s.id) match=true;
@@ -12876,19 +12870,14 @@ function confirmarUnificar(){
       else { pr.nombre=p.nombre; }
     }
   });
-
-  // Sumar ahorro si el secundario es socio
-  if(s.tipo==='socio'&&socioP){
+  if(s.tipo==='socio'){
     var socioS=DB.socios.find(function(x){ return x.id===s.id; });
-    if(socioS){ socioP.ahorro=(socioP.ahorro||0)+(socioS.ahorro||0); }
+    if(socioS&&socioP) socioP.ahorro=(socioP.ahorro||0)+(socioS.ahorro||0);
     DB.socios=DB.socios.filter(function(x){ return x.id!==s.id; });
   }
-
-  // Eliminar del directorio si era externo
   if(s.tipo==='externo'&&DB._directorio){
     DB._directorio=DB._directorio.filter(function(d){ return (d.nombre||'').toUpperCase()!==(s.nombre||'').toUpperCase(); });
   }
-
   cerrarModal('modal-unificar-socios');
   if(typeof guardarDatos==='function') guardarDatos({render:true,firebase:true});
   alert('Unificado. '+s.nombre+' absorbido por '+p.nombre+'.');
