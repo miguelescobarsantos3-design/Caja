@@ -12692,158 +12692,170 @@ if('serviceWorker' in navigator) {
 }
 </script>
 
-<!-- ─── SIMILITUD + DETECCIÓN NOMBRES + UNIFICAR SOCIOS ─── -->
+<!-- ─── SIMILITUD + DETECCION NOMBRES + UNIFICAR SOCIOS ─── -->
 <script>
-function _similitud(a, b) {
-  a = a.toUpperCase().replace(/\s+/g,' ').trim();
-  b = b.toUpperCase().replace(/\s+/g,' ').trim();
-  if(a === b) return 1;
-  var pa = a.split(' '), pb = b.split(' ');
-  var comunes = pa.filter(function(w){ return w.length > 2 && pb.includes(w); }).length;
-  var total = Math.max(pa.length, pb.length);
-  return total > 0 ? comunes / total : 0;
+function _similitud(a,b){
+  a=(a||'').toUpperCase().trim(); b=(b||'').toUpperCase().trim();
+  if(a===b) return 1;
+  var pa=a.split(' '), pb=b.split(' ');
+  var comunes=pa.filter(function(w){ return w.length>2 && pb.indexOf(w)!==-1; }).length;
+  var total=Math.max(pa.length,pb.length);
+  return total>0?comunes/total:0;
 }
 
-function detectarNombreSimilarPrestamo(valor) {
-  var alerta = document.getElementById('np-similares-alerta');
+function detectarNombreSimilarPrestamo(valor){
+  var alerta=document.getElementById('np-similares-alerta');
   if(!alerta) return;
-  var nombre = valor.trim().toUpperCase();
-  if(nombre.length < 4) { alerta.style.display='none'; return; }
-  var candidatos = [];
-  (DB.socios||[]).forEach(function(s) {
+  var nombre=(valor||'').trim().toUpperCase();
+  if(nombre.length<4){ alerta.style.display='none'; return; }
+  var candidatos=[];
+  (DB.socios||[]).forEach(function(s){
     if(s.categoria) return;
-    var sim = _similitud(nombre, s.nombre);
-    if(sim >= 0.5 && s.nombre.toUpperCase() !== nombre) candidatos.push({nombre:s.nombre, id:s.id, sim:sim});
+    var sim=_similitud(nombre,s.nombre);
+    if(sim>=0.5 && (s.nombre||'').toUpperCase()!==nombre) candidatos.push({nombre:s.nombre,id:s.id,sim:sim});
   });
-  (DB._directorio||[]).forEach(function(d) {
-    if(d.nombre.toUpperCase() === nombre) return;
-    var sim = _similitud(nombre, d.nombre);
-    if(sim >= 0.5) candidatos.push({nombre:d.nombre, id:d.id, sim:sim});
+  (DB._directorio||[]).forEach(function(d){
+    if((d.nombre||'').toUpperCase()===nombre) return;
+    var sim=_similitud(nombre,d.nombre);
+    if(sim>=0.5) candidatos.push({nombre:d.nombre,id:d.id,sim:sim});
   });
-  var vistos = {};
-  candidatos = candidatos.filter(function(c){ if(vistos[c.nombre]) return false; vistos[c.nombre]=true; return true; })
+  var vistos={};
+  candidatos=candidatos.filter(function(c){ if(vistos[c.nombre]) return false; vistos[c.nombre]=true; return true; })
     .sort(function(a,b){ return b.sim-a.sim; }).slice(0,3);
-  if(!candidatos.length) { alerta.style.display='none'; return; }
-  var html = '<strong>⚠️ Nombres similares encontrados:</strong><br>';
-  candidatos.forEach(function(c) {
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">'
-      + '<span>#' + String(c.id).padStart(2,'0') + ' ' + c.nombre + ' <span style="color:#999;">(' + Math.round(c.sim*100) + '% similar)</span></span>'
-      + '<button onclick="usarNombreExistente('' + c.nombre.replace(/'/g,"\'") + '')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--verde);background:transparent;color:var(--verde);cursor:pointer;">Usar este</button>'
-      + '</div>';
+  if(!candidatos.length){ alerta.style.display='none'; return; }
+  alerta.innerHTML='<strong>Nombres similares encontrados:</strong>';
+  candidatos.forEach(function(c){
+    var div=document.createElement('div');
+    div.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:6px;';
+    var span=document.createElement('span');
+    span.textContent='#'+String(c.id).padStart(2,'0')+' '+c.nombre+' ('+Math.round(c.sim*100)+'%)';
+    var btn=document.createElement('button');
+    btn.textContent='Usar este';
+    btn.style.cssText='font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--verde);background:transparent;color:var(--verde);cursor:pointer;';
+    (function(n){ btn.addEventListener('click',function(){ usarNombreExistente(n); }); })(c.nombre);
+    div.appendChild(span); div.appendChild(btn);
+    alerta.appendChild(div);
   });
-  html += '<div style="margin-top:8px;font-size:11px;color:#999;">¿Es la misma persona? Usa "Usar este" para evitar duplicados.</div>';
-  alerta.innerHTML = html;
-  alerta.style.display = 'block';
+  alerta.style.display='block';
+}
+function usarNombreExistente(nombre){
+  var campo=document.getElementById('np-nombre-externo');
+  if(campo){ campo.value=nombre; if(typeof previewNumeroExterno==='function') previewNumeroExterno(nombre); document.getElementById('np-similares-alerta').style.display='none'; }
 }
 
-function usarNombreExistente(nombre) {
-  var campo = document.getElementById('np-nombre-externo');
-  if(campo) { campo.value = nombre; previewNumeroExterno(nombre); document.getElementById('np-similares-alerta').style.display='none'; }
-}
-
-function detectarSimilaresEnFicha(nombreSocio, contenedorId) {
-  var contenedor = document.getElementById(contenedorId);
+function detectarSimilaresEnFicha(nombreSocio,contenedorId){
+  var contenedor=document.getElementById(contenedorId);
   if(!contenedor) return;
-  var candidatos = [];
-  (DB.socios||[]).forEach(function(s) {
-    if(s.nombre.toUpperCase() === nombreSocio.toUpperCase() || s.categoria) return;
-    var sim = _similitud(nombreSocio, s.nombre);
-    if(sim >= 0.5) candidatos.push({nombre:s.nombre, id:s.id, sim:sim});
+  var candidatos=[];
+  (DB.socios||[]).forEach(function(s){
+    if((s.nombre||'').toUpperCase()===(nombreSocio||'').toUpperCase()||s.categoria) return;
+    var sim=_similitud(nombreSocio,s.nombre);
+    if(sim>=0.5) candidatos.push({nombre:s.nombre,id:s.id,sim:sim});
   });
-  var vistos = {};
-  candidatos = candidatos.filter(function(c){ if(vistos[c.nombre]) return false; vistos[c.nombre]=true; return true; })
+  var vistos={};
+  candidatos=candidatos.filter(function(c){ if(vistos[c.nombre]) return false; vistos[c.nombre]=true; return true; })
     .sort(function(a,b){ return b.sim-a.sim; }).slice(0,2);
-  if(!candidatos.length) { contenedor.style.display='none'; return; }
-  var html = '<div style="background:#fffde7;border:1px solid #f9a825;border-radius:8px;padding:10px 14px;font-size:12px;">'
-    + '<strong>⚠️ Posibles duplicados:</strong><br>';
-  candidatos.forEach(function(c) {
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">'
-      + '<span>#' + String(c.id).padStart(2,'0') + ' ' + c.nombre + '</span>'
-      + '<button onclick="abrirUnificarConNombre('' + nombreSocio.replace(/'/g,"\'") + '','' + c.nombre.replace(/'/g,"\'") + '')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:none;background:var(--verde);color:#fff;cursor:pointer;">🔗 Unificar</button>'
-      + '</div>';
+  if(!candidatos.length){ contenedor.style.display='none'; return; }
+  contenedor.innerHTML='';
+  var wrap=document.createElement('div');
+  wrap.style.cssText='background:#fffde7;border:1px solid #f9a825;border-radius:8px;padding:10px 14px;font-size:12px;';
+  var titulo=document.createElement('strong');
+  titulo.textContent='Posibles duplicados:';
+  wrap.appendChild(titulo);
+  candidatos.forEach(function(c){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:6px;';
+    var span=document.createElement('span');
+    span.textContent='#'+String(c.id).padStart(2,'0')+' '+c.nombre;
+    var btn=document.createElement('button');
+    btn.textContent='Unificar';
+    btn.style.cssText='font-size:11px;padding:3px 10px;border-radius:6px;border:none;background:var(--verde);color:#fff;cursor:pointer;';
+    (function(p,s){ btn.addEventListener('click',function(){ abrirUnificarConNombre(p,s); }); })(nombreSocio,c.nombre);
+    row.appendChild(span); row.appendChild(btn);
+    wrap.appendChild(row);
   });
-  html += '</div>';
-  contenedor.innerHTML = html;
-  contenedor.style.display = 'block';
+  contenedor.appendChild(wrap);
+  contenedor.style.display='block';
 }
 
-function abrirUnificarConNombre(principal, secundario) {
+function abrirUnificarConNombre(principal,secundario){
   abrirUnificarSocios();
-  setTimeout(function() {
-    var selP = document.getElementById('unif-principal');
-    var selS = document.getElementById('unif-secundario');
-    if(selP) Array.from(selP.options).forEach(function(o){ if(o.text.toUpperCase().includes(principal.toUpperCase())) selP.value = o.value; });
-    if(selS) Array.from(selS.options).forEach(function(o){ if(o.text.toUpperCase().includes(secundario.toUpperCase())) selS.value = o.value; });
+  setTimeout(function(){
+    var selP=document.getElementById('unif-principal');
+    var selS=document.getElementById('unif-secundario');
+    if(selP) Array.from(selP.options).forEach(function(o){ if(o.text.toUpperCase().indexOf(principal.toUpperCase())!==-1) selP.value=o.value; });
+    if(selS) Array.from(selS.options).forEach(function(o){ if(o.text.toUpperCase().indexOf(secundario.toUpperCase())!==-1) selS.value=o.value; });
     unificarPreview();
-  }, 150);
+  },150);
 }
 
-function abrirUnificarSocios() {
-  var socios = DB.socios.filter(function(s){ return s.activo && !s.categoria; });
+function abrirUnificarSocios(){
+  var socios=DB.socios.filter(function(s){ return s.activo&&!s.categoria; });
   socios.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); });
-  function opts(sel) {
-    var s = document.getElementById(sel);
-    s.innerHTML = '<option value="">— Seleccionar —</option>';
-    socios.forEach(function(sc) {
-      var o = document.createElement('option');
-      o.value = sc.id;
-      o.textContent = '#' + String(sc.id).padStart(2,'0') + ' ' + sc.nombre;
-      s.appendChild(o);
+  function opts(sel){
+    var el=document.getElementById(sel);
+    el.innerHTML='<option value="">-- Seleccionar --</option>';
+    socios.forEach(function(sc){
+      var o=document.createElement('option');
+      o.value=sc.id;
+      o.textContent='#'+String(sc.id).padStart(2,'0')+' '+sc.nombre;
+      el.appendChild(o);
     });
   }
   opts('unif-principal'); opts('unif-secundario');
-  document.getElementById('unif-preview').style.display = 'none';
-  document.getElementById('unif-btn-confirmar').disabled = true;
-  document.getElementById('unif-info-principal').textContent = '';
-  document.getElementById('unif-info-secundario').textContent = '';
+  document.getElementById('unif-preview').style.display='none';
+  document.getElementById('unif-btn-confirmar').disabled=true;
+  document.getElementById('unif-info-principal').textContent='';
+  document.getElementById('unif-info-secundario').textContent='';
   document.getElementById('modal-unificar-socios').classList.add('open');
 }
 
-function unificarPreview() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
-  var btn = document.getElementById('unif-btn-confirmar');
-  var prev = document.getElementById('unif-preview');
-  prev.style.display = 'none'; btn.disabled = true;
-  function infoSocio(id, elId) {
-    var s = DB.socios.find(function(x){ return x.id===id; });
-    var el = document.getElementById(elId);
+function unificarPreview(){
+  var idP=parseInt(document.getElementById('unif-principal').value);
+  var idS=parseInt(document.getElementById('unif-secundario').value);
+  var btn=document.getElementById('unif-btn-confirmar');
+  var prev=document.getElementById('unif-preview');
+  prev.style.display='none'; btn.disabled=true;
+  function infoSocio(id,elId){
+    var s=DB.socios.find(function(x){ return x.id===id; });
+    var el=document.getElementById(elId);
     if(!s){ el.textContent=''; return; }
-    var prs = (DB.prestamos||[]).filter(function(p){ return p.socioId===id && p.estado==='activo'; });
-    var total = prs.reduce(function(t,p){ return t+(p.pendiente||0); },0);
-    el.textContent = 'Ahorro: $'+(s.ahorro||0).toLocaleString('es-MX')+(total?' | Préstamos: $'+total.toLocaleString('es-MX'):' | Sin préstamos');
+    var prs=(DB.prestamos||[]).filter(function(p){ return p.socioId===id&&p.estado==='activo'; });
+    var total=prs.reduce(function(t,p){ return t+(p.pendiente||0); },0);
+    el.textContent='Ahorro: $'+(s.ahorro||0).toLocaleString('es-MX')+(total?' | Prestamos: $'+total.toLocaleString('es-MX'):' | Sin prestamos');
   }
   if(idP) infoSocio(idP,'unif-info-principal');
   if(idS) infoSocio(idS,'unif-info-secundario');
   if(!idP||!idS||idP===idS) return;
-  var p = DB.socios.find(function(x){ return x.id===idP; });
-  var s = DB.socios.find(function(x){ return x.id===idS; });
+  var p=DB.socios.find(function(x){ return x.id===idP; });
+  var s=DB.socios.find(function(x){ return x.id===idS; });
   if(!p||!s) return;
-  var prsS = (DB.prestamos||[]).filter(function(pr){ return pr.socioId===idS; });
-  var ahorroFinal = (p.ahorro||0)+(s.ahorro||0);
-  prev.style.display = 'block';
-  prev.innerHTML = '<strong>Resultado:</strong><br>'
-    +'• <strong>'+p.nombre+'</strong> (#'+p.id+') conserva su ID y ahorro<br>'
-    +'• Ahorro combinado: <strong>$'+ahorroFinal.toLocaleString('es-MX')+'</strong><br>'
-    +'• '+prsS.length+' préstamo(s) de <em>'+s.nombre+'</em> se reasignan al principal<br>'
-    +'• <strong>'+s.nombre+'</strong> (#'+s.id+') será eliminado';
-  btn.disabled = false;
+  var prsS=(DB.prestamos||[]).filter(function(pr){ return pr.socioId===idS; });
+  var ahorroFinal=(p.ahorro||0)+(s.ahorro||0);
+  prev.style.display='block';
+  prev.textContent='';
+  prev.innerHTML='<strong>Resultado:</strong><br>'
+    +'- '+p.nombre+' (#'+p.id+') conserva su ID<br>'
+    +'- Ahorro combinado: $'+ahorroFinal.toLocaleString('es-MX')+'<br>'
+    +'- '+prsS.length+' prestamo(s) de '+s.nombre+' se reasignan<br>'
+    +'- '+s.nombre+' (#'+s.id+') sera eliminado';
+  btn.disabled=false;
 }
 
-function confirmarUnificar() {
-  var idP = parseInt(document.getElementById('unif-principal').value);
-  var idS = parseInt(document.getElementById('unif-secundario').value);
+function confirmarUnificar(){
+  var idP=parseInt(document.getElementById('unif-principal').value);
+  var idS=parseInt(document.getElementById('unif-secundario').value);
   if(!idP||!idS||idP===idS) return;
-  var p = DB.socios.find(function(x){ return x.id===idP; });
-  var s = DB.socios.find(function(x){ return x.id===idS; });
+  var p=DB.socios.find(function(x){ return x.id===idP; });
+  var s=DB.socios.find(function(x){ return x.id===idS; });
   if(!p||!s) return;
-  if(!confirm('¿Confirmas unificar?\n\nPRINCIPAL: '+p.nombre+' (#'+p.id+')\nABSORBER: '+s.nombre+' (#'+s.id+')\n\nEsta acción no se puede deshacer.')) return;
-  p.ahorro = (p.ahorro||0)+(s.ahorro||0);
+  if(!confirm('Confirmas unificar? PRINCIPAL: '+p.nombre+' (#'+p.id+') ABSORBER: '+s.nombre+' (#'+s.id+') - Esta accion no se puede deshacer.')) return;
+  p.ahorro=(p.ahorro||0)+(s.ahorro||0);
   (DB.prestamos||[]).forEach(function(pr){ if(pr.socioId===idS){ pr.socioId=idP; pr.nombre=p.nombre; } });
-  DB.socios = DB.socios.filter(function(x){ return x.id!==idS; });
+  DB.socios=DB.socios.filter(function(x){ return x.id!==idS; });
   cerrarModal('modal-unificar-socios');
   if(typeof guardarDatos==='function') guardarDatos({render:true,firebase:true});
-  alert('✅ Socios unificados.\n'+s.nombre+' fue absorbido por '+p.nombre+'.');
+  alert('Socios unificados. '+s.nombre+' fue absorbido por '+p.nombre+'.');
 }
 </script>
 
