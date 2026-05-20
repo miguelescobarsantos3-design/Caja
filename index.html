@@ -814,6 +814,40 @@ async function guardarEnFirebase() {
     try { snapAntes = await _fbDb.collection('caja').doc('datos').get(); } catch(e) {}
     var remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
 
+    // PROTECCIÓN ANTI-SOBREESCRITURA:
+    // Si Firestore tiene datos más nuevos que los que este dispositivo tenía
+    // cuando arrancó (window._tsArranque), significa que otro dispositivo guardó
+    // después — no subimos y forzamos bajada de los datos frescos.
+    if(remoto && remoto.ts) {
+      var tsRemoto = Number(remoto.ts);
+      var tsArranque = Number(window._tsArranque || 0);
+      var tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
+      // Si el remoto es más nuevo que lo que teníamos al arrancar Y más nuevo que nuestro local
+      if(tsRemoto > tsArranque && tsRemoto > tsLocal) {
+        console.warn('⚠️ Firestore más nuevo que nuestro arranque — abortando subida y bajando datos frescos', {
+          remoto: new Date(tsRemoto).toLocaleString(),
+          arranque: new Date(tsArranque).toLocaleString(),
+          local: new Date(tsLocal).toLocaleString(),
+          dispositivo: remoto._dispositivo || '?'
+        });
+        window.__guardandoFirebaseAhora = false;
+        // Bajar datos frescos y re-renderizar
+        if(typeof cargarDesdFirebase === 'function') {
+          cargarDesdFirebase(true).then(function(ok) {
+            if(ok) {
+              if(typeof renderDashboard==='function') renderDashboard();
+              if(typeof renderSocios==='function') renderSocios();
+              if(typeof renderPrestamos==='function') renderPrestamos();
+              if(typeof renderAhorros==='function') renderAhorros();
+              if(typeof renderRecibos==='function') renderRecibos('todos');
+              console.log('✅ Datos frescos aplicados — subida cancelada correctamente');
+            }
+          });
+        }
+        return false;
+      }
+    }
+
     var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
     var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
     DB.recibos = recibosFinales;
@@ -909,13 +943,15 @@ async function cargarDesdFirebase(forzar) {
 
     const tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
     const tsFirebase = Number(datos.ts || 0);
+    // Guardar el ts de Firestore al momento de arrancar — para detectar si otro dispositivo
+    // guarda mientras trabajamos, y no pisarlo.
+    if(!window._tsArranque) window._tsArranque = tsFirebase;
 
     // Regla segura:
     // - Si Firestore es más nuevo, se baja.
     // - Si el usuario fuerza Sync desde nube, se baja aunque el ts sea igual/menor.
     // - Si local es más nuevo, NO se pisa. Así evitamos regresar cambios buenos de la PC.
     if(!forzar && tsFirebase && tsLocal && tsFirebase <= tsLocal) {
-
       console.log('ℹ️ Firestore no se aplicó porque localStorage es igual o más reciente', {
         local: new Date(tsLocal).toLocaleString(),
         firestore: new Date(tsFirebase).toLocaleString()
@@ -955,6 +991,8 @@ async function cargarDesdFirebase(forzar) {
     } catch(e) {}
 
     actualizarIndicadorSync && actualizarIndicadorSync('guardado');
+    // Actualizar referencia de arranque para la próxima subida.
+    window._tsArranque = tsFirebase;
     console.log('✅ Datos cargados desde Firestore', {
       socios: DB.socios.length,
       ts: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
@@ -1007,6 +1045,7 @@ function escucharCambios() {
     });
 
     _ultimoTs = tsFirebase;
+    window._tsArranque = tsFirebase; // Actualizar referencia para evitar sobreescritura
     window.__aplicandoDatosFirebase = true;
 
     DB.socios      = datos.socios      || DB.socios || [];
@@ -10449,18 +10488,6 @@ function normalizarVisibilidadSocios() {
   // Modo seguro Firestore:
   // Ya NO borramos localStorage al abrir. Ese rescate viejo fue el que podía regresar cambios.
   var _yaRecupero = true;
-  // PARCHE CELULAR: si es móvil, borrar caché local antes de cargar
-  // para que Firestore sea siempre la fuente de verdad al arrancar.
-  var _esCelular = /Mobi|Android/i.test(navigator.userAgent);
-  if (_esCelular && lsOk) {
-    try {
-      localStorage.removeItem('caja_ahorro_2026');
-      localStorage.removeItem('caja_ahorro_2026_backup_total');
-      localStorage.setItem('caja_ts', '0');
-      console.log('📱 Celular — caché local limpiado, Firestore bajará datos frescos');
-    } catch(e) {}
-  }
-
   var cargado = lsOk ? cargarDesdeLocal() : false;
   if(!cargado) {
     if(!DB.fondoCumple) DB.fondoCumple = [];
