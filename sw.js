@@ -1,101 +1,34 @@
-// Service Worker - Caja 2026 PWA
-// Siempre va a la red primero; solo usa cache como fallback offline
+const SW_VERSION = 'caja-pwa-firestore-20260519-1900';
 
-const CACHE_NAME = 'caja2026-v3';
-const ASSETS_CACHE = 'caja2026-assets-v3';
-
-// Archivos esenciales para funcionar offline
-const CORE_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json'
-];
-
-// ─── INSTALL ───────────────────────────────────────────
 self.addEventListener('install', function(event) {
-  console.log('[SW] Instalando...');
-  event.waitUntil(
-    caches.open(ASSETS_CACHE).then(function(cache) {
-      return cache.addAll(CORE_ASSETS).catch(function(e) {
-        console.warn('[SW] Error cacheando assets:', e);
-      });
-    }).then(function() {
-      return self.skipWaiting();
-    })
-  );
+  self.skipWaiting();
 });
 
-// ─── ACTIVATE ──────────────────────────────────────────
 self.addEventListener('activate', function(event) {
-  console.log('[SW] Activando...');
   event.waitUntil(
-    caches.keys().then(function(keys) {
-      return Promise.all(
-        keys.filter(function(key) {
-          return key !== CACHE_NAME && key !== ASSETS_CACHE;
-        }).map(function(key) {
-          console.log('[SW] Eliminando cache viejo:', key);
-          return caches.delete(key);
-        })
-      );
-    }).then(function() {
-      return self.clients.claim();
-    })
+    caches.keys()
+      .then(function(keys) { return Promise.all(keys.map(function(k) { return caches.delete(k); })); })
+      .then(function() { return self.clients.claim(); })
   );
 });
 
-// ─── FETCH ─────────────────────────────────────────────
 self.addEventListener('fetch', function(event) {
-  var url = new URL(event.request.url);
+  var req = event.request;
+  if (req.method !== 'GET') return;
 
-  // Firebase y APIs externas: siempre red, nunca cache
-  if (
-    url.hostname.includes('firebase') ||
-    url.hostname.includes('googleapis') ||
-    url.hostname.includes('firestore') ||
-    url.hostname.includes('anthropic') ||
-    url.protocol === 'chrome-extension:'
-  ) {
-    return; // dejar pasar sin interceptar
-  }
-
-  // Para todo lo demás: Network First
-  event.respondWith(
-    fetch(event.request, { cache: 'no-store' })
-      .then(function(response) {
-        // Si la respuesta es válida, actualizar cache
-        if (response && response.status === 200 && response.type !== 'opaque') {
-          var responseClone = response.clone();
-          caches.open(ASSETS_CACHE).then(function(cache) {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
+  // Navegación siempre red primero para no cargar index viejo.
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req).catch(function() {
+        return new Response(
+          '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin conexión</title></head><body style="font-family:Arial,sans-serif;padding:24px;background:#f0ede6;color:#1a1916"><h2>Caja 2026</h2><p>Sin conexión. Conéctate a internet para cargar y sincronizar Firestore.</p></body></html>',
+          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
       })
-      .catch(function() {
-        // Sin red: intentar desde cache
-        return caches.match(event.request).then(function(cached) {
-          if (cached) {
-            console.log('[SW] Offline - sirviendo desde cache:', url.pathname);
-            return cached;
-          }
-          // Fallback final: página principal
-          return caches.match('./index.html');
-        });
-      })
-  );
-});
+    );
+    return;
+  }
 
-// ─── MENSAJE DESDE LA APP ──────────────────────────────
-self.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    caches.keys().then(function(keys) {
-      return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-    }).then(function() {
-      event.ports[0].postMessage({ success: true });
-    });
-  }
+  // Assets y Firestore: red directa. Nada de caché viejo.
+  event.respondWith(fetch(req).catch(function() { return caches.match(req); }));
 });
