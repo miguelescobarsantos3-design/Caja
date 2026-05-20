@@ -914,8 +914,8 @@ async function cargarDesdFirebase(forzar) {
     // - Si Firestore es más nuevo, se baja.
     // - Si el usuario fuerza Sync desde nube, se baja aunque el ts sea igual/menor.
     // - Si local es más nuevo, NO se pisa. Así evitamos regresar cambios buenos de la PC.
-    var _esCelMovil = /Mobi|Android/i.test(navigator.userAgent);
-    if(!forzar && !_esCelMovil && tsFirebase && tsLocal && tsFirebase <= tsLocal) {
+    if(!forzar && tsFirebase && tsLocal && tsFirebase <= tsLocal) {
+
       console.log('ℹ️ Firestore no se aplicó porque localStorage es igual o más reciente', {
         local: new Date(tsLocal).toLocaleString(),
         firestore: new Date(tsFirebase).toLocaleString()
@@ -10449,6 +10449,18 @@ function normalizarVisibilidadSocios() {
   // Modo seguro Firestore:
   // Ya NO borramos localStorage al abrir. Ese rescate viejo fue el que podía regresar cambios.
   var _yaRecupero = true;
+  // PARCHE CELULAR: si es móvil, borrar caché local antes de cargar
+  // para que Firestore sea siempre la fuente de verdad al arrancar.
+  var _esCelular = /Mobi|Android/i.test(navigator.userAgent);
+  if (_esCelular && lsOk) {
+    try {
+      localStorage.removeItem('caja_ahorro_2026');
+      localStorage.removeItem('caja_ahorro_2026_backup_total');
+      localStorage.setItem('caja_ts', '0');
+      console.log('📱 Celular — caché local limpiado, Firestore bajará datos frescos');
+    } catch(e) {}
+  }
+
   var cargado = lsOk ? cargarDesdeLocal() : false;
   if(!cargado) {
     if(!DB.fondoCumple) DB.fondoCumple = [];
@@ -10471,14 +10483,6 @@ function normalizarVisibilidadSocios() {
   }
 
   iniciarFolioCounter();
-
-  // PARCHE: celular siempre descarga Firestore (evita caché viejo de localStorage)
-  var _esCelular = /Mobi|Android/i.test(navigator.userAgent);
-  if (_esCelular) {
-    try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
-    console.log('📱 Celular detectado — caja_ts reseteado para forzar bajada de Firestore');
-  }
-
   renderDashboard();
   try { if(!cargado && lsOk) localStorage.setItem('caja_ts', '0'); } catch(e) {}
 
