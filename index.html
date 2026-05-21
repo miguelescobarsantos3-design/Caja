@@ -777,6 +777,42 @@ function _mergeRecibos(locales, remotos) {
   return Object.values(mapa).concat(sinFolio);
 }
 
+// MERGE TANDA300/TANDA1000: fusiona movimientos y entregas por clave única
+// sin perder registros de ninguna de las dos fuentes.
+function _mergeTanda(remota, local) {
+  // Si ninguna tiene datos, devolver estructura vacía
+  if(!remota && !local) return { entregado:0, entregas:[], movimientos:[] };
+  if(!remota) return local;
+  if(!local)  return remota;
+
+  // Preferir los metadatos del que tenga más movimientos (más completo)
+  var base = (remota.movimientos||[]).length >= (local.movimientos||[]).length ? remota : local;
+  var resultado = JSON.parse(JSON.stringify(base));
+
+  // Fusionar movimientos: clave = fecha+aportante+cobrador+grupo+monto
+  function claveMov(m) {
+    return [m.fecha||'', m.aportante||'', m.cobrador||'', String(m.grupo||0), String(m.monto||0)].join('|');
+  }
+  var mapaMovs = {};
+  (remota.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
+  (local.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; }); // local gana en conflicto
+  resultado.movimientos = Object.values(mapaMovs);
+
+  // Fusionar entregas: clave = fecha+cobrador+grupo
+  function claveEnt(e) {
+    return [e.fecha||'', e.cobrador||'', String(e.grupo||0)].join('|');
+  }
+  var mapaEnts = {};
+  (remota.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
+  (local.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; }); // local gana en conflicto
+  resultado.entregas = Object.values(mapaEnts);
+
+  // entregado: el mayor de los dos
+  resultado.entregado = Math.max(Number(remota.entregado||0), Number(local.entregado||0));
+
+  return resultado;
+}
+
 function _mergeMovimientos(locales, remotos) {
   // Clave de deduplicación: fecha + socio + monto + tipo
   function clave(m) { return [m.fecha||'', m.socio||'', String(m.monto||0), m.tipo||''].join('|'); }
@@ -813,40 +849,6 @@ async function guardarEnFirebase() {
     var snapAntes = null;
     try { snapAntes = await _fbDb.collection('caja').doc('datos').get(); } catch(e) {}
     var remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
-
-    // PROTECCIÓN ANTI-SOBREESCRITURA:
-    // Si Firestore tiene datos más nuevos que los que este dispositivo tenía
-    // cuando arrancó (window._tsArranque), significa que otro dispositivo guardó
-    // después — no subimos y forzamos bajada de los datos frescos.
-    if(remoto && remoto.ts) {
-      var tsRemoto = Number(remoto.ts);
-      var tsArranque = Number(window._tsArranque || 0);
-      var tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
-      // Si el remoto es más nuevo que lo que teníamos al arrancar Y más nuevo que nuestro local
-      if(tsRemoto > tsArranque && tsRemoto > tsLocal) {
-        console.warn('⚠️ Firestore más nuevo que nuestro arranque — abortando subida y bajando datos frescos', {
-          remoto: new Date(tsRemoto).toLocaleString(),
-          arranque: new Date(tsArranque).toLocaleString(),
-          local: new Date(tsLocal).toLocaleString(),
-          dispositivo: remoto._dispositivo || '?'
-        });
-        window.__guardandoFirebaseAhora = false;
-        // Bajar datos frescos y re-renderizar
-        if(typeof cargarDesdFirebase === 'function') {
-          cargarDesdFirebase(true).then(function(ok) {
-            if(ok) {
-              if(typeof renderDashboard==='function') renderDashboard();
-              if(typeof renderSocios==='function') renderSocios();
-              if(typeof renderPrestamos==='function') renderPrestamos();
-              if(typeof renderAhorros==='function') renderAhorros();
-              if(typeof renderRecibos==='function') renderRecibos('todos');
-              console.log('✅ Datos frescos aplicados — subida cancelada correctamente');
-            }
-          });
-        }
-        return false;
-      }
-    }
 
     var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
     var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
@@ -943,9 +945,6 @@ async function cargarDesdFirebase(forzar) {
 
     const tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
     const tsFirebase = Number(datos.ts || 0);
-    // Guardar el ts de Firestore al momento de arrancar — para detectar si otro dispositivo
-    // guarda mientras trabajamos, y no pisarlo.
-    if(!window._tsArranque) window._tsArranque = tsFirebase;
 
     // Regla segura:
     // - Si Firestore es más nuevo, se baja.
@@ -975,8 +974,9 @@ async function cargarDesdFirebase(forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300     = datos.tanda300     || null;
-    DB.tanda1000    = datos.tanda1000    || null;
+    // MERGE tanda300: fusionar movimientos y entregas sin perder los locales
+    DB.tanda300 = _mergeTanda(datos.tanda300, DB.tanda300);
+    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
 
     if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
@@ -991,8 +991,6 @@ async function cargarDesdFirebase(forzar) {
     } catch(e) {}
 
     actualizarIndicadorSync && actualizarIndicadorSync('guardado');
-    // Actualizar referencia de arranque para la próxima subida.
-    window._tsArranque = tsFirebase;
     console.log('✅ Datos cargados desde Firestore', {
       socios: DB.socios.length,
       ts: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
@@ -1045,7 +1043,6 @@ function escucharCambios() {
     });
 
     _ultimoTs = tsFirebase;
-    window._tsArranque = tsFirebase; // Actualizar referencia para evitar sobreescritura
     window.__aplicandoDatosFirebase = true;
 
     DB.socios      = datos.socios      || DB.socios || [];
@@ -1057,8 +1054,9 @@ function escucharCambios() {
     DB.fondoCumple = datos.fondoCumple || DB.fondoCumple || [];
     DB.configCumple= datos.configCumple|| DB.configCumple || {aportacion:100, participantes:32};
     DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix || {festejados:[], participantes:[]};
-    DB.tanda300    = datos.tanda300    || null;
-    DB.tanda1000   = datos.tanda1000   || null;
+    // MERGE tanda300: fusionar movimientos y entregas sin perder los locales
+    DB.tanda300    = _mergeTanda(datos.tanda300, DB.tanda300);
+    DB.tanda1000   = _mergeTanda(datos.tanda1000, DB.tanda1000);
     DB.tandasGrupales = datos.tandasGrupales || [];
     DB.utilidades  = (datos.utilidades || DB.utilidades || []).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
     DB.recibos     = datos.recibos     || DB.recibos || [];
@@ -9514,8 +9512,8 @@ function cargarDesdeLocal() {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     if(datos.tandasGrupales) DB.tandasGrupales = datos.tandasGrupales;
-    DB.tanda300 = datos.tanda300 || DB.tanda300 || null;
-    DB.tanda1000 = datos.tanda1000 || DB.tanda1000 || null;
+    DB.tanda300  = _mergeTanda(datos.tanda300, DB.tanda300);
+    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
     aplicarCuentasPersistidas(datos.cuentas);
     asegurarCuentasEspeciales();
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
