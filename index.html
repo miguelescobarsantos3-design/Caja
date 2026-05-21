@@ -960,8 +960,9 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300     = datos.tanda300     || null;
-    DB.tanda1000    = datos.tanda1000    || null;
+    // MERGE: nunca pisar entregas locales con datos de Firestore
+    DB.tanda300  = _mergeTanda(datos.tanda300,  DB.tanda300);
+    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -13227,7 +13228,7 @@ function smpCalcular() {
 
 <!-- ══ MODAL SIMULADOR DE PRÉSTAMOS ══ -->
 <div class="modal-overlay" id="modal-simulador-prestamo" style="z-index:9999;">
-  <div class="modal-card" style="width:680px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;">
+  <div class="modal" style="width:680px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;background:#fff;">
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0f3d2e,#1a7a5e);padding:20px 24px;border-radius:14px 14px 0 0;color:white;">
