@@ -4991,8 +4991,8 @@ function cargarDatosIniciales() {
   if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
 
   DB.tandas       = _d.tandas      || [];
-  DB.tanda300    = _d.tanda300    || DB.tanda300 || null;
-  DB.tanda1000   = _d.tanda1000   || DB.tanda1000 || null;
+  DB.tanda300    = _mergeTanda(_d.tanda300, DB.tanda300);
+  DB.tanda1000   = _mergeTanda(_d.tanda1000, DB.tanda1000);
   DB.cumple       = _d.cumple      || [];
   DB.utilidades   = _d.utilidades  || [];
   DB.recibos      = _d.recibos     || [];
@@ -9623,6 +9623,13 @@ function _guardarTras(fn) {
 setInterval(guardarEnLocal, 300000);
 
 function guardarArchivoCompleto() {
+  // PROTECCIÓN: no guardar archivo si Firestore aún no ha respondido
+  // (evita que el archivo quede con tanda300 vacío)
+  if(window._tsArranque === undefined && typeof _fbConectado !== 'undefined' && _fbConectado) {
+    alert('⚠️ Espera un momento — la nube aún está sincronizando.\nIntenta guardar de nuevo en unos segundos.');
+    return;
+  }
+
   asegurarCuentasEspeciales();
   const btn1 = document.getElementById('btn-guardar-top');
   const textoOrig = btn1 ? btn1.innerHTML : '';
