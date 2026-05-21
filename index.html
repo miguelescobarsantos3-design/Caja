@@ -4229,6 +4229,82 @@ function escucharCambios() {
   </div>
 </div>
 
+<!-- ══ SIMULADOR DE PRÉSTAMOS ══ -->
+<div class="modal-overlay" id="modal-simulador-prestamo">
+  <div class="modal-card" style="max-width:620px;width:95%;">
+    <div class="modal-header">
+      <span>📊 Simulador de Préstamo</span>
+      <button class="modal-close" onclick="cerrarModal('modal-simulador-prestamo')">✕</button>
+    </div>
+    <div style="padding:0 24px 8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Capital</label>
+          <input id="sim-capital" type="number" min="0" step="100" placeholder="$0"
+            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
+            oninput="calcularSimulador()">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Interés total ($)</label>
+          <input id="sim-interes" type="number" min="0" step="100" placeholder="$0"
+            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
+            oninput="calcularSimulador()">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Quincenas (pagos)</label>
+          <input id="sim-quincenas" type="number" min="1" max="48" step="1" placeholder="12"
+            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
+            oninput="calcularSimulador()">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Fecha primer pago</label>
+          <input id="sim-fecha" type="date"
+            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
+            oninput="calcularSimulador()">
+        </div>
+      </div>
+
+      <!-- Resumen -->
+      <div id="sim-resumen" style="display:none;background:var(--fondo2);border-radius:var(--radio);padding:12px 16px;margin-bottom:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
+        <div>
+          <div style="font-size:11px;color:var(--texto2);font-weight:600;">TOTAL A PAGAR</div>
+          <div id="sim-total" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--verde);">$0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--texto2);font-weight:600;">PAGO QUINCENAL</div>
+          <div id="sim-pago" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;">$0</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--texto2);font-weight:600;">% INTERÉS</div>
+          <div id="sim-pct" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--naranja);">0%</div>
+        </div>
+      </div>
+
+      <!-- Tabla amortización -->
+      <div id="sim-tabla-wrap" style="max-height:280px;overflow-y:auto;display:none;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:var(--fondo2);position:sticky;top:0;">
+              <th style="padding:6px 8px;text-align:center;font-weight:600;color:var(--texto2);">#</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;color:var(--texto2);">Fecha</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Capital</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Interés</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--verde);">Pago</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Saldo</th>
+            </tr>
+          </thead>
+          <tbody id="sim-tbody"></tbody>
+        </table>
+      </div>
+      <div id="sim-hint" style="text-align:center;color:var(--texto2);font-size:13px;padding:20px 0;">
+        Ingresa capital, interés y número de quincenas para ver la tabla.
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-simulador-prestamo')">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ─── MODAL ESTADO DE CUENTA ─── -->
 <div class="modal-overlay" id="modal-estado-cuenta">
@@ -7674,6 +7750,105 @@ function confirmarCancelacion() {
 
 
 
+
+function abrirSimuladorPrestamo() {
+  // Fecha sugerida: próxima quincena (1 o 15 del mes)
+  var hoyD = new Date();
+  var d = hoyD.getDate();
+  var sig;
+  if(d < 15) {
+    sig = new Date(hoyD.getFullYear(), hoyD.getMonth(), 15);
+  } else {
+    sig = new Date(hoyD.getFullYear(), hoyD.getMonth()+1, 1);
+  }
+  var yyyy = sig.getFullYear();
+  var mm = String(sig.getMonth()+1).padStart(2,'0');
+  var dd = String(sig.getDate()).padStart(2,'0');
+  document.getElementById('sim-fecha').value = yyyy+'-'+mm+'-'+dd;
+  document.getElementById('sim-capital').value = '';
+  document.getElementById('sim-interes').value = '';
+  document.getElementById('sim-quincenas').value = '';
+  document.getElementById('sim-resumen').style.display = 'none';
+  document.getElementById('sim-tabla-wrap').style.display = 'none';
+  document.getElementById('sim-hint').style.display = 'block';
+  document.getElementById('modal-simulador-prestamo').classList.add('open');
+}
+
+function calcularSimulador() {
+  var capital    = parseFloat(document.getElementById('sim-capital').value) || 0;
+  var interes    = parseFloat(document.getElementById('sim-interes').value) || 0;
+  var quincenas  = parseInt(document.getElementById('sim-quincenas').value)  || 0;
+  var fechaStr   = document.getElementById('sim-fecha').value;
+
+  var hint  = document.getElementById('sim-hint');
+  var wrap  = document.getElementById('sim-tabla-wrap');
+  var resumen = document.getElementById('sim-resumen');
+
+  if(!capital || !quincenas || quincenas < 1) {
+    resumen.style.display = 'none';
+    wrap.style.display = 'none';
+    hint.style.display = 'block';
+    return;
+  }
+
+  var total      = capital + interes;
+  var pagoBase   = Math.floor(total / quincenas);
+  var pctInteres = capital > 0 ? ((interes / capital)*100).toFixed(1) : 0;
+
+  document.getElementById('sim-total').textContent = '$'+fmt(total);
+  document.getElementById('sim-pago').textContent  = '$'+fmt(pagoBase);
+  document.getElementById('sim-pct').textContent   = pctInteres+'%';
+  resumen.style.display = 'grid';
+  hint.style.display = 'none';
+  wrap.style.display = 'block';
+
+  // Calcular tabla de amortización
+  var capPorPago = capital / quincenas;
+  var intPorPago = interes / quincenas;
+  var saldo = capital;
+  var tbody = document.getElementById('sim-tbody');
+  tbody.innerHTML = '';
+
+  // Fecha base
+  var fecha = fechaStr ? new Date(fechaStr+'T12:00:00') : new Date();
+
+  for(var i = 1; i <= quincenas; i++) {
+    var capQ = Math.round(capPorPago * 100) / 100;
+    var intQ = Math.round(intPorPago * 100) / 100;
+    // Último pago absorbe diferencias de redondeo
+    if(i === quincenas) {
+      capQ = Math.round(saldo * 100) / 100;
+      intQ = Math.round((total - capital - (intPorPago*(quincenas-1))) * 100) / 100;
+    }
+    var pago = capQ + intQ;
+    saldo = Math.max(0, Math.round((saldo - capQ)*100)/100);
+
+    // Formatear fecha
+    var fd = new Date(fecha);
+    var fStr = fd.getDate()+'/'+(fd.getMonth()+1)+'/'+fd.getFullYear();
+
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--gris2)';
+    if(i % 2 === 0) tr.style.background = 'var(--fondo2)';
+    tr.innerHTML =
+      '<td style="padding:5px 8px;text-align:center;color:var(--texto2);">'+i+'</td>'+
+      '<td style="padding:5px 8px;">'+fStr+'</td>'+
+      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;">$'+fmt(capQ)+'</td>'+
+      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--naranja);">$'+fmt(intQ)+'</td>'+
+      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:var(--verde);">$'+fmt(Math.round(pago*100)/100)+'</td>'+
+      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--texto2);">$'+fmt(saldo)+'</td>';
+    tbody.appendChild(tr);
+
+    // Avanzar quincena
+    var dia = fecha.getDate();
+    if(dia === 1) {
+      fecha.setDate(15);
+    } else {
+      fecha.setDate(1);
+      fecha.setMonth(fecha.getMonth()+1);
+    }
+  }
+}
 
 function borrarReciboDirecto(folio) {
   const r = DB.recibos.find(x => x.folio === folio);
