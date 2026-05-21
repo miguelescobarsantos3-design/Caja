@@ -907,14 +907,13 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 
   var tsFirebase = Number(datos.ts || 0);
   var tsLocal = cajaTsLocal();
+  var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || sessionStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
   var mismoDispositivo = datos._dispositivo && datos._dispositivo === window._dispositivoId;
 
-  // Si el snapshot lo generó ESTE mismo dispositivo, siempre ignorarlo.
-  // Chrome y PWA del mismo equipo ahora comparten el mismo _dispositivoId.
-  if(!forzar && mismoDispositivo) {
-    console.log('✅ Snapshot propio ignorado (mismo dispositivo/equipo).');
+  // Si yo mismo acabo de guardar, no repintar toda la pantalla con mi propio eco.
+  if(!forzar && mismoDispositivo && yoGuarde && tsFirebase && Math.abs(tsFirebase - yoGuarde) < 30000) {
+    console.log('✅ Snapshot propio ignorado para no repintar innecesariamente.');
     window._firestoreYaBajo = true;
-    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
     return false;
   }
 
@@ -961,8 +960,9 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300     = datos.tanda300     || null;
-    DB.tanda1000    = datos.tanda1000    || null;
+    // SIEMPRE merge — nunca pisar entregas locales aunque sea carga forzada
+    DB.tanda300  = _mergeTanda(datos.tanda300,  DB.tanda300);
+    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -970,7 +970,12 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
 
-    cajaGuardarSnapshotLocal(Object.assign({}, datos, {ts: tsFirebase || Date.now()}));
+    // Guardar snapshot con tanda300 mergeado (no el crudo de Firestore)
+    cajaGuardarSnapshotLocal(Object.assign({}, datos, {
+      ts: tsFirebase || Date.now(),
+      tanda300:  DB.tanda300,
+      tanda1000: DB.tanda1000
+    }));
     cajaRenderTodo();
 
     window._firestoreYaBajo = true;
@@ -5096,8 +5101,8 @@ function cargarDatosIniciales() {
   if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
 
   DB.tandas       = _d.tandas      || [];
-  DB.tanda300    = _d.tanda300    || DB.tanda300 || null;
-  DB.tanda1000   = _d.tanda1000   || DB.tanda1000 || null;
+  DB.tanda300    = _mergeTanda(_d.tanda300,  DB.tanda300);
+  DB.tanda1000   = _mergeTanda(_d.tanda1000, DB.tanda1000);
   DB.cumple       = _d.cumple      || [];
   DB.utilidades   = _d.utilidades  || [];
   DB.recibos      = _d.recibos     || [];
@@ -10617,24 +10622,17 @@ function normalizarVisibilidadSocios() {
 // ══════════════════════════════════════════════════
 (function iniciarApp() {
   // ── ID único de este dispositivo para rastrear quién guardó ──
-  // Chrome y PWA del mismo equipo comparten userAgent → mismo ID → no se pisan entre sí.
   try {
-    var ua = navigator.userAgent;
-    var tipo = /Mobi|Android/i.test(ua) ? 'cel' : 'pc';
-    // Hash simple del userAgent — determinístico, mismo resultado en Chrome y PWA del mismo equipo
-    var hash = 0;
-    for(var ci = 0; ci < ua.length; ci++) {
-      hash = ((hash << 5) - hash) + ua.charCodeAt(ci);
-      hash = hash & hash; // convertir a 32-bit int
+    var did = localStorage.getItem('_dispositivo_id');
+    if(!did) {
+      var ua = navigator.userAgent;
+      var tipo = /Mobi|Android/i.test(ua) ? 'cel' : 'pc';
+      did = tipo + '_' + Date.now().toString(36);
+      localStorage.setItem('_dispositivo_id', did);
     }
-    var did = tipo + '_' + Math.abs(hash).toString(36);
-    // Guardar para referencia pero siempre recalcular del userAgent
-    try { localStorage.setItem('_dispositivo_id', did); } catch(e) {}
     window._dispositivoId = did;
-    console.log('📱 Dispositivo:', did, '| Chrome y PWA de este equipo comparten este ID');
-  } catch(e) {
-    window._dispositivoId = 'pc_fallback';
-  }
+    console.log('📱 Dispositivo:', did);
+  } catch(e) {}
 
   var enIframe = false;
   try { enIframe = window.self !== window.top; } catch(e) { enIframe = true; }
