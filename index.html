@@ -7,7 +7,7 @@
 
   <!-- PWA -->
   <meta name="theme-color" content="#1a7a5e">
-  <link rel="manifest" href="./manifest.json?v=pwa-20260519">
+  <link rel="manifest" href="./manifest.json?v=pwa-20260520-antisobrescritura">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -821,20 +821,195 @@ function _mergeMovimientos(locales, remotos) {
   return resultado;
 }
 
+
+// ═══════════════════════════════════════════════════════
+// CONTROL ANTI-SOBREESCRITURA VIEJA — Mayo 2026
+// Objetivo: que la PWA/celular NO suba datos viejos.
+// PC de escritorio puede guardar por defecto; celular queda lectura.
+// Si quieres una sola PC autorizada, usa "Activar este equipo maestro".
+// ═══════════════════════════════════════════════════════
+function cajaEsMovilOPWA() {
+  var esMovil = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  var esStandalone = false;
+  try {
+    esStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  } catch(e) {}
+  return esMovil || esStandalone;
+}
+
+function cajaModoMaestro() {
+  return localStorage.getItem('caja_modo_maestro') === 'SI';
+}
+
+function cajaBloqueadaLectura() {
+  return localStorage.getItem('caja_modo_maestro') === 'NO';
+}
+
+function cajaPuedeGuardarFirebase() {
+  // Si se marcó manualmente como maestro, sí puede subir.
+  if(cajaModoMaestro()) return true;
+
+  // Si se marcó como lectura, nunca sube.
+  if(cajaBloqueadaLectura()) return false;
+
+  // Regla automática: PC sí puede subir; celular/PWA NO.
+  // Esto evita que el celular viejo pise la nube.
+  return !cajaEsMovilOPWA();
+}
+
+function activarMaestroCaja() {
+  localStorage.setItem('caja_modo_maestro', 'SI');
+  console.log('✅ Este dispositivo quedó como MAESTRO. Puede guardar en Firestore.');
+  alert('✅ Este equipo quedó como MAESTRO. Puede guardar en la nube.');
+}
+
+function desactivarMaestroCaja() {
+  localStorage.setItem('caja_modo_maestro', 'NO');
+  console.log('🔒 Este dispositivo quedó en modo lectura. No subirá datos a Firestore.');
+  alert('🔒 Este equipo quedó en modo lectura. Podrá ver datos, pero no subirlos a la nube.');
+}
+
+function cajaTsLocal() {
+  return parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
+}
+
+function cajaGuardarSnapshotLocal(datos) {
+  try {
+    var ts = Number(datos && datos.ts ? datos.ts : Date.now());
+    var json = JSON.stringify(Object.assign({}, datos || {}, {v:3, ts: ts}));
+    localStorage.setItem('caja_ahorro_2026', json);
+    localStorage.setItem('caja_ahorro_2026_backup_total', json);
+    localStorage.setItem('caja_ts', String(ts));
+  } catch(e) {
+    console.warn('No se pudo guardar snapshot local:', e.message);
+  }
+}
+
+function cajaRenderTodo() {
+  if(typeof renderDashboard === 'function') renderDashboard();
+  if(typeof renderSocios === 'function') renderSocios();
+  if(typeof renderPrestamos === 'function') renderPrestamos();
+  if(typeof renderAhorros === 'function') renderAhorros();
+  if(typeof renderTanda300 === 'function') renderTanda300();
+  if(typeof renderTanda1000 === 'function') renderTanda1000();
+  if(typeof renderRecibos === 'function') renderRecibos('todos');
+  if(typeof renderUtilidades === 'function') renderUtilidades();
+
+  if(typeof actualizarTotalesUtilidadesUI === 'function') {
+    actualizarTotalesUtilidadesUI(false);
+  } else if(typeof actualizarKpiUtilidades === 'function') {
+    actualizarKpiUtilidades();
+  }
+}
+
+function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
+  if(!datos || !datos.socios) return false;
+
+  var tsFirebase = Number(datos.ts || 0);
+  var tsLocal = cajaTsLocal();
+  var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || sessionStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
+  var mismoDispositivo = datos._dispositivo && datos._dispositivo === window._dispositivoId;
+
+  // Si yo mismo acabo de guardar, no repintar toda la pantalla con mi propio eco.
+  if(!forzar && mismoDispositivo && yoGuarde && tsFirebase && Math.abs(tsFirebase - yoGuarde) < 30000) {
+    console.log('✅ Snapshot propio ignorado para no repintar innecesariamente.');
+    window._firestoreYaBajo = true;
+    return false;
+  }
+
+  // Si Firestore no es más nuevo, no pisa local.
+  if(!forzar && tsFirebase && tsLocal && tsFirebase <= tsLocal) {
+    console.log('ℹ️ Firestore no se aplicó porque local es igual o más reciente.', {
+      motivo: motivo,
+      local: new Date(tsLocal).toLocaleString(),
+      firestore: new Date(tsFirebase).toLocaleString(),
+      dispositivo: datos._dispositivo || 'desconocido'
+    });
+    window._firestoreYaBajo = true;
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
+    return false;
+  }
+
+  console.log('🔥 Aplicando datos desde Firestore de forma segura:', {
+    motivo: motivo,
+    forzar: !!forzar,
+    ts: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
+    dispositivo: datos._dispositivo || 'desconocido',
+    socios: datos.socios ? datos.socios.length : 0,
+    recibos: datos.recibos ? datos.recibos.length : 0,
+    movimientos: datos.movimientos ? datos.movimientos.length : 0
+  });
+
+  window.__aplicandoDatosFirebase = true;
+
+  try {
+    // IMPORTANTE:
+    // Ya NO hacemos merge de tanda300/tanda1000 al bajar de Firestore.
+    // Antes se fusionaba con localStorage y eso podía revivir datos viejos.
+    DB.socios       = datos.socios       || [];
+    DB.prestamos    = datos.prestamos    || [];
+    DB.tandas       = datos.tandas       || [];
+    DB.movimientos  = datos.movimientos  || [];
+    DB.cumple       = datos.cumple       || [];
+    DB.fondoCumple  = datos.fondoCumple  || [];
+    DB.configCumple = datos.configCumple || {aportacion:100, participantes:32};
+    DB.cumpleMatrix = datos.cumpleMatrix || {festejados:[], participantes:[]};
+    DB.utilidades   = (datos.utilidades || []).sort(function(a,b){
+      return (a.nombre||'').localeCompare(b.nombre||'', 'es', {sensitivity:'base'});
+    });
+    DB.recibos      = datos.recibos      || [];
+    DB._directorio  = datos._directorio  || [];
+    DB.tandasGrupales = datos.tandasGrupales || [];
+    DB.tanda300     = datos.tanda300     || null;
+    DB.tanda1000    = datos.tanda1000    || null;
+
+    if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
+    if(typeof fixSocioIds === 'function') fixSocioIds();
+    if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
+    if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
+    if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
+
+    cajaGuardarSnapshotLocal(Object.assign({}, datos, {ts: tsFirebase || Date.now()}));
+    cajaRenderTodo();
+
+    window._firestoreYaBajo = true;
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
+
+    console.log('✅ Pantalla actualizada desde Firestore sin revivir datos viejos.');
+    return true;
+
+  } finally {
+    window.__aplicandoDatosFirebase = false;
+  }
+}
+
 async function guardarEnFirebase() {
   if(!_fbConectado || !_fbDb) {
     console.warn('Firestore no disponible: no se pudo subir a nube');
     return false;
   }
-  // PWA/celular no sube hasta que Firestore haya respondido al menos una vez
-  if(/Mobi|Android/i.test(navigator.userAgent) && !window._firestoreYaBajo) {
-    console.log('📱 PWA/celular — subida bloqueada hasta bajada inicial de Firestore');
+
+  // Candado principal: celular/PWA queda lectura por defecto.
+  if(!cajaPuedeGuardarFirebase()) {
+    console.warn('⛔ Este dispositivo está en modo lectura. No sube a Firestore para evitar datos viejos.', {
+      dispositivo: window._dispositivoId || 'desconocido',
+      movilOPWA: cajaEsMovilOPWA(),
+      modo: localStorage.getItem('caja_modo_maestro') || 'AUTO'
+    });
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
     return false;
   }
+
+  if(window.__aplicandoDatosFirebase) {
+    console.warn('⏳ No se guarda mientras se están aplicando datos de Firestore.');
+    return false;
+  }
+
   if(window.__guardandoFirebaseAhora) return false;
+
   try {
     window.__guardandoFirebaseAhora = true;
-    actualizarIndicadorSync('guardando');
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardando');
 
     if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
     if(typeof normalizarVisibilidadSocios === 'function') normalizarVisibilidadSocios();
@@ -844,51 +1019,47 @@ async function guardarEnFirebase() {
     if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
 
-    // Leer remoto y mergear tanda antes de subir — nunca pisar entregas de otra instancia
-    var snapAntes = null;
-    try { snapAntes = await _fbDb.collection('caja').doc('datos').get(); } catch(e) {}
-    var remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
-
-    var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
-    var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
-    var tanda300Final  = _mergeTanda(DB.tanda300,  remoto ? remoto.tanda300  : null);
-    var tanda1000Final = _mergeTanda(DB.tanda1000, remoto ? remoto.tanda1000 : null);
-    DB.recibos     = recibosFinales;
-    DB.movimientos = movimientosFinales;
-    DB.tanda300    = tanda300Final;
-    DB.tanda1000   = tanda1000Final;
-
     var ahora = Date.now();
+
     var datos = {
       socios:         DB.socios || [],
       prestamos:      DB.prestamos || [],
       tandas:         DB.tandas || [],
-      movimientos:    movimientosFinales,
+      movimientos:    DB.movimientos || [],
       cumple:         DB.cumple || [],
       fondoCumple:    DB.fondoCumple || [],
       configCumple:   DB.configCumple || {aportacion:100, participantes:32},
       cumpleMatrix:   DB.cumpleMatrix || {festejados:[], participantes:[]},
       utilidades:     DB.utilidades || [],
-      recibos:        recibosFinales,
+      recibos:        DB.recibos || [],
       _directorio:    DB._directorio || [],
       tandasGrupales: DB.tandasGrupales || [],
       tanda300:       DB.tanda300 || null,
       tanda1000:      DB.tanda1000 || null,
       cuentas:        typeof CUENTAS !== 'undefined' ? JSON.parse(JSON.stringify(CUENTAS)) : null,
       ts:             ahora,
-      _dispositivo:   window._dispositivoId || 'desconocido'
+      _dispositivo:   window._dispositivoId || 'desconocido',
+      _modoGuardado:  cajaModoMaestro() ? 'MAESTRO' : 'PC_AUTO'
     };
 
+    // Escritura completa y limpia: sin merge de tanda vieja.
     await _fbDb.collection('caja').doc('datos').set(datos);
+
     localStorage.setItem('caja_ts', String(datos.ts));
     localStorage.setItem('yo_guarde_ts', String(datos.ts));
-    actualizarIndicadorSync('guardado');
-    console.log('✅ Firestore guardado desde este dispositivo:', datos._dispositivo, '|', new Date(datos.ts).toLocaleString(), '| recibos:', recibosFinales.length, '| movimientos:', movimientosFinales.length);
+    try { sessionStorage.setItem('yo_guarde_ts', String(datos.ts)); } catch(e) {}
+    cajaGuardarSnapshotLocal(datos);
+
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
+
+    console.log('✅ Firestore guardado desde dispositivo autorizado:', datos._dispositivo, '| modo:', datos._modoGuardado, '|', new Date(datos.ts).toLocaleString(), '| recibos:', datos.recibos.length, '| movimientos:', datos.movimientos.length);
     return true;
+
   } catch(e) {
     console.warn('Error guardando en Firestore:', e.code || '', e.message);
-    actualizarIndicadorSync('sin_conexion');
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('sin_conexion');
     return false;
+
   } finally {
     window.__guardandoFirebaseAhora = false;
   }
@@ -939,74 +1110,37 @@ function descargarRespaldo() {
 // Cargar datos de Firestore al iniciar
 async function cargarDesdFirebase(forzar) {
   if(!_fbConectado || !_fbDb) return false;
+
   try {
-    actualizarIndicadorSync && actualizarIndicadorSync('guardando');
-    const snap = await _fbDb.collection('caja').doc('datos').get();
-    if(!snap.exists) return false;
-    const datos = snap.data();
-    if(!datos || !datos.socios) return false;
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardando');
 
-    const tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
-    const tsFirebase = Number(datos.ts || 0);
+    var snap;
+    try {
+      snap = await _fbDb.collection('caja').doc('datos').get({source:'server'});
+    } catch(e) {
+      snap = await _fbDb.collection('caja').doc('datos').get();
+    }
 
-    // Regla segura:
-    // - Si Firestore es más nuevo, se baja.
-    // - Si el usuario fuerza Sync desde nube, se baja aunque el ts sea igual/menor.
-    // - Si local es más nuevo, NO se pisa. Así evitamos regresar cambios buenos de la PC.
-    if(!forzar && tsFirebase && tsLocal && tsFirebase <= tsLocal) {
-      console.log('ℹ️ Firestore no se aplicó porque localStorage es igual o más reciente', {
-        local: new Date(tsLocal).toLocaleString(),
-        firestore: new Date(tsFirebase).toLocaleString()
-      });
-      actualizarIndicadorSync && actualizarIndicadorSync('conectado');
+    if(!snap.exists) {
+      console.warn('No existen datos en Firestore todavía.');
+      if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
       return false;
     }
 
-    window.__aplicandoDatosFirebase = true;
+    var datos = snap.data();
+    if(!datos || !datos.socios) {
+      console.warn('Firestore respondió, pero sin estructura válida de socios.');
+      if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
+      return false;
+    }
 
-    DB.socios       = datos.socios       || [];
-    DB.prestamos    = datos.prestamos    || [];
-    if(typeof fixSocioIds === 'function') fixSocioIds();
-    DB.tandas       = datos.tandas       || [];
-    DB.movimientos  = datos.movimientos  || [];
-    DB.cumple       = datos.cumple       || [];
-    DB.fondoCumple  = datos.fondoCumple  || [];
-    DB.configCumple = datos.configCumple || {aportacion:100, participantes:32};
-    DB.cumpleMatrix = datos.cumpleMatrix || {festejados:[], participantes:[]};
-    DB.utilidades   = (datos.utilidades || []).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
-    DB.recibos      = datos.recibos      || [];
-    DB._directorio  = datos._directorio  || [];
-    DB.tandasGrupales = datos.tandasGrupales || [];
-    // MERGE tanda300: fusionar movimientos y entregas sin perder los locales
-    DB.tanda300 = _mergeTanda(datos.tanda300, DB.tanda300);
-    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
-    if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
+    // En arranque, Firestore manda. Esto evita que localStorage viejo de la PWA gane por tener timestamp reciente.
+    return cajaAplicarDatosFirebaseSeguro(datos, 'carga inicial', true);
 
-    if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
-    if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
-    if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-
-    try {
-      const json = JSON.stringify(Object.assign({}, datos, {v:3, ts: tsFirebase || Date.now()}));
-      localStorage.setItem('caja_ahorro_2026', json);
-      localStorage.setItem('caja_ahorro_2026_backup_total', json);
-      localStorage.setItem('caja_ts', String(tsFirebase || Date.now()));
-    } catch(e) {}
-
-    actualizarIndicadorSync && actualizarIndicadorSync('guardado');
-    window._firestoreYaBajo = true;
-    console.log('✅ Datos cargados desde Firestore', {
-      socios: DB.socios.length,
-      ts: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
-      dispositivo: datos._dispositivo || 'desconocido'
-    });
-    return true;
   } catch(e) {
     console.warn('Error cargando desde Firestore:', e.message);
-    actualizarIndicadorSync && actualizarIndicadorSync('sin_conexion');
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('sin_conexion');
     return false;
-  } finally {
-    window.__aplicandoDatosFirebase = false;
   }
 }
 
@@ -1016,87 +1150,40 @@ function escucharCambios() {
   if(!_fbDb) return;
   if(_fbListener) { try { _fbListener(); } catch(e) {} }
 
-  var _ultimoTs = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
+  var _ultimoTs = cajaTsLocal();
 
   _fbListener = _fbDb.collection('caja').doc('datos').onSnapshot(function(snap) {
     if(!snap.exists) return;
+
     var datos = snap.data();
     if(!datos || !datos.ts) return;
 
     var tsFirebase = Number(datos.ts || 0);
-    var tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
-    var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
 
-    if(yoGuarde && Math.abs(tsFirebase - yoGuarde) < 15000) {
-      _ultimoTs = Math.max(_ultimoTs, tsFirebase);
-      window._firestoreYaBajo = true;
-      return;
-    }
-
-    if(tsFirebase <= _ultimoTs || tsFirebase <= tsLocal) {
-      console.log('ℹ️ Cambio Firestore visto, pero no aplicado porque local es igual/más reciente', {
-        firestore: new Date(tsFirebase).toLocaleString(),
-        local: tsLocal ? new Date(tsLocal).toLocaleString() : 'sin local'
+    if(tsFirebase <= _ultimoTs) {
+      console.log('ℹ️ Listener ignoró snapshot viejo o repetido.', {
+        firestore: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
+        ultimo: _ultimoTs ? new Date(_ultimoTs).toLocaleString() : 'sin local',
+        dispositivo: datos._dispositivo || 'desconocido'
       });
-      _ultimoTs = Math.max(_ultimoTs, tsFirebase);
       window._firestoreYaBajo = true;
       return;
     }
 
-    console.log('🔥 Cambio de Firestore detectado — actualizando pantalla...', {
-      firestore: new Date(tsFirebase).toLocaleString(),
-      dispositivo: datos._dispositivo || 'desconocido'
-    });
+    var aplicado = cajaAplicarDatosFirebaseSeguro(datos, 'listener', false);
 
-    _ultimoTs = tsFirebase;
-    window.__aplicandoDatosFirebase = true;
+    if(aplicado) {
+      _ultimoTs = Math.max(_ultimoTs, tsFirebase);
+    } else {
+      _ultimoTs = Math.max(_ultimoTs, cajaTsLocal(), tsFirebase);
+    }
 
-    DB.socios      = datos.socios      || DB.socios || [];
-    DB.prestamos   = datos.prestamos   || DB.prestamos || [];
-    if(typeof fixSocioIds==='function') fixSocioIds();
-    DB.tandas      = datos.tandas      || DB.tandas || [];
-    DB.movimientos = datos.movimientos || DB.movimientos || [];
-    DB.cumple      = datos.cumple      || DB.cumple || [];
-    DB.fondoCumple = datos.fondoCumple || DB.fondoCumple || [];
-    DB.configCumple= datos.configCumple|| DB.configCumple || {aportacion:100, participantes:32};
-    DB.cumpleMatrix= datos.cumpleMatrix|| DB.cumpleMatrix || {festejados:[], participantes:[]};
-    // MERGE tanda300: fusionar movimientos y entregas sin perder los locales
-    DB.tanda300    = _mergeTanda(datos.tanda300, DB.tanda300);
-    DB.tanda1000   = _mergeTanda(datos.tanda1000, DB.tanda1000);
-    DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.utilidades  = (datos.utilidades || DB.utilidades || []).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
-    DB.recibos     = datos.recibos     || DB.recibos || [];
-    DB._directorio = datos._directorio || DB._directorio || [];
-    if(datos.cuentas && typeof aplicarCuentasPersistidas==='function') aplicarCuentasPersistidas(datos.cuentas);
-
-    if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
-    if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
-    if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
-
-    try {
-      var json = JSON.stringify(Object.assign({}, datos, {v:3, ts: tsFirebase}));
-      localStorage.setItem('caja_ahorro_2026', json);
-      localStorage.setItem('caja_ahorro_2026_backup_total', json);
-      localStorage.setItem('caja_ts', String(tsFirebase));
-    } catch(e) {}
-    window.__aplicandoDatosFirebase = false;
-
-    if(typeof renderDashboard==='function') renderDashboard();
-    if(typeof renderSocios==='function') renderSocios();
-    if(typeof renderPrestamos==='function') renderPrestamos();
-    if(typeof renderAhorros==='function') renderAhorros();
-    if(typeof renderRecibos==='function') renderRecibos('todos');
-    if(typeof renderUtilidades==='function') renderUtilidades();
-    if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false); else if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
-    actualizarIndicadorSync('conectado');
-    window._firestoreYaBajo = true;
-    console.log('✅ Pantalla actualizada desde Firestore');
   }, function(err){
     console.warn('Listener Firestore error:', err.message);
-    actualizarIndicadorSync('sin_conexion');
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('sin_conexion');
   });
 
-  console.log('🔥 Listener Firestore activado automáticamente');
+  console.log('🔥 Listener Firestore seguro activado automáticamente');
 }
 
     // PWA activa: el Service Worker se registra al final del archivo.
@@ -1223,6 +1310,16 @@ function escucharCambios() {
     </div>
     <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:10px;">
       <p style="font-size:12px;color:var(--texto2);margin:0 0 4px;">Herramientas de respaldo y mantenimiento del sistema</p>
+
+      <button onclick="activarMaestroCaja();cerrarModal('modal-configuracion')"
+        style="width:100%;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;text-align:left;">
+        🟢 &nbsp;Activar este equipo como maestro
+      </button>
+
+      <button onclick="desactivarMaestroCaja();cerrarModal('modal-configuracion')"
+        style="width:100%;background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;text-align:left;">
+        🔒 &nbsp;Dejar este equipo sólo lectura
+      </button>
 
       <button onclick="forzarCargarDatosDelArchivo();cerrarModal('modal-configuracion')"
         style="width:100%;background:var(--gris);border:1px solid var(--gris2);color:var(--texto);padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;text-align:left;">
@@ -12805,7 +12902,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js')
+    navigator.serviceWorker.register('./sw.js?v=antisobrescritura-20260520')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
