@@ -4229,82 +4229,6 @@ function escucharCambios() {
   </div>
 </div>
 
-<!-- ══ SIMULADOR DE PRÉSTAMOS ══ -->
-<div class="modal-overlay" id="modal-simulador-prestamo">
-  <div class="modal-card" style="max-width:620px;width:95%;">
-    <div class="modal-header">
-      <span>📊 Simulador de Préstamo</span>
-      <button class="modal-close" onclick="cerrarModal('modal-simulador-prestamo')">✕</button>
-    </div>
-    <div style="padding:0 24px 8px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-        <div>
-          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Capital</label>
-          <input id="sim-capital" type="number" min="0" step="100" placeholder="$0"
-            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
-            oninput="calcularSimulador()">
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Interés total ($)</label>
-          <input id="sim-interes" type="number" min="0" step="100" placeholder="$0"
-            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
-            oninput="calcularSimulador()">
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Quincenas (pagos)</label>
-          <input id="sim-quincenas" type="number" min="1" max="48" step="1" placeholder="12"
-            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
-            oninput="calcularSimulador()">
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:600;color:var(--texto2);display:block;margin-bottom:4px;">Fecha primer pago</label>
-          <input id="sim-fecha" type="date"
-            style="width:100%;padding:8px 10px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;box-sizing:border-box;"
-            oninput="calcularSimulador()">
-        </div>
-      </div>
-
-      <!-- Resumen -->
-      <div id="sim-resumen" style="display:none;background:var(--fondo2);border-radius:var(--radio);padding:12px 16px;margin-bottom:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
-        <div>
-          <div style="font-size:11px;color:var(--texto2);font-weight:600;">TOTAL A PAGAR</div>
-          <div id="sim-total" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--verde);">$0</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--texto2);font-weight:600;">PAGO QUINCENAL</div>
-          <div id="sim-pago" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;">$0</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--texto2);font-weight:600;">% INTERÉS</div>
-          <div id="sim-pct" style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--naranja);">0%</div>
-        </div>
-      </div>
-
-      <!-- Tabla amortización -->
-      <div id="sim-tabla-wrap" style="max-height:280px;overflow-y:auto;display:none;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead>
-            <tr style="background:var(--fondo2);position:sticky;top:0;">
-              <th style="padding:6px 8px;text-align:center;font-weight:600;color:var(--texto2);">#</th>
-              <th style="padding:6px 8px;text-align:left;font-weight:600;color:var(--texto2);">Fecha</th>
-              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Capital</th>
-              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Interés</th>
-              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--verde);">Pago</th>
-              <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--texto2);">Saldo</th>
-            </tr>
-          </thead>
-          <tbody id="sim-tbody"></tbody>
-        </table>
-      </div>
-      <div id="sim-hint" style="text-align:center;color:var(--texto2);font-size:13px;padding:20px 0;">
-        Ingresa capital, interés y número de quincenas para ver la tabla.
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="cerrarModal('modal-simulador-prestamo')">Cerrar</button>
-    </div>
-  </div>
-</div>
 
 <!-- ─── MODAL ESTADO DE CUENTA ─── -->
 <div class="modal-overlay" id="modal-estado-cuenta">
@@ -7750,105 +7674,6 @@ function confirmarCancelacion() {
 
 
 
-
-function abrirSimuladorPrestamo() {
-  // Fecha sugerida: próxima quincena (1 o 15 del mes)
-  var hoyD = new Date();
-  var d = hoyD.getDate();
-  var sig;
-  if(d < 15) {
-    sig = new Date(hoyD.getFullYear(), hoyD.getMonth(), 15);
-  } else {
-    sig = new Date(hoyD.getFullYear(), hoyD.getMonth()+1, 1);
-  }
-  var yyyy = sig.getFullYear();
-  var mm = String(sig.getMonth()+1).padStart(2,'0');
-  var dd = String(sig.getDate()).padStart(2,'0');
-  document.getElementById('sim-fecha').value = yyyy+'-'+mm+'-'+dd;
-  document.getElementById('sim-capital').value = '';
-  document.getElementById('sim-interes').value = '';
-  document.getElementById('sim-quincenas').value = '';
-  document.getElementById('sim-resumen').style.display = 'none';
-  document.getElementById('sim-tabla-wrap').style.display = 'none';
-  document.getElementById('sim-hint').style.display = 'block';
-  document.getElementById('modal-simulador-prestamo').classList.add('open');
-}
-
-function calcularSimulador() {
-  var capital    = parseFloat(document.getElementById('sim-capital').value) || 0;
-  var interes    = parseFloat(document.getElementById('sim-interes').value) || 0;
-  var quincenas  = parseInt(document.getElementById('sim-quincenas').value)  || 0;
-  var fechaStr   = document.getElementById('sim-fecha').value;
-
-  var hint  = document.getElementById('sim-hint');
-  var wrap  = document.getElementById('sim-tabla-wrap');
-  var resumen = document.getElementById('sim-resumen');
-
-  if(!capital || !quincenas || quincenas < 1) {
-    resumen.style.display = 'none';
-    wrap.style.display = 'none';
-    hint.style.display = 'block';
-    return;
-  }
-
-  var total      = capital + interes;
-  var pagoBase   = Math.floor(total / quincenas);
-  var pctInteres = capital > 0 ? ((interes / capital)*100).toFixed(1) : 0;
-
-  document.getElementById('sim-total').textContent = '$'+fmt(total);
-  document.getElementById('sim-pago').textContent  = '$'+fmt(pagoBase);
-  document.getElementById('sim-pct').textContent   = pctInteres+'%';
-  resumen.style.display = 'grid';
-  hint.style.display = 'none';
-  wrap.style.display = 'block';
-
-  // Calcular tabla de amortización
-  var capPorPago = capital / quincenas;
-  var intPorPago = interes / quincenas;
-  var saldo = capital;
-  var tbody = document.getElementById('sim-tbody');
-  tbody.innerHTML = '';
-
-  // Fecha base
-  var fecha = fechaStr ? new Date(fechaStr+'T12:00:00') : new Date();
-
-  for(var i = 1; i <= quincenas; i++) {
-    var capQ = Math.round(capPorPago * 100) / 100;
-    var intQ = Math.round(intPorPago * 100) / 100;
-    // Último pago absorbe diferencias de redondeo
-    if(i === quincenas) {
-      capQ = Math.round(saldo * 100) / 100;
-      intQ = Math.round((total - capital - (intPorPago*(quincenas-1))) * 100) / 100;
-    }
-    var pago = capQ + intQ;
-    saldo = Math.max(0, Math.round((saldo - capQ)*100)/100);
-
-    // Formatear fecha
-    var fd = new Date(fecha);
-    var fStr = fd.getDate()+'/'+(fd.getMonth()+1)+'/'+fd.getFullYear();
-
-    var tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid var(--gris2)';
-    if(i % 2 === 0) tr.style.background = 'var(--fondo2)';
-    tr.innerHTML =
-      '<td style="padding:5px 8px;text-align:center;color:var(--texto2);">'+i+'</td>'+
-      '<td style="padding:5px 8px;">'+fStr+'</td>'+
-      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;">$'+fmt(capQ)+'</td>'+
-      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--naranja);">$'+fmt(intQ)+'</td>'+
-      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:var(--verde);">$'+fmt(Math.round(pago*100)/100)+'</td>'+
-      '<td style="padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;color:var(--texto2);">$'+fmt(saldo)+'</td>';
-    tbody.appendChild(tr);
-
-    // Avanzar quincena
-    var dia = fecha.getDate();
-    if(dia === 1) {
-      fecha.setDate(15);
-    } else {
-      fecha.setDate(1);
-      fecha.setMonth(fecha.getMonth()+1);
-    }
-  }
-}
 
 function borrarReciboDirecto(folio) {
   const r = DB.recibos.find(x => x.folio === folio);
@@ -13290,6 +13115,231 @@ function confirmarUnificar(){
   if(typeof guardarDatos==='function') guardarDatos({render:true,firebase:true});
   alert('Unificado. '+s.nombre+' absorbido por '+p.nombre+'.');
 }
+
+// ══════════════════════════════════════════════════
+// SIMULADOR DE PRÉSTAMOS
+// ══════════════════════════════════════════════════
+function smpFmt(n) {
+  return Number(n).toLocaleString('es-MX', {minimumFractionDigits:0, maximumFractionDigits:0});
+}
+
+function smpGetTasa(monto, meses) {
+  // Tasa anual por tramos (igual que la caja original)
+  if(monto <= 5000)  return meses <= 3  ? 0.10 : meses <= 6 ? 0.12 : 0.15;
+  if(monto <= 15000) return meses <= 3  ? 0.08 : meses <= 6 ? 0.10 : 0.12;
+  if(monto <= 30000) return meses <= 6  ? 0.08 : meses <= 12? 0.10 : 0.12;
+  return               meses <= 6  ? 0.07 : meses <= 12? 0.08 : 0.10;
+}
+
+function smpActualizarMeses() {
+  var fi = document.getElementById('smp-fecha-inicio').value;
+  var ff = document.getElementById('smp-fecha-fin').value;
+  if(!fi || !ff) return;
+  var inicio = new Date(fi+'T12:00:00');
+  var fin    = new Date(ff+'T12:00:00');
+  if(fin <= inicio) return;
+  var meses = Math.max(1, Math.round((fin - inicio) / (1000*60*60*24*30.44)));
+  document.getElementById('smp-meses').value = meses;
+  smpActualizarTasa();
+}
+
+function smpActualizarTasa() {
+  var monto = parseFloat(document.getElementById('smp-monto').value) || 0;
+  var meses = parseInt(document.getElementById('smp-meses').value)   || 1;
+  if(!monto) return;
+  var tasa = smpGetTasa(monto, meses);
+  document.getElementById('smp-tasa-display').textContent = (tasa*100).toFixed(0)+'% anual';
+  smpCalcular();
+}
+
+function abrirSimuladorPrestamo() {
+  var hoy = new Date();
+  var hoyStr = hoy.toISOString().slice(0,10);
+  document.getElementById('smp-fecha-inicio').value = hoyStr;
+  var fin = new Date(hoy.getFullYear(), 11, 10);
+  document.getElementById('smp-fecha-fin').value = fin.toISOString().slice(0,10);
+  document.getElementById('smp-kpis').style.display       = 'none';
+  document.getElementById('smp-tabla-wrap').style.display = 'none';
+  document.getElementById('smp-mora-wrap').style.display  = 'none';
+  document.getElementById('modal-simulador-prestamo').classList.add('open');
+  smpActualizarMeses();
+}
+
+function smpCalcular() {
+  var monto  = parseFloat(document.getElementById('smp-monto').value) || 0;
+  var meses  = parseInt(document.getElementById('smp-meses').value)   || 1;
+  var fi     = document.getElementById('smp-fecha-inicio').value;
+  var ff     = document.getElementById('smp-fecha-fin').value;
+  if(monto <= 0 || meses <= 0) return;
+
+  var tasa          = smpGetTasa(monto, meses);
+  var interesTotal  = Math.round(monto * tasa * (meses / 12));
+  var totalPagar    = monto + interesTotal;
+  var pagoMensual   = Math.round(totalPagar / meses);
+  var capMensual    = Math.round(monto / meses);
+  var intMensual    = Math.round(interesTotal / meses);
+
+  document.getElementById('smp-kpi-capital').textContent  = '$'+smpFmt(monto);
+  document.getElementById('smp-kpi-interes').textContent  = '$'+smpFmt(interesTotal);
+  document.getElementById('smp-kpi-total').textContent    = '$'+smpFmt(totalPagar);
+  document.getElementById('smp-kpi-mensual').textContent  = '$'+smpFmt(pagoMensual);
+  document.getElementById('smp-tabla-sub').textContent    = meses+' pagos de $'+smpFmt(pagoMensual);
+  document.getElementById('smp-kpis').style.display       = 'grid';
+  document.getElementById('smp-tabla-wrap').style.display = 'block';
+
+  var tbody = document.getElementById('smp-tbody');
+  tbody.innerHTML = '';
+  var saldo = monto;
+  var fechaBase = fi ? new Date(fi+'T12:00:00') : new Date();
+
+  for(var i = 1; i <= meses; i++) {
+    var fechaPago = new Date(fechaBase);
+    fechaPago.setMonth(fechaPago.getMonth() + i);
+    if(ff && i === meses) fechaPago = new Date(ff+'T12:00:00');
+
+    var capEste = i < meses ? capMensual : Math.round(saldo * 100)/100;
+    var intEste = i < meses ? intMensual : interesTotal - intMensual*(meses-1);
+    var pagoEste = capEste + intEste;
+    saldo = Math.max(0, Math.round((saldo - capEste)*100)/100);
+
+    var fStr = fechaPago.getDate()+'/'+(fechaPago.getMonth()+1)+'/'+fechaPago.getFullYear();
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f0f2f5';
+    if(i % 2 === 0) tr.style.background = '#f8fafb';
+    tr.innerHTML =
+      '<td style="padding:7px 10px;text-align:center;color:#9ca3af;font-size:13px;">'+i+'</td>'+
+      '<td style="padding:7px 10px;font-size:13px;">'+fStr+'</td>'+
+      '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:13px;">$'+smpFmt(capEste)+'</td>'+
+      '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:13px;color:#f59e0b;">$'+smpFmt(intEste)+'</td>'+
+      '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:14px;font-weight:700;color:#1a7a5e;">$'+smpFmt(Math.round(pagoEste))+'</td>'+
+      '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:13px;color:#6b7280;">$'+smpFmt(saldo)+'</td>';
+    tbody.appendChild(tr);
+  }
+
+  // Mora
+  var mora5 = Math.round(pagoMensual * 0.05);
+  document.getElementById('smp-mora-pago').textContent = '$'+smpFmt(pagoMensual);
+  document.getElementById('smp-mora-monto').textContent = '$'+smpFmt(mora5);
+  document.getElementById('smp-mora-total').textContent = '$'+smpFmt(pagoMensual + mora5);
+  document.getElementById('smp-mora-wrap').style.display = 'block';
+}
 </script>
+
+<!-- ══ MODAL SIMULADOR DE PRÉSTAMOS ══ -->
+<div class="modal-overlay" id="modal-simulador-prestamo" style="z-index:9999;">
+  <div class="modal-card" style="width:680px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0f3d2e,#1a7a5e);padding:20px 24px;border-radius:14px 14px 0 0;color:white;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-0.5px;">📊 Simulador de Préstamo</div>
+          <div style="font-size:12px;opacity:0.7;margin-top:2px;">Interés fijo sobre capital · Mora 5% por retraso</div>
+        </div>
+        <button onclick="cerrarModal('modal-simulador-prestamo')" style="background:rgba(255,255,255,0.15);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;">✕</button>
+      </div>
+    </div>
+
+    <div style="padding:20px 24px;">
+
+      <!-- Inputs -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Monto del préstamo ($)</label>
+          <input type="number" id="smp-monto" value="10000" min="500" step="500"
+            oninput="smpActualizarTasa()"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e2e6ed;border-radius:8px;font-size:15px;font-family:monospace;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Número de meses</label>
+          <input type="number" id="smp-meses" value="6" min="1" max="36" step="1"
+            oninput="smpActualizarTasa()"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e2e6ed;border-radius:8px;font-size:15px;font-family:monospace;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Fecha inicio</label>
+          <input type="date" id="smp-fecha-inicio" oninput="smpActualizarMeses()"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e2e6ed;border-radius:8px;font-size:14px;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Fecha último pago</label>
+          <input type="date" id="smp-fecha-fin" oninput="smpActualizarMeses()"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e2e6ed;border-radius:8px;font-size:14px;box-sizing:border-box;">
+        </div>
+      </div>
+
+      <!-- Tasa auto -->
+      <div style="background:#f0faf5;border:1px solid #a7f3d0;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#065f46;">
+        🏦 Tasa aplicada automáticamente según monto y plazo: <strong id="smp-tasa-display">—</strong>
+      </div>
+
+      <!-- KPIs -->
+      <div id="smp-kpis" style="display:none;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+        <div style="background:#f8fafb;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Capital</div>
+          <div id="smp-kpi-capital" style="font-size:18px;font-weight:800;font-family:monospace;color:#111;">$0</div>
+        </div>
+        <div style="background:#fff7ed;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Interés</div>
+          <div id="smp-kpi-interes" style="font-size:18px;font-weight:800;font-family:monospace;color:#f59e0b;">$0</div>
+        </div>
+        <div style="background:#f0faf5;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Total a pagar</div>
+          <div id="smp-kpi-total" style="font-size:18px;font-weight:800;font-family:monospace;color:#1a7a5e;">$0</div>
+        </div>
+        <div style="background:#f5f3ff;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Pago mensual</div>
+          <div id="smp-kpi-mensual" style="font-size:18px;font-weight:800;font-family:monospace;color:#7c3aed;">$0</div>
+        </div>
+      </div>
+
+      <!-- Tabla amortización -->
+      <div id="smp-tabla-wrap" style="display:none;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+          Tabla de amortización — <span id="smp-tabla-sub"></span>
+        </div>
+        <div style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f3f4f6;position:sticky;top:0;">
+                <th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:600;color:#6b7280;">#</th>
+                <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;">Fecha pago</th>
+                <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#6b7280;">Capital</th>
+                <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#f59e0b;">Interés</th>
+                <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#1a7a5e;">Pago</th>
+                <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:600;color:#6b7280;">Saldo</th>
+              </tr>
+            </thead>
+            <tbody id="smp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Simulador de mora -->
+      <div id="smp-mora-wrap" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;">
+        <div style="font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">⚠️ Si paga con retraso (mora 5%)</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;">
+          <div>
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:3px;">Pago normal</div>
+            <div id="smp-mora-pago" style="font-weight:700;font-family:monospace;font-size:15px;">$0</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:3px;">Cargo por mora</div>
+            <div id="smp-mora-monto" style="font-weight:700;font-family:monospace;font-size:15px;color:#dc2626;">$0</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:3px;">Total con mora</div>
+            <div id="smp-mora-total" style="font-weight:700;font-family:monospace;font-size:15px;color:#dc2626;">$0</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-actions" style="padding:16px 24px;border-top:1px solid #f0f2f5;">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-simulador-prestamo')">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 </body></html>
