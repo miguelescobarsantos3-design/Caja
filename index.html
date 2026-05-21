@@ -852,6 +852,11 @@ async function guardarEnFirebase() {
 
     var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
     var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
+    // Merge tanda300/1000 antes de subir: preservar entregas tanto locales como remotas
+    var tanda300Final  = remoto ? _mergeTanda(DB.tanda300, remoto.tanda300) : DB.tanda300;
+    var tanda1000Final = remoto ? _mergeTanda(DB.tanda1000, remoto.tanda1000) : DB.tanda1000;
+    DB.tanda300  = tanda300Final;
+    DB.tanda1000 = tanda1000Final;
     DB.recibos = recibosFinales;
     DB.movimientos = movimientosFinales;
 
@@ -869,8 +874,8 @@ async function guardarEnFirebase() {
       recibos:        recibosFinales,
       _directorio:    DB._directorio || [],
       tandasGrupales: DB.tandasGrupales || [],
-      tanda300:       DB.tanda300 || null,
-      tanda1000:      DB.tanda1000 || null,
+      tanda300:       tanda300Final  || null,
+      tanda1000:      tanda1000Final || null,
       cuentas:        typeof CUENTAS !== 'undefined' ? JSON.parse(JSON.stringify(CUENTAS)) : null,
       ts:             ahora,
       _dispositivo:   window._dispositivoId || 'desconocido'
@@ -1068,7 +1073,13 @@ function escucharCambios() {
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
 
     try {
-      var json = JSON.stringify(Object.assign({}, datos, {v:3, ts: tsFirebase}));
+      var datosParaGuardar = Object.assign({}, datos, {
+        v:3,
+        ts: tsFirebase,
+        tanda300:  DB.tanda300,  // usar el ya mergeado, no el crudo de Firestore
+        tanda1000: DB.tanda1000
+      });
+      var json = JSON.stringify(datosParaGuardar);
       localStorage.setItem('caja_ahorro_2026', json);
       localStorage.setItem('caja_ahorro_2026_backup_total', json);
       localStorage.setItem('caja_ts', String(tsFirebase));
@@ -9897,7 +9908,6 @@ function normalizarVisibilidadSocios() {
         : '\x3Cspan class="badge badge-orange"\x3EPendiente\x3C/span\x3E';
       var editar = tipo === 't300'
         ? '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT300('+grupo+','+i+')"\x3EEditar aportes\x3C/button\x3E'
-        + (!cobro ? '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.entregarTurnoT300('+grupo+','+(i+1)+')" style="background:rgba(26,122,90,0.15);color:var(--verde);margin-left:4px;" title="Marcar turno como entregado"\x3E✓ Entregar\x3C/button\x3E' : '')
         : '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT1000('+i+')"\x3EEditar aportes\x3C/button\x3E';
       var eliminar = cobro ? '' : (tipo === 't300'
         ? '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.eliminarParticipanteT300('+grupo+','+i+')" style="background:var(--rojo-claro);color:var(--rojo);margin-left:4px;" title="Eliminar participante"\x3E✕\x3C/button\x3E'
@@ -10170,42 +10180,6 @@ function normalizarVisibilidadSocios() {
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
-  };
-
-  // Entregar un turno específico directamente desde la tabla
-  window.entregarTurnoT300 = function(grupo, turno){
-    var t = window.getTanda300();
-    var monto300 = t.montoAporte || 300;
-    var nombre = grupo === 1 ? T300_G1[turno-1] : T300_G2[turno-1];
-    var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.grupo)===grupo && Number(e.turno)===turno; });
-    if(yaEntregado){
-      if(!confirm('Este turno ya fue marcado como entregado.\n¿Deseas cancelar la entrega de G'+grupo+' Turno '+turno+' ('+nombre+')?')) return;
-      t.entregas = t.entregas.filter(function(e){ return !(Number(e.grupo)===grupo && Number(e.turno)===turno); });
-      guardarYRefrescar('t300');
-      return;
-    }
-    var montoSugerido = monto300 * (grupo===1 ? T300_G1.length-1 : T300_G2.length-1);
-    var cuerpo = '<p style="margin-bottom:12px;">G'+grupo+' Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'
-      + inputHtml('t300e2-fecha','Fecha','date',hoy())
-      + inputHtml('t300e2-monto','Monto entregado','number',montoSugerido)
-      + '</div>';
-    window._t300e2_grupo = grupo;
-    window._t300e2_turno = turno;
-    window._t300e2_nombre = nombre;
-    crearModal('modal-t300e2','✓ Entregar Tanda $300',cuerpo,'window._confirmarEntregaT300Directo');
-  };
-
-  window._confirmarEntregaT300Directo = function(){
-    var grupo = window._t300e2_grupo;
-    var turno = window._t300e2_turno;
-    var nombre = window._t300e2_nombre;
-    var monto = parseFloat(document.getElementById('t300e2-monto').value) || 0;
-    var fecha = document.getElementById('t300e2-fecha').value || hoy();
-    var t = window.getTanda300();
-    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombre});
-    cerrarModal('modal-t300e2');
-    guardarYRefrescar('t300');
   };
 
   window.abrirEntregaT300 = function(){
