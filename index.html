@@ -780,34 +780,36 @@ function _mergeRecibos(locales, remotos) {
 // MERGE TANDA300/TANDA1000: fusiona movimientos y entregas por clave única
 // sin perder registros de ninguna de las dos fuentes.
 function _mergeTanda(remota, local) {
-  // Si ninguna tiene datos, devolver estructura vacía
   if(!remota && !local) return { entregado:0, entregas:[], movimientos:[] };
-  if(!remota) return local;
-  if(!local)  return remota;
+  if(!remota) return JSON.parse(JSON.stringify(local));
+  if(!local)  return JSON.parse(JSON.stringify(remota));
 
-  // Preferir los metadatos del que tenga más movimientos (más completo)
-  var base = (remota.movimientos||[]).length >= (local.movimientos||[]).length ? remota : local;
-  var resultado = JSON.parse(JSON.stringify(base));
+  var resultado = { entregado:0, entregas:[], movimientos:[] };
 
-  // Fusionar movimientos: clave = fecha+aportante+cobrador+grupo+monto
+  // Copiar metadatos del que tenga más entregas (más avanzado)
+  var base = (remota.entregas||[]).length >= (local.entregas||[]).length ? remota : local;
+  resultado.montoAporte = base.montoAporte;
+
+  // Fusionar movimientos: clave única = grupo+aportante+cobrador+fecha+monto
   function claveMov(m) {
-    return [m.fecha||'', m.aportante||'', m.cobrador||'', String(m.grupo||0), String(m.monto||0)].join('|');
+    return [String(m.grupo||0), m.aportante||'', m.cobrador||'', m.fecha||'', String(m.monto||0)].join('|');
   }
   var mapaMovs = {};
   (remota.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
-  (local.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; }); // local gana en conflicto
+  (local.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
   resultado.movimientos = Object.values(mapaMovs);
 
-  // Fusionar entregas: clave = fecha+cobrador+grupo
+  // Fusionar entregas: clave única = grupo+turno (no puede haber dos entregas del mismo turno)
+  // UNIÓN COMPLETA: se conservan las entregas de AMBOS lados
   function claveEnt(e) {
-    return [e.fecha||'', e.cobrador||'', String(e.grupo||0)].join('|');
+    return String(e.grupo||0) + '-' + String(e.turno||0);
   }
   var mapaEnts = {};
   (remota.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
-  (local.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; }); // local gana en conflicto
+  // local sobreescribe remoto en conflicto (si mismo turno, la versión local es más fresca)
+  (local.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
   resultado.entregas = Object.values(mapaEnts);
 
-  // entregado: el mayor de los dos
   resultado.entregado = Math.max(Number(remota.entregado||0), Number(local.entregado||0));
 
   return resultado;
@@ -832,6 +834,13 @@ async function guardarEnFirebase() {
     console.warn('Firestore no disponible: no se pudo subir a nube');
     return false;
   }
+  // En celular, no subir hasta que Firestore haya respondido al menos una vez
+  if(/Mobi|Android/i.test(navigator.userAgent) && !window._firestoreYaBajo) {
+    console.log('📱 Celular — subida bloqueada, esperando bajada inicial de Firestore');
+    return false;
+  }
+  // Evitar llamadas simultáneas
+  if(window.__guardandoFirebaseAhora) return false;
   try {
     window.__guardandoFirebaseAhora = true;
     actualizarIndicadorSync('guardando');
@@ -845,15 +854,20 @@ async function guardarEnFirebase() {
     if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
 
-    // Leer remoto solo para fusionar históricos que no deben perderse.
+    // Leer remoto para fusionar sin perder datos de ningún dispositivo.
     var snapAntes = null;
     try { snapAntes = await _fbDb.collection('caja').doc('datos').get(); } catch(e) {}
     var remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
 
     var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
     var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
-    DB.recibos = recibosFinales;
+    // CRÍTICO: siempre mergear tanda300/1000 — el que tenga MÁS entregas gana
+    var tanda300Final  = _mergeTanda(DB.tanda300,  remoto ? remoto.tanda300  : null);
+    var tanda1000Final = _mergeTanda(DB.tanda1000, remoto ? remoto.tanda1000 : null);
+    DB.recibos     = recibosFinales;
     DB.movimientos = movimientosFinales;
+    DB.tanda300    = tanda300Final;
+    DB.tanda1000   = tanda1000Final;
 
     var ahora = Date.now();
     var datos = {
@@ -991,6 +1005,7 @@ async function cargarDesdFirebase(forzar) {
     } catch(e) {}
 
     actualizarIndicadorSync && actualizarIndicadorSync('guardado');
+    window._firestoreYaBajo = true; // celular puede subir a partir de aquí
     console.log('✅ Datos cargados desde Firestore', {
       socios: DB.socios.length,
       ts: tsFirebase ? new Date(tsFirebase).toLocaleString() : 'sin ts',
@@ -1025,6 +1040,7 @@ function escucharCambios() {
 
     if(yoGuarde && Math.abs(tsFirebase - yoGuarde) < 15000) {
       _ultimoTs = Math.max(_ultimoTs, tsFirebase);
+      window._firestoreYaBajo = true;
       return;
     }
 
@@ -1034,6 +1050,7 @@ function escucharCambios() {
         local: tsLocal ? new Date(tsLocal).toLocaleString() : 'sin local'
       });
       _ultimoTs = Math.max(_ultimoTs, tsFirebase);
+      window._firestoreYaBajo = true;
       return;
     }
 
@@ -1083,6 +1100,7 @@ function escucharCambios() {
     if(typeof renderUtilidades==='function') renderUtilidades();
     if(typeof actualizarTotalesUtilidadesUI==='function') actualizarTotalesUtilidadesUI(false); else if(typeof actualizarKpiUtilidades==='function') actualizarKpiUtilidades();
     actualizarIndicadorSync('conectado');
+    window._firestoreYaBajo = true; // celular puede subir a partir de aquí
     console.log('✅ Pantalla actualizada desde Firestore');
   }, function(err){
     console.warn('Listener Firestore error:', err.message);
@@ -9897,9 +9915,6 @@ function normalizarVisibilidadSocios() {
         : '\x3Cspan class="badge badge-orange"\x3EPendiente\x3C/span\x3E';
       var editar = tipo === 't300'
         ? '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT300('+grupo+','+i+')"\x3EEditar aportes\x3C/button\x3E'
-        + (cobro
-            ? '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.entregarTurnoT300('+grupo+','+(i+1)+')" style="background:rgba(10,74,42,0.15);color:var(--verde);margin-left:4px;" title="Desmarcar entrega"\x3E↩ Desmarcar\x3C/button\x3E'
-            : '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.entregarTurnoT300('+grupo+','+(i+1)+')" style="background:rgba(26,122,90,0.15);color:var(--verde);margin-left:4px;" title="Marcar como entregado"\x3E✓ Entregar\x3C/button\x3E')
         : '\x3Cbutton class="btn btn-secondary btn-sm" onclick="event.stopPropagation();window.editarAportesT1000('+i+')"\x3EEditar aportes\x3C/button\x3E';
       var eliminar = cobro ? '' : (tipo === 't300'
         ? '\x3Cbutton class="btn btn-sm" onclick="event.stopPropagation();window.eliminarParticipanteT300('+grupo+','+i+')" style="background:var(--rojo-claro);color:var(--rojo);margin-left:4px;" title="Eliminar participante"\x3E✕\x3C/button\x3E'
@@ -10170,53 +10185,6 @@ function normalizarVisibilidadSocios() {
     // Eliminar del array
     T1000_P.splice(idx, 1);
     guardarYRefrescar('t1000');
-    if(typeof guardarEnLocal==='function') guardarEnLocal();
-    if(typeof guardarEnFirebase==='function') guardarEnFirebase();
-  };
-
-  // Entregar o desmarcar un turno específico desde la tabla
-  window.entregarTurnoT300 = function(grupo, turno){
-    var t = window.getTanda300();
-    var monto300 = t.montoAporte || 300;
-    var nombre = grupo === 1 ? T300_G1[turno-1] : T300_G2[turno-1];
-    var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.grupo)===grupo && Number(e.turno)===turno; });
-
-    if(yaEntregado){
-      // Desmarcar entrega
-      if(!confirm('¿Desmarcar la entrega de G'+grupo+' Turno '+turno+' ('+nombre+')?\nSe eliminará el registro de cobro.')) return;
-      t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===grupo && Number(e.turno)===turno); });
-      DB.tanda300 = t;
-      guardarYRefrescar('t300');
-      if(typeof guardarEnLocal==='function') guardarEnLocal();
-      if(typeof guardarEnFirebase==='function') guardarEnFirebase();
-      return;
-    }
-
-    // Marcar como entregado
-    var montoSugerido = monto300 * ((grupo===1 ? T300_G1.length : T300_G2.length) - 1);
-    var cuerpo = '<p style="margin-bottom:12px;">G'+grupo+' — Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'
-      + inputHtml('t300e2-fecha','Fecha','date',hoy())
-      + inputHtml('t300e2-monto','Monto entregado','number',montoSugerido)
-      + '</div>';
-    window._t300e2_grupo = grupo;
-    window._t300e2_turno = turno;
-    window._t300e2_nombre = nombre;
-    crearModal('modal-t300e2','✓ Entregar Tanda $300',cuerpo,'window._confirmarEntregaT300Directo');
-  };
-
-  window._confirmarEntregaT300Directo = function(){
-    var grupo  = window._t300e2_grupo;
-    var turno  = window._t300e2_turno;
-    var nombre = window._t300e2_nombre;
-    var monto  = parseFloat(document.getElementById('t300e2-monto').value) || 0;
-    var fecha  = document.getElementById('t300e2-fecha').value || hoy();
-    var t = window.getTanda300();
-    t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===grupo && Number(e.turno)===turno); });
-    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombre});
-    DB.tanda300 = t;
-    cerrarModal('modal-t300e2');
-    guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
   };
