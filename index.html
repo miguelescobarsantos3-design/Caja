@@ -7,7 +7,7 @@
 
   <!-- PWA -->
   <meta name="theme-color" content="#1a7a5e">
-  <link rel="manifest" href="./manifest.json?v=pwa-20260520-maestro-estricto-v2">
+  <link rel="manifest" href="./manifest.json?v=pwa-20260520-antisobrescritura">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -695,8 +695,16 @@ function asegurarCuentasEspeciales() {
 }
 
 function forzarCargarDatosDelArchivo() {
-  alert('⛔ Función bloqueada por seguridad.\n\nCargar la base incrustada del archivo puede regresar datos viejos y pisar Firestore.\n\nUsa Sync desde nube o carga un respaldo JSON confirmado.');
-  return false;
+  if(typeof cargarDatosIniciales !== 'function') return;
+  if(!confirm('Esto recargará los datos base guardados dentro del archivo HTML.\n\nÚsalo si localStorage o la nube te escondieron cuentas especiales.\n\nSe reemplazarán los datos visibles actuales.')) return;
+  cargarDatosIniciales();
+  fixSocioIds();
+  asegurarCuentasEspeciales();
+  try { guardarEnLocal(); } catch(e) {}
+  if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+  goto('dashboard');
+  renderDashboard();
+  alert('Se recargaron los datos base del archivo y se restauraron las cuentas especiales.');
 }
 
 // ══════════════════════════════════════════════════
@@ -815,92 +823,6 @@ function _mergeMovimientos(locales, remotos) {
 }
 
 
-// ─── BLINDAJE DE TANDAS ───
-// Evita que una instancia con datos viejos borre aportes/entregas ya capturados.
-function cajaClonar(obj) {
-  return obj == null ? obj : JSON.parse(JSON.stringify(obj));
-}
-
-function cajaQuitarUndefined(obj) {
-  if(Array.isArray(obj)) {
-    return obj.map(cajaQuitarUndefined).filter(function(v){ return v !== undefined; });
-  }
-  if(obj && typeof obj === 'object') {
-    var out = {};
-    Object.keys(obj).forEach(function(k){
-      var v = cajaQuitarUndefined(obj[k]);
-      if(v !== undefined) out[k] = v;
-    });
-    return out;
-  }
-  return obj === undefined ? undefined : obj;
-}
-
-function cajaTandaRev(t) {
-  return Number(t && (t._rev || t.rev || t.updatedAtMs || t.ts || 0)) || 0;
-}
-
-function cajaTandaScore(t) {
-  if(!t) return 0;
-  return ((t.movimientos || []).length * 10) + ((t.entregas || []).length * 1000) + (Number(t.entregado || 0) > 0 ? 1 : 0);
-}
-
-function cajaElegirTandaSegura(remota, local, nombreCampo, forzar) {
-  if(!remota && !local) return null;
-  if(!remota) return cajaClonar(local);
-  if(!local) return cajaClonar(remota);
-
-  var rRemota = cajaTandaRev(remota);
-  var rLocal  = cajaTandaRev(local);
-
-  // En carga inicial forzada gana Firestore, salvo que la tanda local tenga una revisión explícitamente más nueva.
-  if(forzar && (!rLocal || rRemota >= rLocal)) return cajaClonar(remota);
-
-  if(rLocal || rRemota) {
-    if(rLocal > rRemota) {
-      console.warn('🛡️ '+nombreCampo+' protegida: Firestore traía una revisión más vieja. Se conserva local.', {local:rLocal, firestore:rRemota});
-      return cajaClonar(local);
-    }
-    return cajaClonar(remota);
-  }
-
-  // Para datos antiguos sin _rev: evita degradar a una tanda con menos información.
-  var sLocal = cajaTandaScore(local);
-  var sRemota = cajaTandaScore(remota);
-  if(sLocal > sRemota) {
-    console.warn('🛡️ '+nombreCampo+' protegida por cantidad de datos. Se conserva la versión más completa.', {local:sLocal, firestore:sRemota});
-    return cajaClonar(local);
-  }
-  return cajaClonar(remota);
-}
-
-function cajaElegirTandaParaSubir(local, remota, nombreCampo) {
-  if(!remota && !local) return null;
-  if(!remota) return cajaQuitarUndefined(cajaClonar(local));
-  if(!local) return cajaQuitarUndefined(cajaClonar(remota));
-
-  var rLocal = cajaTandaRev(local);
-  var rRemota = cajaTandaRev(remota);
-  if(rLocal || rRemota) {
-    return cajaQuitarUndefined(cajaClonar(rLocal >= rRemota ? local : remota));
-  }
-
-  return cajaQuitarUndefined(cajaClonar(cajaTandaScore(local) >= cajaTandaScore(remota) ? local : remota));
-}
-
-function cajaMarcarTandaModificada(tipo) {
-  var ahora = Date.now();
-  if(tipo === 't300' && DB && DB.tanda300) {
-    DB.tanda300._rev = ahora;
-    DB.tanda300._modificadoPor = window._dispositivoId || 'desconocido';
-  }
-  if(tipo === 't1000' && DB && DB.tanda1000) {
-    DB.tanda1000._rev = ahora;
-    DB.tanda1000._modificadoPor = window._dispositivoId || 'desconocido';
-  }
-}
-
-
 // ═══════════════════════════════════════════════════════
 // CONTROL ANTI-SOBREESCRITURA VIEJA — Mayo 2026
 // Objetivo: que la PWA/celular NO suba datos viejos.
@@ -925,11 +847,15 @@ function cajaBloqueadaLectura() {
 }
 
 function cajaPuedeGuardarFirebase() {
-  // MODO MAESTRO ESTRICTO:
-  // Solo el equipo marcado manualmente como maestro puede escribir en Firestore.
-  // PC, Chrome, PWA y celular quedan lectura si no tienen este permiso.
-  // Esto elimina el clásico “abrí otra instancia y me subió datos viejos”.
-  return cajaModoMaestro();
+  // Si se marcó manualmente como maestro, sí puede subir.
+  if(cajaModoMaestro()) return true;
+
+  // Si se marcó como lectura, nunca sube.
+  if(cajaBloqueadaLectura()) return false;
+
+  // Regla automática: PC sí puede subir; celular/PWA NO.
+  // Esto evita que el celular viejo pise la nube.
+  return !cajaEsMovilOPWA();
 }
 
 function activarMaestroCaja() {
@@ -1035,8 +961,8 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300     = cajaElegirTandaSegura(datos.tanda300 || null, DB.tanda300 || null, 'tanda300', !!forzar);
-    DB.tanda1000    = cajaElegirTandaSegura(datos.tanda1000 || null, DB.tanda1000 || null, 'tanda1000', !!forzar);
+    DB.tanda300     = datos.tanda300     || null;
+    DB.tanda1000    = datos.tanda1000    || null;
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -1044,7 +970,7 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
 
-    cajaGuardarSnapshotLocal(Object.assign({}, datos, {tanda300: DB.tanda300 || null, tanda1000: DB.tanda1000 || null, ts: tsFirebase || Date.now()}));
+    cajaGuardarSnapshotLocal(Object.assign({}, datos, {ts: tsFirebase || Date.now()}));
     cajaRenderTodo();
 
     window._firestoreYaBajo = true;
@@ -1064,15 +990,7 @@ async function guardarEnFirebase() {
     return false;
   }
 
-  // No se permite subir nada antes de haber bajado Firestore al menos una vez.
-  // Esto corta de raíz los guardados automáticos de arranque con localStorage viejo.
-  if(!window._firestoreYaBajo) {
-    console.warn('⛔ Subida bloqueada: primero debe bajar Firestore para evitar subir datos viejos.');
-    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
-    return false;
-  }
-
-  // Candado principal: solo el equipo maestro escribe.
+  // Candado principal: celular/PWA queda lectura por defecto.
   if(!cajaPuedeGuardarFirebase()) {
     console.warn('⛔ Este dispositivo está en modo lectura. No sube a Firestore para evitar datos viejos.', {
       dispositivo: window._dispositivoId || 'desconocido',
@@ -1102,53 +1020,30 @@ async function guardarEnFirebase() {
     if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
 
-    var remoto = null;
-    try {
-      var snapAntes = await _fbDb.collection('caja').doc('datos').get({source:'server'});
-      remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
-    } catch(e) {
-      try {
-        var snapCache = await _fbDb.collection('caja').doc('datos').get();
-        remoto = (snapCache && snapCache.exists) ? snapCache.data() : null;
-      } catch(e2) {}
-    }
-
-    var recibosFinales = remoto ? _mergeRecibos(DB.recibos || [], remoto.recibos || []) : (DB.recibos || []);
-    var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos || [], remoto.movimientos || []) : (DB.movimientos || []);
-    var tanda300Final = cajaElegirTandaParaSubir(DB.tanda300 || null, remoto ? remoto.tanda300 : null, 'tanda300');
-    var tanda1000Final = cajaElegirTandaParaSubir(DB.tanda1000 || null, remoto ? remoto.tanda1000 : null, 'tanda1000');
-
-    DB.recibos = recibosFinales;
-    DB.movimientos = movimientosFinales;
-    DB.tanda300 = tanda300Final;
-    DB.tanda1000 = tanda1000Final;
-
     var ahora = Date.now();
 
     var datos = {
       socios:         DB.socios || [],
       prestamos:      DB.prestamos || [],
       tandas:         DB.tandas || [],
-      movimientos:    movimientosFinales || [],
+      movimientos:    DB.movimientos || [],
       cumple:         DB.cumple || [],
       fondoCumple:    DB.fondoCumple || [],
       configCumple:   DB.configCumple || {aportacion:100, participantes:32},
       cumpleMatrix:   DB.cumpleMatrix || {festejados:[], participantes:[]},
       utilidades:     DB.utilidades || [],
-      recibos:        recibosFinales || [],
+      recibos:        DB.recibos || [],
       _directorio:    DB._directorio || [],
       tandasGrupales: DB.tandasGrupales || [],
-      tanda300:       tanda300Final || null,
-      tanda1000:      tanda1000Final || null,
+      tanda300:       DB.tanda300 || null,
+      tanda1000:      DB.tanda1000 || null,
       cuentas:        typeof CUENTAS !== 'undefined' ? JSON.parse(JSON.stringify(CUENTAS)) : null,
       ts:             ahora,
       _dispositivo:   window._dispositivoId || 'desconocido',
-      _modoGuardado:  'MAESTRO_ESTRICTO'
+      _modoGuardado:  cajaModoMaestro() ? 'MAESTRO' : 'PC_AUTO'
     };
 
-    datos = cajaQuitarUndefined(datos);
-
-    // Escritura completa, pero protegida: antes de subir se preserva la tanda con revisión más nueva.
+    // Escritura completa y limpia: sin merge de tanda vieja.
     await _fbDb.collection('caja').doc('datos').set(datos);
 
     localStorage.setItem('caja_ts', String(datos.ts));
@@ -1229,7 +1124,6 @@ async function cargarDesdFirebase(forzar) {
 
     if(!snap.exists) {
       console.warn('No existen datos en Firestore todavía.');
-      window._firestoreYaBajo = true;
       if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
       return false;
     }
@@ -9831,9 +9725,7 @@ function _guardarTras(fn) {
   };
 }
 // Guardar cada 5 minutos como respaldo local
-// Auto-guardado periódico desactivado: usar botón Guardar para evitar subir estados viejos.
-// // Auto-guardado periódico desactivado: usar botón Guardar para evitar subir estados viejos.
-// setInterval(guardarEnLocal, 300000);
+setInterval(guardarEnLocal, 300000);
 
 function guardarArchivoCompleto() {
   asegurarCuentasEspeciales();
@@ -10066,9 +9958,9 @@ function normalizarVisibilidadSocios() {
     var t = window.getTanda1000();
     t.entregado = sumaEntregas(t);
     var totalAportado = sumaAportesT1000(t);
-    // El fondo nunca puede ser negativo: si se entregó más de lo recaudado
-    // es un error de captura de datos, mostramos 0.
-    t.fondo = Math.max(0, totalAportado - t.entregado);
+    // Fondo real = aportado menos entregado.
+    // Puede ser negativo si ya se entregó más de lo que se ha recaudado.
+    t.fondo = totalAportado - t.entregado;
     return t;
   }
 
@@ -10207,7 +10099,6 @@ function normalizarVisibilidadSocios() {
     return '\x3Cdiv class="form-group"\x3E\x3Clabel\x3E'+label+'\x3C/label\x3E\x3Cinput type="'+tipo+'" id="'+id+'" value="'+esc(valor)+'"\x3E\x3C/div\x3E';
   }
   function guardarYRefrescar(vista){
-    try { if(vista === 't300' || vista === 't1000') cajaMarcarTandaModificada(vista); } catch(e) {}
     try { if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos(); } catch(e) {}
     if(vista === 't300') window.renderTanda300();
     if(vista === 't1000') window.renderTanda1000();
@@ -10725,7 +10616,6 @@ function normalizarVisibilidadSocios() {
 // INICIALIZACIÓN (al final para que todas las funciones estén disponibles)
 // ══════════════════════════════════════════════════
 (function iniciarApp() {
-  window._firestoreYaBajo = false;
   // ── ID único de este dispositivo para rastrear quién guardó ──
   try {
     var did = localStorage.getItem('_dispositivo_id');
@@ -12529,7 +12419,7 @@ function prActualizarInteres() {
       window.actualizarTotalesUtilidadesUI(false);
       if (document.getElementById('view-utilidades') && document.getElementById('view-utilidades').classList.contains('active')) window.renderUtilidades();
       if (document.getElementById('view-dashboard') && document.getElementById('view-dashboard').classList.contains('active') && typeof renderDashboard === 'function') renderDashboard();
-      // No guardar al arrancar: esto podía subir localStorage viejo antes de bajar Firestore.
+      if (typeof guardarEnLocal === 'function') guardarEnLocal();
     } catch(e) { console.warn('Parche utilidades:', e); }
   }, 300);
 })();
@@ -12669,7 +12559,7 @@ function prActualizarInteres() {
     try{
       if(typeof renderUtilidades === 'function' && document.getElementById('view-utilidades')) renderUtilidades();
       if(typeof renderDashboard === 'function' && document.getElementById('view-dashboard') && document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
-      // No guardar al arrancar: primero debe bajar Firestore.
+      if(typeof guardarEnLocal === 'function') guardarEnLocal();
     } catch(e){ console.warn('Parche V2 utilidades:', e); }
   }, 350);
 })();
@@ -13013,7 +12903,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=maestro-estricto-v2-20260520')
+    navigator.serviceWorker.register('./sw.js?v=antisobrescritura-20260520')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
