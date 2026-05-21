@@ -907,13 +907,14 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 
   var tsFirebase = Number(datos.ts || 0);
   var tsLocal = cajaTsLocal();
-  var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || sessionStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
   var mismoDispositivo = datos._dispositivo && datos._dispositivo === window._dispositivoId;
 
-  // Si yo mismo acabo de guardar, no repintar toda la pantalla con mi propio eco.
-  if(!forzar && mismoDispositivo && yoGuarde && tsFirebase && Math.abs(tsFirebase - yoGuarde) < 30000) {
-    console.log('✅ Snapshot propio ignorado para no repintar innecesariamente.');
+  // Si el snapshot lo generó ESTE mismo dispositivo, siempre ignorarlo.
+  // Chrome y PWA del mismo equipo ahora comparten el mismo _dispositivoId.
+  if(!forzar && mismoDispositivo) {
+    console.log('✅ Snapshot propio ignorado (mismo dispositivo/equipo).');
     window._firestoreYaBajo = true;
+    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
     return false;
   }
 
@@ -960,9 +961,8 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    // MERGE: nunca pisar entregas locales con datos de Firestore
-    DB.tanda300  = _mergeTanda(datos.tanda300,  DB.tanda300);
-    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
+    DB.tanda300     = datos.tanda300     || null;
+    DB.tanda1000    = datos.tanda1000    || null;
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -10617,17 +10617,24 @@ function normalizarVisibilidadSocios() {
 // ══════════════════════════════════════════════════
 (function iniciarApp() {
   // ── ID único de este dispositivo para rastrear quién guardó ──
+  // Chrome y PWA del mismo equipo comparten userAgent → mismo ID → no se pisan entre sí.
   try {
-    var did = localStorage.getItem('_dispositivo_id');
-    if(!did) {
-      var ua = navigator.userAgent;
-      var tipo = /Mobi|Android/i.test(ua) ? 'cel' : 'pc';
-      did = tipo + '_' + Date.now().toString(36);
-      localStorage.setItem('_dispositivo_id', did);
+    var ua = navigator.userAgent;
+    var tipo = /Mobi|Android/i.test(ua) ? 'cel' : 'pc';
+    // Hash simple del userAgent — determinístico, mismo resultado en Chrome y PWA del mismo equipo
+    var hash = 0;
+    for(var ci = 0; ci < ua.length; ci++) {
+      hash = ((hash << 5) - hash) + ua.charCodeAt(ci);
+      hash = hash & hash; // convertir a 32-bit int
     }
+    var did = tipo + '_' + Math.abs(hash).toString(36);
+    // Guardar para referencia pero siempre recalcular del userAgent
+    try { localStorage.setItem('_dispositivo_id', did); } catch(e) {}
     window._dispositivoId = did;
-    console.log('📱 Dispositivo:', did);
-  } catch(e) {}
+    console.log('📱 Dispositivo:', did, '| Chrome y PWA de este equipo comparten este ID');
+  } catch(e) {
+    window._dispositivoId = 'pc_fallback';
+  }
 
   var enIframe = false;
   try { enIframe = window.self !== window.top; } catch(e) { enIframe = true; }
@@ -13228,7 +13235,7 @@ function smpCalcular() {
 
 <!-- ══ MODAL SIMULADOR DE PRÉSTAMOS ══ -->
 <div class="modal-overlay" id="modal-simulador-prestamo" style="z-index:9999;">
-  <div class="modal" style="width:680px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;background:#fff;">
+  <div class="modal-card" style="width:680px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;">
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0f3d2e,#1a7a5e);padding:20px 24px;border-radius:14px 14px 0 0;color:white;">
