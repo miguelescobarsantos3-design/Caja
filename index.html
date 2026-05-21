@@ -785,15 +785,9 @@ function _mergeTanda(remota, local) {
   if(!local)  return JSON.parse(JSON.stringify(remota));
 
   var resultado = { entregado:0, entregas:[], movimientos:[] };
+  var monto = local.montoAporte || remota.montoAporte;
+  if(monto) resultado.montoAporte = monto;
 
-  // montoAporte: usar el que esté definido, preferir local
-  resultado.montoAporte = local.montoAporte || remota.montoAporte || null;
-  // Limpiar undefined — Firestore lo rechaza
-  if(resultado.montoAporte === undefined || resultado.montoAporte === null) {
-    delete resultado.montoAporte;
-  }
-
-  // Fusionar movimientos: clave única = grupo+aportante+cobrador+fecha+monto
   function claveMov(m) {
     return [String(m.grupo||0), m.aportante||'', m.cobrador||'', m.fecha||'', String(m.monto||0)].join('|');
   }
@@ -802,15 +796,14 @@ function _mergeTanda(remota, local) {
   (local.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
   resultado.movimientos = Object.values(mapaMovs);
 
-  // Fusionar entregas: clave única = grupo+turno — UNIÓN COMPLETA de ambos lados
+  // Clave correcta: grupo+turno — UNIÓN COMPLETA, nunca se pierde una entrega
   function claveEnt(e) { return String(e.grupo||0) + '-' + String(e.turno||0); }
   var mapaEnts = {};
   (remota.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
-  (local.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; }); // local gana en conflicto
+  (local.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
   resultado.entregas = Object.values(mapaEnts);
 
   resultado.entregado = Math.max(Number(remota.entregado||0), Number(local.entregado||0));
-
   return resultado;
 }
 
@@ -833,9 +826,9 @@ async function guardarEnFirebase() {
     console.warn('Firestore no disponible: no se pudo subir a nube');
     return false;
   }
-  // Celular no puede subir hasta que Firestore haya respondido al menos una vez
+  // PWA/celular no sube hasta que Firestore haya respondido al menos una vez
   if(/Mobi|Android/i.test(navigator.userAgent) && !window._firestoreYaBajo) {
-    console.log('📱 Celular — subida bloqueada, esperando bajada inicial de Firestore');
+    console.log('📱 PWA/celular — subida bloqueada hasta bajada inicial de Firestore');
     return false;
   }
   if(window.__guardandoFirebaseAhora) return false;
@@ -843,7 +836,6 @@ async function guardarEnFirebase() {
     window.__guardandoFirebaseAhora = true;
     actualizarIndicadorSync('guardando');
 
-    // Preparar datos locales antes de subirlos.
     if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
     if(typeof normalizarVisibilidadSocios === 'function') normalizarVisibilidadSocios();
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
@@ -852,14 +844,13 @@ async function guardarEnFirebase() {
     if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
 
-    // Leer remoto para fusionar sin perder datos de ningún dispositivo.
+    // Leer remoto y mergear tanda antes de subir — nunca pisar entregas de otra instancia
     var snapAntes = null;
     try { snapAntes = await _fbDb.collection('caja').doc('datos').get(); } catch(e) {}
     var remoto = (snapAntes && snapAntes.exists) ? snapAntes.data() : null;
 
     var recibosFinales     = remoto ? _mergeRecibos(DB.recibos, remoto.recibos) : (DB.recibos || []);
     var movimientosFinales = remoto ? _mergeMovimientos(DB.movimientos, remoto.movimientos) : (DB.movimientos || []);
-    // CRÍTICO: mergear tanda300/1000 — conservar entregas de AMBOS dispositivos
     var tanda300Final  = _mergeTanda(DB.tanda300,  remoto ? remoto.tanda300  : null);
     var tanda1000Final = _mergeTanda(DB.tanda1000, remoto ? remoto.tanda1000 : null);
     DB.recibos     = recibosFinales;
@@ -890,7 +881,7 @@ async function guardarEnFirebase() {
 
     await _fbDb.collection('caja').doc('datos').set(datos);
     localStorage.setItem('caja_ts', String(datos.ts));
-    sessionStorage.setItem('yo_guarde_ts', String(datos.ts));
+    localStorage.setItem('yo_guarde_ts', String(datos.ts));
     actualizarIndicadorSync('guardado');
     console.log('✅ Firestore guardado desde este dispositivo:', datos._dispositivo, '|', new Date(datos.ts).toLocaleString(), '| recibos:', recibosFinales.length, '| movimientos:', movimientosFinales.length);
     return true;
@@ -1034,7 +1025,7 @@ function escucharCambios() {
 
     var tsFirebase = Number(datos.ts || 0);
     var tsLocal = parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
-    var yoGuarde = parseInt(sessionStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
+    var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
 
     if(yoGuarde && Math.abs(tsFirebase - yoGuarde) < 15000) {
       _ultimoTs = Math.max(_ultimoTs, tsFirebase);
@@ -10193,41 +10184,63 @@ function normalizarVisibilidadSocios() {
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
   };
 
-  // ── Entregar/desmarcar turno T300 directamente desde la tabla ──
+  // ── Entregar / Desmarcar turno T300 desde la tabla ──
   window.entregarTurnoT300 = function(grupo, turno) {
     var t = window.getTanda300();
-    var nombre = grupo === 1 ? T300_G1[turno-1] : T300_G2[turno-1];
+    var nombre = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
     var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.grupo)===grupo && Number(e.turno)===turno; });
     if(yaEntregado) {
-      if(!confirm('¿Desmarcar la entrega de G'+grupo+' Turno '+turno+' ('+nombre+')?')) return;
+      if(!confirm('¿Desmarcar entrega G'+grupo+' T'+turno+' ('+nombre+')?')) return;
       t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===grupo && Number(e.turno)===turno); });
-      DB.tanda300 = t;
-      guardarYRefrescar('t300');
+      DB.tanda300 = t; guardarYRefrescar('t300');
       if(typeof guardarEnLocal==='function') guardarEnLocal();
       if(typeof guardarEnFirebase==='function') guardarEnFirebase();
       return;
     }
     var monto300 = t.montoAporte || 300;
-    var totalParticipantes = grupo===1 ? T300_G1.length : T300_G2.length;
-    var montoSugerido = monto300 * (totalParticipantes - 1);
-    var cuerpo = '<p style="margin-bottom:12px;">G'+grupo+' — Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'
-      + inputHtml('t300e2-fecha','Fecha','date',hoy())
-      + inputHtml('t300e2-monto','Monto entregado','number',montoSugerido)
-      + '</div>';
-    window._t300e2 = {grupo:grupo, turno:turno, nombre:nombre};
+    var nPart = grupo===1 ? T300_G1.length : T300_G2.length;
+    var cuerpo = '<p style="margin-bottom:12px;">G'+grupo+' Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
+      + '<div class="form-row">'+inputHtml('t300e2-fecha','Fecha','date',hoy())+inputHtml('t300e2-monto','Monto','number',monto300*(nPart-1))+'</div>';
+    window._t300e2 = {grupo:grupo,turno:turno,nombre:nombre};
     crearModal('modal-t300e2','✓ Entregar Tanda $300',cuerpo,'window._confirmarEntregaT300Directo');
   };
   window._confirmarEntregaT300Directo = function() {
-    var g = window._t300e2;
-    var monto = parseFloat(document.getElementById('t300e2-monto').value) || 0;
-    var fecha = document.getElementById('t300e2-fecha').value || hoy();
-    var t = window.getTanda300();
+    var g = window._t300e2; var t = window.getTanda300();
+    var monto = parseFloat(document.getElementById('t300e2-monto').value)||0;
+    var fecha = document.getElementById('t300e2-fecha').value||hoy();
     t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===g.grupo && Number(e.turno)===g.turno); });
-    t.entregas.push({grupo:g.grupo, turno:g.turno, monto:monto, fecha:fecha, nombre:g.nombre});
-    DB.tanda300 = t;
-    cerrarModal('modal-t300e2');
-    guardarYRefrescar('t300');
+    t.entregas.push({grupo:g.grupo,turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre});
+    DB.tanda300 = t; cerrarModal('modal-t300e2'); guardarYRefrescar('t300');
+    if(typeof guardarEnLocal==='function') guardarEnLocal();
+    if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+  };
+
+  // ── Entregar / Desmarcar turno T1000 desde la tabla ──
+  window.entregarTurnoT1000 = function(turno) {
+    var t = window.getTanda1000();
+    var nombre = T1000_P[turno-1];
+    var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.turno)===turno; });
+    if(yaEntregado) {
+      if(!confirm('¿Desmarcar entrega T'+turno+' ('+nombre+')?')) return;
+      t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==turno; });
+      DB.tanda1000 = t; guardarYRefrescar('t1000');
+      if(typeof guardarEnLocal==='function') guardarEnLocal();
+      if(typeof guardarEnFirebase==='function') guardarEnFirebase();
+      return;
+    }
+    var monto1000 = t.montoAporte || 1000;
+    var cuerpo = '<p style="margin-bottom:12px;">Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
+      + '<div class="form-row">'+inputHtml('t1000e2-fecha','Fecha','date',hoy())+inputHtml('t1000e2-monto','Monto','number',monto1000*(T1000_P.length-1))+'</div>';
+    window._t1000e2 = {turno:turno,nombre:nombre};
+    crearModal('modal-t1000e2','✓ Entregar Tanda $1,000',cuerpo,'window._confirmarEntregaT1000Directo');
+  };
+  window._confirmarEntregaT1000Directo = function() {
+    var g = window._t1000e2; var t = window.getTanda1000();
+    var monto = parseFloat(document.getElementById('t1000e2-monto').value)||0;
+    var fecha = document.getElementById('t1000e2-fecha').value||hoy();
+    t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==g.turno; });
+    t.entregas.push({turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre});
+    DB.tanda1000 = t; cerrarModal('modal-t1000e2'); guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
   };
@@ -10358,44 +10371,6 @@ function normalizarVisibilidadSocios() {
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos1000});
     cerrarModal('modal-t1000-aporte');
     mostrarReciboTanda('tanda1000', aportante, total, fecha, conceptoT1000, pagadoTotalT1000, notasReciboT1000, folioT1000);
-    guardarYRefrescar('t1000');
-    if(typeof guardarEnLocal==='function') guardarEnLocal();
-    if(typeof guardarEnFirebase==='function') guardarEnFirebase();
-  };
-
-  // ── Entregar/desmarcar turno T1000 directamente desde la tabla ──
-  window.entregarTurnoT1000 = function(turno) {
-    var t = window.getTanda1000();
-    var nombre = T1000_P[turno-1];
-    var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.turno)===turno; });
-    if(yaEntregado) {
-      if(!confirm('¿Desmarcar la entrega del Turno '+turno+' ('+nombre+')?')) return;
-      t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==turno; });
-      DB.tanda1000 = t;
-      guardarYRefrescar('t1000');
-      if(typeof guardarEnLocal==='function') guardarEnLocal();
-      if(typeof guardarEnFirebase==='function') guardarEnFirebase();
-      return;
-    }
-    var monto1000 = t.montoAporte || 1000;
-    var montoSugerido = monto1000 * (T1000_P.length - 1);
-    var cuerpo = '<p style="margin-bottom:12px;">Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'
-      + inputHtml('t1000e2-fecha','Fecha','date',hoy())
-      + inputHtml('t1000e2-monto','Monto entregado','number',montoSugerido)
-      + '</div>';
-    window._t1000e2 = {turno:turno, nombre:nombre};
-    crearModal('modal-t1000e2','✓ Entregar Tanda $1,000',cuerpo,'window._confirmarEntregaT1000Directo');
-  };
-  window._confirmarEntregaT1000Directo = function() {
-    var g = window._t1000e2;
-    var monto = parseFloat(document.getElementById('t1000e2-monto').value) || 0;
-    var fecha = document.getElementById('t1000e2-fecha').value || hoy();
-    var t = window.getTanda1000();
-    t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==g.turno; });
-    t.entregas.push({turno:g.turno, monto:monto, fecha:fecha, nombre:g.nombre});
-    DB.tanda1000 = t;
-    cerrarModal('modal-t1000e2');
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -12525,7 +12500,7 @@ function prActualizarInteres() {
         localStorage.removeItem('caja_recuperacion_index_corregido_2026042802_aplicada');
         localStorage.removeItem('caja_rescate_forzado_ok');
       } catch(e) {}
-      try { sessionStorage.removeItem('yo_guarde_ts'); sessionStorage.removeItem('sync_en_proceso'); } catch(e) {}
+      try { localStorage.removeItem('yo_guarde_ts'); sessionStorage.removeItem('yo_guarde_ts'); sessionStorage.removeItem('sync_en_proceso'); } catch(e) {}
       try { if('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }); } catch(e) {}
       try { if(window.caches) caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); }); } catch(e) {}
 
