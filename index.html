@@ -788,15 +788,16 @@ function _mergeTanda(remota, local) {
   var monto = local.montoAporte || remota.montoAporte;
   if(monto) resultado.montoAporte = monto;
 
-  function claveMov(m) {
-    return [String(m.grupo||0), m.aportante||'', m.cobrador||'', m.fecha||'', String(m.monto||0)].join('|');
-  }
-  var mapaMovs = {};
-  (remota.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
-  (local.movimientos||[]).forEach(function(m){ mapaMovs[claveMov(m)] = m; });
-  resultado.movimientos = Object.values(mapaMovs);
+  // Movimientos: usar el array más completo (más movimientos = más datos capturados)
+  // No deduplicar por clave — los aportes de distintos participantes pueden tener
+  // misma fecha/monto/cobrador y colapsarían incorrectamente.
+  var movsLocal  = local.movimientos  || [];
+  var movsRemoto = remota.movimientos || [];
+  resultado.movimientos = movsLocal.length >= movsRemoto.length
+    ? JSON.parse(JSON.stringify(movsLocal))
+    : JSON.parse(JSON.stringify(movsRemoto));
 
-  // Clave correcta: grupo+turno — UNIÓN COMPLETA, nunca se pierde una entrega
+  // Entregas: clave única = grupo+turno — UNIÓN COMPLETA, nunca se pierde una entrega
   function claveEnt(e) { return String(e.grupo||0) + '-' + String(e.turno||0); }
   var mapaEnts = {};
   (remota.entregas||[]).forEach(function(e){ mapaEnts[claveEnt(e)] = e; });
@@ -907,14 +908,13 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 
   var tsFirebase = Number(datos.ts || 0);
   var tsLocal = cajaTsLocal();
+  var yoGuarde = parseInt(localStorage.getItem('yo_guarde_ts') || sessionStorage.getItem('yo_guarde_ts') || '0', 10) || 0;
   var mismoDispositivo = datos._dispositivo && datos._dispositivo === window._dispositivoId;
 
-  // Si el snapshot lo generó ESTE mismo dispositivo, ignorarlo siempre.
-  // Chrome y PWA del mismo equipo comparten el mismo _dispositivoId via hash de userAgent.
-  if(!forzar && mismoDispositivo) {
-    console.log('✅ Snapshot propio ignorado (mismo dispositivo/equipo).');
+  // Si yo mismo acabo de guardar, no repintar toda la pantalla con mi propio eco.
+  if(!forzar && mismoDispositivo && yoGuarde && tsFirebase && Math.abs(tsFirebase - yoGuarde) < 30000) {
+    console.log('✅ Snapshot propio ignorado para no repintar innecesariamente.');
     window._firestoreYaBajo = true;
-    if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
     return false;
   }
 
@@ -961,8 +961,8 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300  = _mergeTanda(datos.tanda300,  DB.tanda300);
-    DB.tanda1000 = _mergeTanda(datos.tanda1000, DB.tanda1000);
+    DB.tanda300     = datos.tanda300     || null;
+    DB.tanda1000    = datos.tanda1000    || null;
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -987,13 +987,6 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 async function guardarEnFirebase() {
   if(!_fbConectado || !_fbDb) {
     console.warn('Firestore no disponible: no se pudo subir a nube');
-    return false;
-  }
-
-  // CRÍTICO: no subir hasta que Firestore haya respondido al menos una vez.
-  // Evita que datos viejos de localStorage pisen Firestore al arrancar.
-  if(!window._firestoreYaBajo) {
-    console.warn('⏳ Firestore aún no ha bajado — subida bloqueada para no pisar datos.');
     return false;
   }
 
