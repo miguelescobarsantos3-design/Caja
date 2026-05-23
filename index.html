@@ -7,7 +7,7 @@
 
   <!-- PWA -->
   <meta name="theme-color" content="#1a7a5e">
-  <link rel="manifest" href="./manifest.json?v=pwa-20260523-fix-pc-pwa">
+  <link rel="manifest" href="./manifest.json?v=pwa-20260523-cuentas-tandas-cumple">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -7481,6 +7481,38 @@ function actualizarCuenta() {
 }
 
 
+// ─── Movimiento de cuentas bancarias ─────────────────────────────
+// Usado por Ahorros, Préstamos, Tanda $300, Tanda $1,000 y Cumpleaños.
+// delta positivo = entra dinero; delta negativo = sale dinero.
+function actualizarSaldoCuenta(cuentaKey, delta) {
+  try {
+    cuentaKey = cuentaKey || 'efectivo';
+    delta = Math.round((Number(delta) || 0) * 100) / 100;
+    if(!cuentaKey || !delta) return false;
+    if(typeof CUENTAS === 'undefined' || !CUENTAS[cuentaKey]) {
+      console.warn('Cuenta no encontrada para movimiento:', cuentaKey, delta);
+      return false;
+    }
+    CUENTAS[cuentaKey].saldo = Math.round(((Number(CUENTAS[cuentaKey].saldo) || 0) + delta) * 100) / 100;
+    if(typeof renderCuentas === 'function') renderCuentas();
+    if(typeof renderDashboard === 'function') renderDashboard();
+    return true;
+  } catch(e) {
+    console.warn('No se pudo actualizar saldo de cuenta:', e.message);
+    return false;
+  }
+}
+
+function opcionesCuentasCajaHTML() {
+  return '<option value="efectivo">Efectivo / Caja chica</option>'
+    + '<option value="bbva">BBVA</option>'
+    + '<option value="nu">Nu banco</option>'
+    + '<option value="mp">Mercado Pago</option>'
+    + '<option value="bnmx">Banamex</option>';
+}
+
+
+
 // ══════════════════════════════════════════════════
 // RECIBOS Y CANCELACIONES
 // ══════════════════════════════════════════════════
@@ -8936,8 +8968,9 @@ function confirmarAporteCumple(){
   if(!aportante){el.style.borderColor='var(--rojo)';return;}
   if(!monto||!fecha)return;
   if(!DB.fondoCumple)DB.fondoCumple=[];
-  DB.fondoCumple.push({tipo:'aporte',monto,fecha,concepto:'Aporte de '+aportante,notas});
+  DB.fondoCumple.push({tipo:'aporte',monto,fecha,cuenta,concepto:'Aporte de '+aportante,notas});
   DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto,fecha,cuenta,notas:'Aporte fondo cumpleaños'+(notas?' — '+notas:'')});
+  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, monto);
   // Actualizar aportes en matrix
   const parts = DB.cumpleMatrix && DB.cumpleMatrix.participantes;
   if(parts){
@@ -9040,11 +9073,13 @@ function confirmarEntregaCumple(){
   const nombre=document.getElementById('ce-festejado').value;
   const monto=parseFloat(document.getElementById('ce-monto').value)||0;
   const fecha=document.getElementById('ce-fecha').value;
+  const cuenta=(document.getElementById('ce-cuenta')||{}).value||'efectivo';
   if(!nombre||!monto||!fecha)return;
   if(!DB.fondoCumple)DB.fondoCumple=[];
-  DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños'});
+  DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,cuenta,concepto:'Entrega a '+nombre,notas:'Cumpleaños'});
   const c=(DB.cumple||[]).find(x=>x.nombre===nombre);if(c)c.entregado=true;
-  DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,notas:'Entrega fondo cumpleaños'});
+  DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,cuenta,notas:'Entrega fondo cumpleaños'});
+  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
@@ -10116,6 +10151,10 @@ function normalizarVisibilidadSocios() {
   function inputHtml(id,label,tipo,valor){
     return '\x3Cdiv class="form-group"\x3E\x3Clabel\x3E'+label+'\x3C/label\x3E\x3Cinput type="'+tipo+'" id="'+id+'" value="'+esc(valor)+'"\x3E\x3C/div\x3E';
   }
+  function cuentaOptionsHtmlTandas(){
+    if(typeof opcionesCuentasCajaHTML === 'function') return opcionesCuentasCajaHTML();
+    return '<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>';
+  }
   function guardarYRefrescar(vista){
     try { if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos(); } catch(e) {}
     if(vista === 't300') window.renderTanda300();
@@ -10309,6 +10348,7 @@ function normalizarVisibilidadSocios() {
     var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.grupo)===grupo && Number(e.turno)===turno; });
     if(yaEntregado) {
       if(!confirm('¿Desmarcar entrega G'+grupo+' T'+turno+' ('+nombre+')?')) return;
+      if(yaEntregado && yaEntregado.cuenta && typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(yaEntregado.cuenta, Number(yaEntregado.monto)||0);
       t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===grupo && Number(e.turno)===turno); });
       DB.tanda300 = t; guardarYRefrescar('t300');
       if(typeof guardarEnLocal==='function') guardarEnLocal();
@@ -10318,7 +10358,8 @@ function normalizarVisibilidadSocios() {
     var monto300 = t.montoAporte || 300;
     var nPart = grupo===1 ? T300_G1.length : T300_G2.length;
     var cuerpo = '<p style="margin-bottom:12px;">G'+grupo+' Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'+inputHtml('t300e2-fecha','Fecha','date',hoy())+inputHtml('t300e2-monto','Monto','number',monto300*(nPart-1))+'</div>';
+      + '<div class="form-row">'+inputHtml('t300e2-fecha','Fecha','date',hoy())+inputHtml('t300e2-monto','Monto','number',monto300*(nPart-1))+'</div>'
+      + '<div class="form-row">'+selectHtml('t300e2-cuenta','Cuenta de salida','',cuentaOptionsHtmlTandas())+'</div>';
     window._t300e2 = {grupo:grupo,turno:turno,nombre:nombre};
     crearModal('modal-t300e2','✓ Entregar Tanda $300',cuerpo,'window._confirmarEntregaT300Directo');
   };
@@ -10326,8 +10367,12 @@ function normalizarVisibilidadSocios() {
     var g = window._t300e2; var t = window.getTanda300();
     var monto = parseFloat(document.getElementById('t300e2-monto').value)||0;
     var fecha = document.getElementById('t300e2-fecha').value||hoy();
+    var cuenta = (document.getElementById('t300e2-cuenta')||{}).value || 'efectivo';
     t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===g.grupo && Number(e.turno)===g.turno); });
-    t.entregas.push({grupo:g.grupo,turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre});
+    t.entregas.push({grupo:g.grupo,turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre,cuenta:cuenta});
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({tipo:'tanda300',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+g.grupo+' T'+g.turno});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     DB.tanda300 = t; cerrarModal('modal-t300e2'); guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10340,6 +10385,7 @@ function normalizarVisibilidadSocios() {
     var yaEntregado = (t.entregas||[]).find(function(e){ return Number(e.turno)===turno; });
     if(yaEntregado) {
       if(!confirm('¿Desmarcar entrega T'+turno+' ('+nombre+')?')) return;
+      if(yaEntregado && yaEntregado.cuenta && typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(yaEntregado.cuenta, Number(yaEntregado.monto)||0);
       t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==turno; });
       DB.tanda1000 = t; guardarYRefrescar('t1000');
       if(typeof guardarEnLocal==='function') guardarEnLocal();
@@ -10348,7 +10394,8 @@ function normalizarVisibilidadSocios() {
     }
     var monto1000 = t.montoAporte || 1000;
     var cuerpo = '<p style="margin-bottom:12px;">Turno '+turno+': <strong>'+esc(nombre)+'</strong></p>'
-      + '<div class="form-row">'+inputHtml('t1000e2-fecha','Fecha','date',hoy())+inputHtml('t1000e2-monto','Monto','number',monto1000*(T1000_P.length-1))+'</div>';
+      + '<div class="form-row">'+inputHtml('t1000e2-fecha','Fecha','date',hoy())+inputHtml('t1000e2-monto','Monto','number',monto1000*(T1000_P.length-1))+'</div>'
+      + '<div class="form-row">'+selectHtml('t1000e2-cuenta','Cuenta de salida','',cuentaOptionsHtmlTandas())+'</div>';
     window._t1000e2 = {turno:turno,nombre:nombre};
     crearModal('modal-t1000e2','✓ Entregar Tanda $1,000',cuerpo,'window._confirmarEntregaT1000Directo');
   };
@@ -10356,8 +10403,12 @@ function normalizarVisibilidadSocios() {
     var g = window._t1000e2; var t = window.getTanda1000();
     var monto = parseFloat(document.getElementById('t1000e2-monto').value)||0;
     var fecha = document.getElementById('t1000e2-fecha').value||hoy();
+    var cuenta = (document.getElementById('t1000e2-cuenta')||{}).value || 'efectivo';
     t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==g.turno; });
-    t.entregas.push({turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre});
+    t.entregas.push({turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre,cuenta:cuenta});
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({tipo:'tanda1000',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+g.turno});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     DB.tanda1000 = t; cerrarModal('modal-t1000e2'); guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10375,6 +10426,7 @@ function normalizarVisibilidadSocios() {
       + inputHtml('t300e-fecha','Fecha','date',hoy())
       + inputHtml('t300e-monto','Monto','number',3000)
       + '</div>'
+      + '<div class="form-row">' + selectHtml('t300e-cuenta','Cuenta de salida','',cuentaOptionsHtmlTandas()) + '</div>'
       + selectHtml('t300e-sel','Turno a entregar','',opts);
     crearModal('modal-t300e','Entregar Tanda $300',cuerpo,'window.guardarEntregaT300');
   };
@@ -10385,8 +10437,13 @@ function normalizarVisibilidadSocios() {
     var grupo = parseInt(sel[0],10), turno = parseInt(sel[1],10);
     var monto = parseFloat(document.getElementById('t300e-monto').value) || 3000;
     var fecha = document.getElementById('t300e-fecha').value || hoy();
+    var cuenta = (document.getElementById('t300e-cuenta')||{}).value || 'efectivo';
     var t = window.getTanda300();
-    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1]});
+    var nombreEntrega = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
+    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombreEntrega, cuenta:cuenta});
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({tipo:'tanda300',socio:nombreEntrega,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+grupo+' T'+turno});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t300e');
     guardarYRefrescar('t300');
   };
@@ -10504,6 +10561,7 @@ function normalizarVisibilidadSocios() {
       + inputHtml('t1000e-fecha','Fecha','date',hoy())
       + inputHtml('t1000e-monto','Monto','number',(T1000_P.length - 1) * 1000)
       + '</div>'
+      + '<div class="form-row">' + selectHtml('t1000e-cuenta','Cuenta de salida','',cuentaOptionsHtmlTandas()) + '</div>'
       + selectHtml('t1000e-sel','Turno a entregar','',opts);
     crearModal('modal-t1000e','Entregar Tanda $1,000',cuerpo,'window.guardarEntregaT1000');
   };
@@ -10512,8 +10570,12 @@ function normalizarVisibilidadSocios() {
     if(isNaN(idx)) return;
     var monto = parseFloat(document.getElementById('t1000e-monto').value) || ((T1000_P.length - 1) * 1000);
     var fecha = document.getElementById('t1000e-fecha').value || hoy();
+    var cuenta = (document.getElementById('t1000e-cuenta')||{}).value || 'efectivo';
     var t = window.getTanda1000();
-    t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:T1000_P[idx]});
+    t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:T1000_P[idx], cuenta:cuenta});
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({tipo:'tanda1000',socio:T1000_P[idx],monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+(idx+1)});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t1000e');
     guardarYRefrescar('t1000');
   };
@@ -11220,6 +11282,7 @@ function actualizarMontoCalculado() {
 function confirmarAporteCumple(){
   var aportante = document.getElementById('ca-aportante').value;
   var fecha = document.getElementById('ca-fecha').value;
+  var cuenta = (document.getElementById('ca-cuenta')||{}).value || 'efectivo';
   var notas = document.getElementById('ca-notas').value.trim();
   if(!aportante){ document.getElementById('ca-aportante').style.borderColor='var(--rojo)'; return; }
   if(!fecha) return;
@@ -11228,8 +11291,9 @@ function confirmarAporteCumple(){
   if(!festSeleccionados.length){ alert('Selecciona al menos un cumpleaños a cubrir'); return; }
   var monto = festSeleccionados.length * 100;
   if(!DB.fondoCumple) DB.fondoCumple = [];
-  DB.fondoCumple.push({tipo:'aporte',monto:monto,fecha:fecha,aportante:aportante,festejados:festSeleccionados,concepto:'Aporte de '+aportante+' — '+festSeleccionados.join(', '),notas:notas});
-  DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto:monto,fecha:fecha,notas:'Tanda cumpleaños: '+festSeleccionados.join(', ')+(notas?' — '+notas:'')});
+  DB.fondoCumple.push({tipo:'aporte',monto:monto,fecha:fecha,cuenta:cuenta,aportante:aportante,festejados:festSeleccionados,concepto:'Aporte de '+aportante+' — '+festSeleccionados.join(', '),notas:notas});
+  DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Tanda cumpleaños: '+festSeleccionados.join(', ')+(notas?' — '+notas:'')});
+  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, monto);
   var parts = DB.cumpleMatrix && DB.cumpleMatrix.participantes;
   if(parts){
     var p = parts.find(function(x){ return x.nombre===aportante; });
@@ -11682,6 +11746,9 @@ function tgConfirmarEntrega(){
     <div class="form-row">
       <div class="form-group"><label>Monto a entregar ($)</label><input type="number" id="ce-monto" min="1"></div>
       <div class="form-group"><label>Fecha de entrega</label><input type="date" id="ce-fecha"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Cuenta de salida</label><select id="ce-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);"><option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option></select></div>
     </div>
     <div id="ce-aviso" style="font-size: 12px; color: var(--naranja); display: block; margin-bottom: 8px;">⚠ Fondo disponible: $-8,100 — insuficiente para $3,100</div>
     <div class="modal-actions">
