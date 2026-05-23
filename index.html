@@ -9000,6 +9000,8 @@ function confirmarAporteCumple(){
   if(!DB.fondoCumple)DB.fondoCumple=[];
   DB.fondoCumple.push({tipo:'aporte',monto,fecha,concepto:'Aporte de '+aportante,notas});
   DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto,fecha,cuenta,notas:'Aporte fondo cumpleaños'+(notas?' — '+notas:'')});
+  // Sumar a saldo de cuenta seleccionada
+  if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += monto; renderCuentas(); }
   // Actualizar aportes en matrix
   const parts = DB.cumpleMatrix && DB.cumpleMatrix.participantes;
   if(parts){
@@ -9108,7 +9110,8 @@ function confirmarEntregaCumple(){
   DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños',cuenta});
   const c=(DB.cumple||[]).find(x=>x.nombre===nombre);if(c)c.entregado=true;
   DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,cuenta,notas:'Entrega fondo cumpleaños'});
-  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+  // Restar de saldo de cuenta seleccionada
+  if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
@@ -10327,7 +10330,7 @@ function normalizarVisibilidadSocios() {
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos});
     cerrarModal('modal-t300-aporte');
     mostrarReciboTanda('tanda300', aportante, total, fecha, concepto, pagadoTotal, notasRecibo, folio);
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
+    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += total; renderCuentas(); }
     guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10455,7 +10458,7 @@ function normalizarVisibilidadSocios() {
     var nombre = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
     t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
     DB.movimientos.unshift({tipo:'entrega_tanda300',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 G'+grupo+' T'+turno});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
     cerrarModal('modal-t300e');
     guardarYRefrescar('t300');
   };
@@ -10559,7 +10562,7 @@ function normalizarVisibilidadSocios() {
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos1000});
     cerrarModal('modal-t1000-aporte');
     mostrarReciboTanda('tanda1000', aportante, total, fecha, conceptoT1000, pagadoTotalT1000, notasReciboT1000, folioT1000);
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
+    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += total; renderCuentas(); }
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10587,7 +10590,7 @@ function normalizarVisibilidadSocios() {
     var nombre = T1000_P[idx];
     t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
     DB.movimientos.unshift({tipo:'entrega_tanda1000',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 T'+(idx+1)});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
     cerrarModal('modal-t1000e');
     guardarYRefrescar('t1000');
   };
