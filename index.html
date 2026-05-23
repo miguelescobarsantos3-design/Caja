@@ -858,6 +858,40 @@ function cajaPuedeGuardarFirebase() {
   return !cajaEsMovilOPWA();
 }
 
+function _toggleModoMaestro() {
+  var esMaestro = cajaModoMaestro();
+  if(esMaestro) {
+    if(!confirm('¿Quitar modo maestro? Este dispositivo dejará de guardar en la nube.')) return;
+    localStorage.setItem('caja_modo_maestro', 'NO');
+    alert('🔒 Modo lectura activado. Este dispositivo ya no subirá datos.');
+  } else {
+    if(!confirm('¿Activar modo maestro? Este dispositivo podrá guardar datos en la nube.\n\nÚsalo solo cuando tengas datos actualizados.')) return;
+    localStorage.setItem('caja_modo_maestro', 'SI');
+    alert('✅ Modo maestro activado. Este dispositivo puede guardar en la nube.');
+  }
+  _actualizarBotonModoMaestro();
+}
+
+function _actualizarBotonModoMaestro() {
+  var btn = document.getElementById('modo-maestro-btn');
+  if(!btn) return;
+  var wrap = document.getElementById('modo-maestro-btn-wrap');
+  // Solo mostrar en móvil
+  var esMovil = cajaEsMovilOPWA && cajaEsMovilOPWA();
+  if(!esMovil) { if(wrap) wrap.style.display='none'; return; }
+  if(wrap) wrap.style.display='block';
+  var esMaestro = cajaModoMaestro();
+  if(esMaestro) {
+    btn.textContent = '✏️ Guardando en nube';
+    btn.style.background = 'rgba(26,180,90,0.25)';
+    btn.style.color = 'rgba(100,240,150,1)';
+  } else {
+    btn.textContent = '👁 Solo lectura — tap para editar';
+    btn.style.background = 'rgba(255,150,0,0.2)';
+    btn.style.color = 'rgba(255,190,60,1)';
+  }
+}
+
 function activarMaestroCaja() {
   localStorage.setItem('caja_modo_maestro', 'SI');
   console.log('✅ Este dispositivo quedó como MAESTRO. Puede guardar en Firestore.');
@@ -1205,6 +1239,12 @@ function escucharCambios() {
     <span>Control 2026</span>
     <div id="fb-sync-indicator" style="font-size: 11px; color: rgba(100, 220, 140, 0.9); margin-top: 4px; transition: 0.4s;">☁ Nube activa</div>
     <div id="ls-indicator" style="font-size: 10px; color: rgba(255, 255, 255, 0.3); margin-top: 1px; transition: 0.4s;">🕐 07:07 p.m.</div>
+    <div id="modo-maestro-btn-wrap" style="margin-top:8px;">
+      <button id="modo-maestro-btn"
+        onclick="window._toggleModoMaestro()"
+        style="font-size:11px;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;width:100%;font-weight:600;transition:0.3s;">
+      </button>
+    </div>
   </div>
   <nav class="sidebar-nav">
     <div class="nav-section">Principal</div>
@@ -10708,6 +10748,7 @@ function normalizarVisibilidadSocios() {
   iniciarFirebase();
   // FIX: En movil/PWA siempre bajar Firestore al arrancar (ignora localStorage viejo)
   var _forzarFirestoreAlArrancar = cajaEsMovilOPWA() && !cajaModoMaestro();
+  _actualizarBotonModoMaestro();
   if(_forzarFirestoreAlArrancar) {
     try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
     console.log('Movil detectado: forzando carga desde Firestore.');
