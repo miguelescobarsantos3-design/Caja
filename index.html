@@ -576,45 +576,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
   .util-table { min-width: 760px; }
 }
 
-
-/* ══ FIX RESPONSIVO MÓVIL ══ */
-@media (max-width: 768px) {
-  .sidebar { left: -300px !important; }
-  .sidebar.abierto { left: 0 !important; }
-  .app { display: block !important; width: 100vw !important; overflow-x: hidden !important; }
-  .main, .main-content { width: 100vw !important; max-width: 100vw !important; overflow-x: hidden !important; }
-  main, .content, .content.view { padding: 10px !important; box-sizing: border-box !important; overflow-x: hidden !important; }
-  .topbar { width: 100vw !important; box-sizing: border-box !important; padding: 8px 10px !important; }
-  .topbar .search-bar { width: 130px !important; min-width: 0 !important; }
-  #btn-guardar-top { display: none !important; }
-  .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-  .kpi { padding: 10px !important; min-width: 0 !important; overflow: hidden !important; }
-  .kpi .mono { font-size: clamp(13px, 3.8vw, 22px) !important; word-break: break-all !important; }
-  #total-cuentas-display { font-size: clamp(30px, 10vw, 52px) !important; }
-  .cuentas-mini { flex-wrap: wrap !important; gap: 6px !important; }
-  .acciones-rapidas { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; }
-  .acciones-rapidas .btn { flex: 1 1 calc(50% - 4px) !important; font-size: 12px !important; }
-  #cuentas-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-  .cuenta-card-body .mono { font-size: clamp(14px, 4vw, 22px) !important; }
-  .table-wrapper, .table-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
-  table { font-size: 12px !important; }
-  th, td { padding: 6px 8px !important; white-space: nowrap !important; }
-  .modal-overlay { align-items: flex-end !important; padding: 0 !important; }
-  .modal {
-    width: 100vw !important; max-width: 100vw !important;
-    border-radius: 18px 18px 0 0 !important;
-    max-height: 90vh !important; overflow-y: auto !important;
-    margin: 0 !important; padding: 20px 16px 32px !important;
-    box-sizing: border-box !important;
-  }
-  .form-row { flex-direction: column !important; gap: 8px !important; }
-  .form-group { width: 100% !important; box-sizing: border-box !important; }
-  .form-group select, .form-group input { width: 100% !important; box-sizing: border-box !important; font-size: 14px !important; }
-  .dashboard-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
-  .modal-actions { flex-direction: column !important; gap: 8px !important; }
-  .modal-actions .btn { width: 100% !important; }
-}
-
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -895,40 +856,6 @@ function cajaPuedeGuardarFirebase() {
   // Regla automática: PC sí puede subir; celular/PWA NO.
   // Esto evita que el celular viejo pise la nube.
   return !cajaEsMovilOPWA();
-}
-
-function _toggleModoMaestro() {
-  var esMaestro = cajaModoMaestro();
-  if(esMaestro) {
-    if(!confirm('¿Quitar modo maestro? Este dispositivo dejará de guardar en la nube.')) return;
-    localStorage.setItem('caja_modo_maestro', 'NO');
-    alert('🔒 Modo lectura activado. Este dispositivo ya no subirá datos.');
-  } else {
-    if(!confirm('¿Activar modo maestro? Este dispositivo podrá guardar datos en la nube.\n\nÚsalo solo cuando tengas datos actualizados.')) return;
-    localStorage.setItem('caja_modo_maestro', 'SI');
-    alert('✅ Modo maestro activado. Este dispositivo puede guardar en la nube.');
-  }
-  _actualizarBotonModoMaestro();
-}
-
-function _actualizarBotonModoMaestro() {
-  var btn = document.getElementById('modo-maestro-btn');
-  if(!btn) return;
-  var wrap = document.getElementById('modo-maestro-btn-wrap');
-  // Solo mostrar en móvil
-  var esMovil = cajaEsMovilOPWA && cajaEsMovilOPWA();
-  if(!esMovil) { if(wrap) wrap.style.display='none'; return; }
-  if(wrap) wrap.style.display='block';
-  var esMaestro = cajaModoMaestro();
-  if(esMaestro) {
-    btn.textContent = '✏️ Guardando en nube';
-    btn.style.background = 'rgba(26,180,90,0.25)';
-    btn.style.color = 'rgba(100,240,150,1)';
-  } else {
-    btn.textContent = '👁 Solo lectura — tap para editar';
-    btn.style.background = 'rgba(255,150,0,0.2)';
-    btn.style.color = 'rgba(255,190,60,1)';
-  }
 }
 
 function activarMaestroCaja() {
@@ -1278,12 +1205,6 @@ function escucharCambios() {
     <span>Control 2026</span>
     <div id="fb-sync-indicator" style="font-size: 11px; color: rgba(100, 220, 140, 0.9); margin-top: 4px; transition: 0.4s;">☁ Nube activa</div>
     <div id="ls-indicator" style="font-size: 10px; color: rgba(255, 255, 255, 0.3); margin-top: 1px; transition: 0.4s;">🕐 07:07 p.m.</div>
-    <div id="modo-maestro-btn-wrap" style="margin-top:8px;">
-      <button id="modo-maestro-btn"
-        onclick="window._toggleModoMaestro()"
-        style="font-size:11px;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;width:100%;font-weight:600;transition:0.3s;">
-      </button>
-    </div>
   </div>
   <nav class="sidebar-nav">
     <div class="nav-section">Principal</div>
@@ -9000,8 +8921,6 @@ function confirmarAporteCumple(){
   if(!DB.fondoCumple)DB.fondoCumple=[];
   DB.fondoCumple.push({tipo:'aporte',monto,fecha,concepto:'Aporte de '+aportante,notas});
   DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto,fecha,cuenta,notas:'Aporte fondo cumpleaños'+(notas?' — '+notas:'')});
-  // Sumar a saldo de cuenta seleccionada
-  if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += monto; renderCuentas(); }
   // Actualizar aportes en matrix
   const parts = DB.cumpleMatrix && DB.cumpleMatrix.participantes;
   if(parts){
@@ -9110,8 +9029,7 @@ function confirmarEntregaCumple(){
   DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños',cuenta});
   const c=(DB.cumple||[]).find(x=>x.nombre===nombre);if(c)c.entregado=true;
   DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,cuenta,notas:'Entrega fondo cumpleaños'});
-  // Restar de saldo de cuenta seleccionada
-  if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
+  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
@@ -10330,7 +10248,7 @@ function normalizarVisibilidadSocios() {
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos});
     cerrarModal('modal-t300-aporte');
     mostrarReciboTanda('tanda300', aportante, total, fecha, concepto, pagadoTotal, notasRecibo, folio);
-    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += total; renderCuentas(); }
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
     guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10458,7 +10376,7 @@ function normalizarVisibilidadSocios() {
     var nombre = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
     t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
     DB.movimientos.unshift({tipo:'entrega_tanda300',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 G'+grupo+' T'+turno});
-    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t300e');
     guardarYRefrescar('t300');
   };
@@ -10562,7 +10480,7 @@ function normalizarVisibilidadSocios() {
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos1000});
     cerrarModal('modal-t1000-aporte');
     mostrarReciboTanda('tanda1000', aportante, total, fecha, conceptoT1000, pagadoTotalT1000, notasReciboT1000, folioT1000);
-    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo += total; renderCuentas(); }
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10590,7 +10508,7 @@ function normalizarVisibilidadSocios() {
     var nombre = T1000_P[idx];
     t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
     DB.movimientos.unshift({tipo:'entrega_tanda1000',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 T'+(idx+1)});
-    if(cuenta && CUENTAS[cuenta]) { CUENTAS[cuenta].saldo -= monto; renderCuentas(); }
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t1000e');
     guardarYRefrescar('t1000');
   };
@@ -10790,7 +10708,6 @@ function normalizarVisibilidadSocios() {
   iniciarFirebase();
   // FIX: En movil/PWA siempre bajar Firestore al arrancar (ignora localStorage viejo)
   var _forzarFirestoreAlArrancar = cajaEsMovilOPWA() && !cajaModoMaestro();
-  _actualizarBotonModoMaestro();
   if(_forzarFirestoreAlArrancar) {
     try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
     console.log('Movil detectado: forzando carga desde Firestore.');
@@ -11203,18 +11120,6 @@ function dibujarRRect(ctx, x, y, w, h, r) {
 // ══════════════════════════════════════════════════
 // SIDEBAR MÓVIL
 // ══════════════════════════════════════════════════
-// Asegurar que el sidebar empiece cerrado en móvil
-(function() {
-  if(window.innerWidth <= 768) {
-    document.addEventListener('DOMContentLoaded', function() {
-      var sb = document.querySelector('.sidebar');
-      var ov = document.getElementById('sidebar-overlay');
-      if(sb) sb.classList.remove('abierto');
-      if(ov) ov.classList.remove('visible');
-    });
-  }
-})();
-
 function toggleSidebar() {
   var sb  = document.querySelector('.sidebar');
   var ov  = document.getElementById('sidebar-overlay');
@@ -11651,8 +11556,7 @@ function tgGenerarRecibo(t,quien,monto,fecha,notas,numTurno,turno,turnosPagados,
     +'.foot{background:#f8f8f8;padding:12px 24px;text-align:center;font-size:11px;color:#aaa;}'
     +'button{display:block;width:100%;padding:12px;background:#1a7f5a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;margin-top:14px;}'
     +'@media print{button{display:none;}body{background:#fff;}.card{box-shadow:none;}}'
-    +'
-</style></head><body><div class="card">'
+    +'</style></head><body><div class="card">'
     +'<div class="hdr"><h3>Caja de Ahorro - Tanda '+t.nombre+'</h3><h1>Recibo de Pago</h1>'
     +'<p>Folio #'+folio+' - '+new Date().toLocaleDateString('es-MX')+'</p></div>'
     +'<div class="body">'
