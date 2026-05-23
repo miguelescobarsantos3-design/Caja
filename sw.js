@@ -1,6 +1,6 @@
 // Caja 2026 — Service Worker red primero, sin caché viejo
-// Versión: fix-pc-pwa-20260523-01
-const SW_VERSION = 'fix-pc-pwa-20260523-01';
+// Versión: fix-firebase-orden-20260523-02
+const SW_VERSION = 'fix-firebase-orden-20260523-02';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -42,6 +42,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Recursos: red primero. No se cachea para evitar versiones fantasma.
+  // Recursos externos (Firebase SDK, etc.): siempre red, nunca caché.
+  if (req.url.includes('gstatic.com') || req.url.includes('firebase') || req.url.includes('googleapis')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+
+  // Resto: red primero, caché como respaldo.
   event.respondWith(fetch(req).catch(() => caches.match(req)));
 });
