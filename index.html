@@ -9023,11 +9023,13 @@ function confirmarEntregaCumple(){
   const nombre=document.getElementById('ce-festejado').value;
   const monto=parseFloat(document.getElementById('ce-monto').value)||0;
   const fecha=document.getElementById('ce-fecha').value;
+  const cuenta=(document.getElementById('ce-cuenta')||{}).value||'efectivo';
   if(!nombre||!monto||!fecha)return;
   if(!DB.fondoCumple)DB.fondoCumple=[];
-  DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños'});
+  DB.fondoCumple.push({tipo:'entrega',monto:-monto,fecha,concepto:'Entrega a '+nombre,notas:'Cumpleaños',cuenta});
   const c=(DB.cumple||[]).find(x=>x.nombre===nombre);if(c)c.entregado=true;
-  DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,notas:'Entrega fondo cumpleaños'});
+  DB.movimientos.unshift({tipo:'cumple',socio:nombre,monto:-monto,fecha,cuenta,notas:'Entrega fondo cumpleaños'});
+  if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
@@ -10358,7 +10360,8 @@ function normalizarVisibilidadSocios() {
       + inputHtml('t300e-fecha','Fecha','date',hoy())
       + inputHtml('t300e-monto','Monto','number',3000)
       + '</div>'
-      + selectHtml('t300e-sel','Turno a entregar','',opts);
+      + selectHtml('t300e-sel','Turno a entregar','',opts)
+      + selectHtml('t300e-cuenta','Cuenta','efectivo','<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>');
     crearModal('modal-t300e','Entregar Tanda $300',cuerpo,'window.guardarEntregaT300');
   };
   window.guardarEntregaT300 = function(){
@@ -10368,8 +10371,12 @@ function normalizarVisibilidadSocios() {
     var grupo = parseInt(sel[0],10), turno = parseInt(sel[1],10);
     var monto = parseFloat(document.getElementById('t300e-monto').value) || 3000;
     var fecha = document.getElementById('t300e-fecha').value || hoy();
+    var cuenta = (document.getElementById('t300e-cuenta')||{}).value || 'efectivo';
     var t = window.getTanda300();
-    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1]});
+    var nombre = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
+    t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
+    DB.movimientos.unshift({tipo:'entrega_tanda300',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 G'+grupo+' T'+turno});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t300e');
     guardarYRefrescar('t300');
   };
@@ -10487,7 +10494,8 @@ function normalizarVisibilidadSocios() {
       + inputHtml('t1000e-fecha','Fecha','date',hoy())
       + inputHtml('t1000e-monto','Monto','number',(T1000_P.length - 1) * 1000)
       + '</div>'
-      + selectHtml('t1000e-sel','Turno a entregar','',opts);
+      + selectHtml('t1000e-sel','Turno a entregar','',opts)
+      + selectHtml('t1000e-cuenta','Cuenta','efectivo','<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>');
     crearModal('modal-t1000e','Entregar Tanda $1,000',cuerpo,'window.guardarEntregaT1000');
   };
   window.guardarEntregaT1000 = function(){
@@ -10495,8 +10503,12 @@ function normalizarVisibilidadSocios() {
     if(isNaN(idx)) return;
     var monto = parseFloat(document.getElementById('t1000e-monto').value) || ((T1000_P.length - 1) * 1000);
     var fecha = document.getElementById('t1000e-fecha').value || hoy();
+    var cuenta = (document.getElementById('t1000e-cuenta')||{}).value || 'efectivo';
     var t = window.getTanda1000();
-    t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:T1000_P[idx]});
+    var nombre = T1000_P[idx];
+    t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:nombre, cuenta:cuenta});
+    DB.movimientos.unshift({tipo:'entrega_tanda1000',socio:nombre,monto:monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 T'+(idx+1)});
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
     cerrarModal('modal-t1000e');
     guardarYRefrescar('t1000');
   };
@@ -11665,6 +11677,9 @@ function tgConfirmarEntrega(){
     <div class="form-row">
       <div class="form-group"><label>Monto a entregar ($)</label><input type="number" id="ce-monto" min="1"></div>
       <div class="form-group"><label>Fecha de entrega</label><input type="date" id="ce-fecha"></div>
+    </div>
+    <div class="form-group"><label>De qué cuenta sale</label>
+      <select id="ce-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);"><option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option></select>
     </div>
     <div id="ce-aviso" style="font-size: 12px; color: var(--naranja); display: block; margin-bottom: 8px;">⚠ Fondo disponible: $-8,100 — insuficiente para $3,100</div>
     <div class="modal-actions">
