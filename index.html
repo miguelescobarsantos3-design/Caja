@@ -8913,13 +8913,14 @@ function confirmarAporteCumple(){
   const aportante=document.getElementById('ca-aportante').value;
   const monto=parseFloat(document.getElementById('ca-monto').value)||0;
   const fecha=document.getElementById('ca-fecha').value;
+  const cuenta=(document.getElementById('ca-cuenta')||{}).value||'efectivo';
   const notas=document.getElementById('ca-notas').value.trim();
   const el=document.getElementById('ca-aportante');el.style.borderColor='';
   if(!aportante){el.style.borderColor='var(--rojo)';return;}
   if(!monto||!fecha)return;
   if(!DB.fondoCumple)DB.fondoCumple=[];
   DB.fondoCumple.push({tipo:'aporte',monto,fecha,concepto:'Aporte de '+aportante,notas});
-  DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto,fecha,notas:'Aporte fondo cumpleaños'+(notas?' — '+notas:'')});
+  DB.movimientos.unshift({tipo:'cumple',socio:aportante,monto,fecha,cuenta,notas:'Aporte fondo cumpleaños'+(notas?' — '+notas:'')});
   // Actualizar aportes en matrix
   const parts = DB.cumpleMatrix && DB.cumpleMatrix.participantes;
   if(parts){
@@ -9629,7 +9630,7 @@ function cargarDesdeLocal() {
       const json = JSON.stringify(datos);
       localStorage.setItem(LS_KEY, json);
       localStorage.setItem(LS_BACKUP_KEY, json);
-      localStorage.setItem('caja_ts', String(datos.ts || Date.now()));
+      localStorage.setItem('caja_ts', String(datos.ts || '0')); // FIX: Firestore siempre puede ganar
     } catch(e) {}
 
     const d = new Date(datos.ts || Date.now());
@@ -10218,6 +10219,7 @@ function normalizarVisibilidadSocios() {
   window.guardarAporteT300 = function(){
     var aportante = (document.getElementById('ta300-aportante')||{}).value;
     var fecha = (document.getElementById('ta300-fecha')||{}).value || hoy();
+    var cuenta = (document.getElementById('ta300-cuenta')||{}).value || 'efectivo';
     var notas = ((document.getElementById('ta300-notas')||{}).value||'').trim();
     if(!aportante){ alert('Selecciona un participante.'); return; }
     var t = window.getTanda300();
@@ -10238,12 +10240,13 @@ function normalizarVisibilidadSocios() {
     var concepto = 'Aporte Tanda $300 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasRecibo = notas || turnosCubiertos.join(', ');
     var folio = String(folioCounter++).padStart(4,'0');
-    DB.movimientos.unshift({tipo:'tanda300',socio:aportante,monto:total,fecha:fecha,notas:concepto+(notas?' — '+notas:'')});
-    DB.recibos.unshift({folio:folio,tipo:'tanda300',socio:aportante,monto:total,fecha:fecha,
+    DB.movimientos.unshift({tipo:'tanda300',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:concepto+(notas?' — '+notas:'')});
+    DB.recibos.unshift({folio:folio,tipo:'tanda300',socio:aportante,monto:total,cuenta:cuenta,fecha:fecha,
       concepto:concepto,saldo:pagadoTotal,notas:notasRecibo,estado:'vigente',
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos});
     cerrarModal('modal-t300-aporte');
     mostrarReciboTanda('tanda300', aportante, total, fecha, concepto, pagadoTotal, notasRecibo, folio);
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
     guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10445,6 +10448,7 @@ function normalizarVisibilidadSocios() {
     var aportanteIdx = parseInt(idxStr, 10);
     var aportante = T1000_P[aportanteIdx];
     var fecha = (document.getElementById('ta1000-fecha')||{}).value || hoy();
+    var cuenta = (document.getElementById('ta1000-cuenta')||{}).value || 'efectivo';
     var notas = ((document.getElementById('ta1000-notas')||{}).value||'').trim();
     var t = window.getTanda1000();
     var monto1000 = t.montoAporte || 1000;
@@ -10463,12 +10467,13 @@ function normalizarVisibilidadSocios() {
     var conceptoT1000 = 'Aporte Tanda $1,000 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasReciboT1000 = notas || turnosCubiertos1000.join(', ');
     var folioT1000 = String(folioCounter++).padStart(4,'0');
-    DB.movimientos.unshift({tipo:'tanda1000',socio:aportante,monto:total,fecha:fecha,notas:conceptoT1000+(notas?' — '+notas:'')});
-    DB.recibos.unshift({folio:folioT1000,tipo:'tanda1000',socio:aportante,monto:total,fecha:fecha,
+    DB.movimientos.unshift({tipo:'tanda1000',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:conceptoT1000+(notas?' — '+notas:'')});
+    DB.recibos.unshift({folio:folioT1000,tipo:'tanda1000',socio:aportante,cuenta:cuenta,monto:total,fecha:fecha,
       concepto:conceptoT1000,saldo:pagadoTotalT1000,notas:notasReciboT1000,estado:'vigente',
       fechaEmision:new Date().toISOString().slice(0,10),motivoCancelacion:'',turnos:turnosCubiertos1000});
     cerrarModal('modal-t1000-aporte');
     mostrarReciboTanda('tanda1000', aportante, total, fecha, conceptoT1000, pagadoTotalT1000, notasReciboT1000, folioT1000);
+    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, total);
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -10689,9 +10694,15 @@ function normalizarVisibilidadSocios() {
   // 3) Activa escucha en tiempo real.
   // 4) NO sube datos locales al abrir, para no pisar la nube con información vieja.
   iniciarFirebase();
+  // FIX: En movil/PWA siempre bajar Firestore al arrancar (ignora localStorage viejo)
+  var _forzarFirestoreAlArrancar = cajaEsMovilOPWA() && !cajaModoMaestro();
+  if(_forzarFirestoreAlArrancar) {
+    try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
+    console.log('Movil detectado: forzando carga desde Firestore.');
+  }
   setTimeout(function() {
     if(_fbDb) {
-      cargarDesdFirebase(false).then(function(cargadoDesdeFirebase) {
+      cargarDesdFirebase(_forzarFirestoreAlArrancar).then(function(cargadoDesdeFirebase) {
         if(cargadoDesdeFirebase) {
           if(typeof renderDashboard==='function') renderDashboard();
           if(typeof renderSocios==='function') renderSocios();
@@ -11626,7 +11637,10 @@ function tgConfirmarEntrega(){
     </div>
     <div class="form-row">
       <div class="form-group"><label>Fecha</label><input type="date" id="ca-fecha"></div>
-      <div class="form-group"><label>Notas (opcional)</label><input type="text" id="ca-notas" placeholder="Ej: Anticipo"></div>
+      <div class="form-group"><label>Cuenta</label><select id="ca-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);"><option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Notas (opcional)</label><input type="text" id="ca-notas" placeholder="Ej: 2 turnos adicionales"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-cumple-aporte')">Cancelar</button>
@@ -12690,6 +12704,9 @@ function prActualizarInteres() {
     </div>
     <div class="form-row">
       <div class="form-group"><label>Fecha</label><input type="date" id="ta300-fecha"></div>
+      <div class="form-group"><label>Cuenta</label><select id="ta300-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);"><option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option></select></div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label>Notas (opcional)</label><input type="text" id="ta300-notas" placeholder="Ej: Anticipo"></div>
     </div>
     <div class="modal-actions">
@@ -12727,6 +12744,9 @@ function prActualizarInteres() {
     </div>
     <div class="form-row">
       <div class="form-group"><label>Fecha</label><input type="date" id="ta1000-fecha"></div>
+      <div class="form-group"><label>Cuenta</label><select id="ta1000-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);"><option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option></select></div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label>Notas (opcional)</label><input type="text" id="ta1000-notas" placeholder="Ej: Anticipo"></div>
     </div>
     <div class="modal-actions">
