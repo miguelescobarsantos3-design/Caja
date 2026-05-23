@@ -576,6 +576,45 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
   .util-table { min-width: 760px; }
 }
 
+
+/* ══ FIX RESPONSIVO MÓVIL ══ */
+@media (max-width: 768px) {
+  .sidebar { left: -300px !important; }
+  .sidebar.abierto { left: 0 !important; }
+  .app { display: block !important; width: 100vw !important; overflow-x: hidden !important; }
+  .main, .main-content { width: 100vw !important; max-width: 100vw !important; overflow-x: hidden !important; }
+  main, .content, .content.view { padding: 10px !important; box-sizing: border-box !important; overflow-x: hidden !important; }
+  .topbar { width: 100vw !important; box-sizing: border-box !important; padding: 8px 10px !important; }
+  .topbar .search-bar { width: 130px !important; min-width: 0 !important; }
+  #btn-guardar-top { display: none !important; }
+  .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .kpi { padding: 10px !important; min-width: 0 !important; overflow: hidden !important; }
+  .kpi .mono { font-size: clamp(13px, 3.8vw, 22px) !important; word-break: break-all !important; }
+  #total-cuentas-display { font-size: clamp(30px, 10vw, 52px) !important; }
+  .cuentas-mini { flex-wrap: wrap !important; gap: 6px !important; }
+  .acciones-rapidas { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; }
+  .acciones-rapidas .btn { flex: 1 1 calc(50% - 4px) !important; font-size: 12px !important; }
+  #cuentas-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .cuenta-card-body .mono { font-size: clamp(14px, 4vw, 22px) !important; }
+  .table-wrapper, .table-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+  table { font-size: 12px !important; }
+  th, td { padding: 6px 8px !important; white-space: nowrap !important; }
+  .modal-overlay { align-items: flex-end !important; padding: 0 !important; }
+  .modal {
+    width: 100vw !important; max-width: 100vw !important;
+    border-radius: 18px 18px 0 0 !important;
+    max-height: 90vh !important; overflow-y: auto !important;
+    margin: 0 !important; padding: 20px 16px 32px !important;
+    box-sizing: border-box !important;
+  }
+  .form-row { flex-direction: column !important; gap: 8px !important; }
+  .form-group { width: 100% !important; box-sizing: border-box !important; }
+  .form-group select, .form-group input { width: 100% !important; box-sizing: border-box !important; font-size: 14px !important; }
+  .dashboard-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .modal-actions { flex-direction: column !important; gap: 8px !important; }
+  .modal-actions .btn { width: 100% !important; }
+}
+
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -11610,217 +11649,6 @@ function tgGenerarRecibo(t,quien,monto,fecha,notas,numTurno,turno,turnosPagados,
     +'button{display:block;width:100%;padding:12px;background:#1a7f5a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;margin-top:14px;}'
     +'@media print{button{display:none;}body{background:#fff;}.card{box-shadow:none;}}'
     +'
-/* ══════════════════════════════════════════
-   FIX MÓVIL — pantalla completa sin cortes
-   ══════════════════════════════════════════ */
-@media (max-width: 768px) {
-
-  /* Asegurar que el sidebar empiece CERRADO */
-  .sidebar {
-    left: -300px !important;
-    width: 280px !important;
-  }
-  .sidebar.abierto {
-    left: 0 !important;
-  }
-
-  /* El contenido principal ocupa TODO el ancho */
-  .app {
-    display: block !important;
-    width: 100vw !important;
-    overflow-x: hidden !important;
-  }
-  .main, .main-content {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    overflow-x: hidden !important;
-  }
-  main, .content, .content.view {
-    padding: 10px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    overflow-x: hidden !important;
-  }
-
-  /* Dashboard: una columna, números que no se corten */
-  .dashboard-grid,
-  .kpi-grid {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-  }
-  .kpi, .stat-card, .card-stat {
-    padding: 10px 12px !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
-  }
-  .kpi .mono, .stat-card .mono, [class*="monto"], [class*="total"] {
-    font-size: clamp(14px, 4vw, 24px) !important;
-    word-break: break-all !important;
-  }
-
-  /* Saldo total grande */
-  .saldo-total, #saldo-total-display {
-    font-size: clamp(28px, 8vw, 48px) !important;
-  }
-
-  /* Tarjetas de cuentas */
-  #cuentas-grid {
-    grid-template-columns: 1fr 1fr !important;
-  }
-  .cuenta-card-body .mono {
-    font-size: clamp(16px, 4.5vw, 24px) !important;
-  }
-
-  /* Acciones rápidas: 2 por fila */
-  .acciones-rapidas, .quick-actions {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-  }
-  .acciones-rapidas .btn, .quick-actions .btn {
-    width: 100% !important;
-    font-size: 12px !important;
-    padding: 10px 8px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-  }
-
-  /* Tablas: scroll horizontal */
-  .table-wrapper, .table-scroll, .card {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    max-width: 100vw !important;
-  }
-  table {
-    font-size: 12px !important;
-    min-width: 420px;
-  }
-  th, td {
-    padding: 7px 8px !important;
-    white-space: nowrap;
-  }
-  /* Ocultar columnas menos importantes en móvil */
-  .col-hide-mobile,
-  th:nth-child(n+5), td:nth-child(n+5) {
-    /* NO ocultar por defecto, solo las marcadas explícitamente */
-  }
-
-  /* Topbar limpio */
-  .topbar {
-    display: flex !important;
-    align-items: center !important;
-    padding: 8px 10px !important;
-    gap: 8px !important;
-    width: 100vw !important;
-    box-sizing: border-box !important;
-  }
-  .topbar-actions {
-    margin-left: auto !important;
-    gap: 6px !important;
-  }
-  .topbar .search-bar {
-    width: 140px !important;
-    min-width: 0 !important;
-  }
-
-  /* Modales desde abajo, ancho completo */
-  .modal-overlay {
-    align-items: flex-end !important;
-    padding: 0 !important;
-  }
-  .modal {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    border-radius: 18px 18px 0 0 !important;
-    max-height: 90vh !important;
-    overflow-y: auto !important;
-    margin: 0 !important;
-    padding: 20px 16px !important;
-  }
-
-  /* Form rows: una columna */
-  .form-row {
-    flex-direction: column !important;
-    gap: 8px !important;
-  }
-  .form-group {
-    width: 100% !important;
-  }
-
-  /* Botón modo maestro más visible */
-  #modo-maestro-btn {
-    font-size: 12px !important;
-    padding: 7px 10px !important;
-  }
-}
-
-/* ══ FIX RESPONSIVO MÓVIL ══ */
-@media (max-width: 768px) {
-  /* Sidebar oculto por defecto */
-  .sidebar { left: -300px !important; }
-  .sidebar.abierto { left: 0 !important; }
-
-  /* Layout sin desbordamiento */
-  .app { display: block !important; width: 100vw !important; overflow-x: hidden !important; }
-  .main, .main-content { width: 100vw !important; max-width: 100vw !important; overflow-x: hidden !important; }
-  main, .content, .content.view { padding: 10px !important; box-sizing: border-box !important; overflow-x: hidden !important; }
-
-  /* Topbar */
-  .topbar { width: 100vw !important; box-sizing: border-box !important; padding: 8px 10px !important; }
-  .topbar .search-bar { width: 130px !important; min-width: 0 !important; }
-  #btn-guardar-top { display: none !important; }
-
-  /* KPIs: 2 columnas */
-  .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-  .kpi { padding: 10px !important; min-width: 0 !important; overflow: hidden !important; }
-  .kpi .mono { font-size: clamp(13px, 3.8vw, 22px) !important; word-break: break-all !important; }
-
-  /* Saldo total hero */
-  #total-cuentas-display { font-size: clamp(30px, 10vw, 52px) !important; }
-
-  /* Sub-cuentas debajo del saldo */
-  .cuentas-mini { flex-wrap: wrap !important; gap: 6px !important; }
-  .cuentas-mini > * { font-size: 11px !important; }
-
-  /* Acciones rápidas: 2 por fila */
-  .acciones-rapidas { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; }
-  .acciones-rapidas .btn { flex: 1 1 calc(50% - 4px) !important; font-size: 12px !important; }
-
-  /* Cuentas: 2 columnas */
-  #cuentas-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-  .cuenta-card-body .mono { font-size: clamp(14px, 4vw, 22px) !important; }
-
-  /* Tablas con scroll horizontal */
-  .table-wrapper, .table-scroll, .card { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
-  table { font-size: 12px !important; }
-  th, td { padding: 6px 8px !important; white-space: nowrap !important; }
-
-  /* Modales desde abajo */
-  .modal-overlay { align-items: flex-end !important; padding: 0 !important; }
-  .modal {
-    width: 100vw !important; max-width: 100vw !important;
-    border-radius: 18px 18px 0 0 !important;
-    max-height: 90vh !important; overflow-y: auto !important;
-    margin: 0 !important; padding: 20px 16px 32px !important;
-    box-sizing: border-box !important;
-  }
-
-  /* Formularios: una columna */
-  .form-row { flex-direction: column !important; gap: 8px !important; }
-  .form-group { width: 100% !important; box-sizing: border-box !important; }
-  .form-group select, .form-group input {
-    width: 100% !important; box-sizing: border-box !important; font-size: 14px !important;
-  }
-
-  /* Dashboard grid: una columna */
-  .dashboard-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
-
-  /* Botones de acción en modales: ancho completo */
-  .modal-actions { flex-direction: column !important; gap: 8px !important; }
-  .modal-actions .btn { width: 100% !important; }
-}
-
 </style></head><body><div class="card">'
     +'<div class="hdr"><h3>Caja de Ahorro - Tanda '+t.nombre+'</h3><h1>Recibo de Pago</h1>'
     +'<p>Folio #'+folio+' - '+new Date().toLocaleDateString('es-MX')+'</p></div>'
