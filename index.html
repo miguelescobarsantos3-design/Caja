@@ -7,7 +7,7 @@
 
   <!-- PWA -->
   <meta name="theme-color" content="#1a7a5e">
-  <link rel="manifest" href="./manifest.json?v=pwa-20260520-antisobrescritura">
+  <link rel="manifest" href="./manifest.json?v=pwa-20260523-fix-pc-pwa">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -830,12 +830,18 @@ function _mergeMovimientos(locales, remotos) {
 // Si quieres una sola PC autorizada, usa "Activar este equipo maestro".
 // ═══════════════════════════════════════════════════════
 function cajaEsMovilOPWA() {
-  var esMovil = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-  var esStandalone = false;
+  // FIX 2026-05-23:
+  // La app instalada en PC también corre en modo standalone, pero NO debe tratarse como celular.
+  // Antes: return esMovil || esStandalone; eso bloqueaba guardar desde la PWA de escritorio.
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
+function cajaEsPWAStandalone() {
   try {
-    esStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
-  } catch(e) {}
-  return esMovil || esStandalone;
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  } catch(e) {
+    return false;
+  }
 }
 
 function cajaModoMaestro() {
@@ -853,8 +859,8 @@ function cajaPuedeGuardarFirebase() {
   // Si se marcó como lectura, nunca sube.
   if(cajaBloqueadaLectura()) return false;
 
-  // Regla automática: PC sí puede subir; celular/PWA NO.
-  // Esto evita que el celular viejo pise la nube.
+  // Regla automática: PC sí puede subir, incluso si está instalada como PWA.
+  // Sólo celular/tablet queda lectura por defecto para evitar que un móvil viejo pise la nube.
   return !cajaEsMovilOPWA();
 }
 
@@ -1195,6 +1201,16 @@ function escucharCambios() {
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+
+<script>
+window.addEventListener('error', function(e) {
+  console.error('🧯 ERROR CAJA:', e.message, 'línea:', e.lineno, 'col:', e.colno, e.error && e.error.stack ? e.error.stack : '');
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('🧯 PROMESA CAJA:', e.reason);
+});
+</script>
+
 <div id="sidebar-overlay" onclick="cerrarSidebar()"></div>
 <div class="app">
 
@@ -1659,13 +1675,13 @@ function escucharCambios() {
           <div style="font-size:12px;color:var(--texto2);">Abono a deuda de un préstamo activo</div>
         </div>
 
-        <div class="tipo-opcion" id="op-tanda" onclick="elegirTipo('tanda')" style="background: var(--blanco); border-radius: var(--radio); padding: 28px 20px; border-color: var(--gris2); border-top-style: ; border-top-width: ; border-right-style: ; border-right-width: ; border-bottom-style: ; border-bottom-width: ; border-left-style: ; border-left-width: ; border-image-source: ; border-image-slice: ; border-image-width: ; border-image-outset: ; border-image-repeat: ; cursor: pointer; text-align: center; transition: 0.15s; box-shadow: var(--sombra);">
+        <div class="tipo-opcion" id="op-tanda" onclick="elegirTipo('tanda')" style="background: var(--blanco); border-radius: var(--radio); padding: 28px 20px; border: 1px solid var(--gris2); cursor: pointer; text-align: center; transition: 0.15s; box-shadow: var(--sombra);">
           <div style="font-size:36px;margin-bottom:12px;">🔄</div>
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;">Tanda</div>
           <div style="font-size:12px;color:var(--texto2);">Aportación semanal o quincenal a tanda</div>
         </div>
 
-        <div class="tipo-opcion" id="op-retiro" onclick="elegirTipo('retiro')" style="background: var(--blanco); border-radius: var(--radio); padding: 28px 20px; border-color: var(--gris2); border-top-style: ; border-top-width: ; border-right-style: ; border-right-width: ; border-bottom-style: ; border-bottom-width: ; border-left-style: ; border-left-width: ; border-image-source: ; border-image-slice: ; border-image-width: ; border-image-outset: ; border-image-repeat: ; cursor: pointer; text-align: center; transition: 0.15s; box-shadow: var(--sombra);">
+        <div class="tipo-opcion" id="op-retiro" onclick="elegirTipo('retiro')" style="background: var(--blanco); border-radius: var(--radio); padding: 28px 20px; border: 1px solid var(--gris2); cursor: pointer; text-align: center; transition: 0.15s; box-shadow: var(--sombra);">
           <div style="font-size:36px;margin-bottom:12px;">💸</div>
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;">Retiro</div>
           <div style="font-size:12px;color:var(--texto2);">Retirar dinero del ahorro del socio</div>
@@ -4959,7 +4975,7 @@ Diana"></textarea>
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════════
 let _d = {};
-const DB = {
+var DB = window.DB || {
   socios: [], prestamos: [], tandas: [],
   movimientos: [], cumple: [],
   fondoCumple: [], configCumple: {participantes:31, aportacion:100},
@@ -4967,6 +4983,7 @@ const DB = {
   _directorio: []
 };
 window.DB = DB;
+console.log('✅ DB inicializada:', typeof window.DB, 'versión fix-pc-pwa-20260523');
 
 // HTML original del dashboard (para restaurar después de reset)
 const _dashboardOriginalHTML = document.getElementById('view-dashboard') ? document.getElementById('view-dashboard').innerHTML : '';
@@ -12923,7 +12940,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=antisobrescritura-20260520')
+    navigator.serviceWorker.register('./sw.js?v=fix-pc-pwa-20260523-01')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}

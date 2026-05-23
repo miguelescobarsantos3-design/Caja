@@ -1,34 +1,47 @@
-const SW_VERSION = 'caja-pwa-firestore-20260519-1900';
+// Caja 2026 — Service Worker red primero, sin caché viejo
+// Versión: fix-pc-pwa-20260523-01
+const SW_VERSION = 'fix-pc-pwa-20260523-01';
 
-self.addEventListener('install', function(event) {
+self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    caches.keys()
-      .then(function(keys) { return Promise.all(keys.map(function(k) { return caches.delete(k); })); })
-      .then(function() { return self.clients.claim(); })
-  );
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener('fetch', function(event) {
-  var req = event.request;
+self.addEventListener('fetch', event => {
+  const req = event.request;
+
   if (req.method !== 'GET') return;
 
-  // Navegación siempre red primero para no cargar index viejo.
+  // Navegación principal: siempre red primero, sin guardar HTML viejo.
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).catch(function() {
+    event.respondWith((async () => {
+      try {
+        const freshReq = new Request(req.url, {
+          method: 'GET',
+          headers: req.headers,
+          mode: req.mode,
+          credentials: req.credentials,
+          redirect: req.redirect,
+          cache: 'no-store'
+        });
+        return await fetch(freshReq);
+      } catch (err) {
         return new Response(
-          '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin conexión</title></head><body style="font-family:Arial,sans-serif;padding:24px;background:#f0ede6;color:#1a1916"><h2>Caja 2026</h2><p>Sin conexión. Conéctate a internet para cargar y sincronizar Firestore.</p></body></html>',
+          '<!doctype html><meta charset="utf-8"><title>Sin conexión</title><body style="font-family:sans-serif;padding:24px"><h2>Sin conexión</h2><p>No se pudo cargar Caja desde la red. Revisa internet y vuelve a abrir la app.</p></body>',
           { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
         );
-      })
-    );
+      }
+    })());
     return;
   }
 
-  // Assets y Firestore: red directa. Nada de caché viejo.
-  event.respondWith(fetch(req).catch(function() { return caches.match(req); }));
+  // Recursos: red primero. No se cachea para evitar versiones fantasma.
+  event.respondWith(fetch(req).catch(() => caches.match(req)));
 });
