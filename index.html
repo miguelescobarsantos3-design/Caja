@@ -1,4 +1,7 @@
 <html lang="es"><head>
+  <!-- Firebase SDK — debe cargar PRIMERO antes de cualquier script de la app -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1196,9 +1199,6 @@ function escucharCambios() {
     // PWA activa: el Service Worker se registra al final del archivo.
     // No se desregistra aquí para que Android pueda instalar/cargar como app.
   </script>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
