@@ -7274,8 +7274,12 @@ document.addEventListener('click', e => {
 // HELPERS
 // ══════════════════════════════════════════════════
 function fmt(n) {
-  if(n===undefined||n===null||isNaN(n)) return '0';
-  return Math.round(n).toLocaleString('es-MX');
+  if(n===undefined||n===null||isNaN(n)) return '0.00';
+  var num = Number(n);
+  if(isNaN(num)) return '0.00';
+  var parts = num.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts[0] + '.' + parts[1];
 }
 function labelTipo(t) {
   return t==='ahorro'?'Ahorro':t==='prestamo'?'Préstamo':'Tanda';
@@ -9900,7 +9904,7 @@ function normalizarVisibilidadSocios() {
   function norm(txt){
     return String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
   }
-  function dinero(n){ return '$' + (typeof fmt === 'function' ? fmt(Number(n)||0) : (Number(n)||0).toLocaleString('es-MX')); }
+  function dinero(n){ return '$' + fmt(Number(n)||0); }
   function hoy(){ return new Date().toISOString().slice(0,10); }
   function esc(v){
     return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','\x3C':'&lt;','\x3E':'&gt;','"':'&quot;'}[c]; });
