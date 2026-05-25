@@ -10777,12 +10777,11 @@ function normalizarVisibilidadSocios() {
   // 3) Activa escucha en tiempo real.
   // 4) NO sube datos locales al abrir, para no pisar la nube con información vieja.
   iniciarFirebase();
-  // FIX: En movil/PWA siempre bajar Firestore al arrancar (ignora localStorage viejo)
-  var _forzarFirestoreAlArrancar = cajaEsMovilOPWA() && !cajaModoMaestro();
-  if(_forzarFirestoreAlArrancar) {
-    try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
-    console.log('Movil detectado: forzando carga desde Firestore.');
-  }
+  // Siempre forzar carga desde Firestore al arrancar en cualquier dispositivo.
+  // El localStorage local puede tener datos viejos — Firestore es la fuente de verdad.
+  var _forzarFirestoreAlArrancar = true;
+  try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
+  console.log('Arranque: forzando carga desde Firestore.');
   setTimeout(function() {
     if(_fbDb) {
       cargarDesdFirebase(_forzarFirestoreAlArrancar).then(function(cargadoDesdeFirebase) {
