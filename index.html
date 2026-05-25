@@ -5479,7 +5479,9 @@ function renderPrestamos(filtro) {
       if(editBtn) {
         const key = editBtn.dataset.key;
         const id = parseInt(editBtn.dataset.id);
-        if(key) abrirEditarPrestamoGrupo(key);
+        // Usar grupo solo si hay más de 1 crédito para ese key
+        const nCreditos = key ? DB.prestamos.filter(p=>(p.nombre||'').trim().toLowerCase()===key).length : 0;
+        if(key && nCreditos > 1) abrirEditarPrestamoGrupo(key);
         else if(id) abrirEditarPrestamo(id);
         return;
       }
@@ -10821,9 +10823,8 @@ let _prEditandoId = null;
 
 // Abre el modal de edición mostrando TODOS los créditos del deudor
 function abrirEditarPrestamoGrupo(key) {
-  const prestamosGrupo = DB.prestamos.filter(p => {
-    const k = (p.nombre||'').trim().toLowerCase();
-    return k === key;
+  var prestamosGrupo = DB.prestamos.filter(function(p) {
+    return (p.nombre||'').trim().toLowerCase() === key;
   });
   if(!prestamosGrupo.length) return;
 
@@ -10832,25 +10833,22 @@ function abrirEditarPrestamoGrupo(key) {
     return;
   }
 
-  // Múltiples créditos: mostrar panel con cada uno
-  const nombre = prestamosGrupo[0].nombre;
-  const iniciales = nombre.split(' ').filter(w=>w.length>0).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  var nombre = prestamosGrupo[0].nombre;
+  var iniciales = nombre.split(' ').filter(function(w){return w.length>0;}).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
+  var capitalTotal   = prestamosGrupo.reduce(function(s,p){return s+(p.capital||p.monto||0);},0);
+  var pendienteTotal = prestamosGrupo.reduce(function(s,p){return s+(p.pendiente||0);},0);
 
-  // Calcular totales del grupo
-  const capitalTotal  = prestamosGrupo.reduce((s,p)=>s+(p.capital||p.monto||0),0);
-  const pagadoTotal   = prestamosGrupo.reduce((s,p)=>s+(p.pagado||0),0);
-  const pendienteTotal= prestamosGrupo.reduce((s,p)=>s+(p.pendiente||0),0);
-
-  // Construir filas de cada crédito
-  const filas = prestamosGrupo.map(p => {
-    const cap  = (p.capital||p.monto||0);
-    const pag  = (p.pagado||0);
-    const pend = (p.pendiente||0);
-    const pct  = cap > 0 ? ((pag/cap)*100).toFixed(1) : '0.0';
+  var filas = prestamosGrupo.map(function(p) {
+    var cap  = p.capital||p.monto||0;
+    var pag  = p.pagado||0;
+    var pend = p.pendiente||0;
+    var pct  = cap > 0 ? ((pag/cap)*100).toFixed(1) : '0.0';
+    var pid  = p.id;
+    var estado = p.estado||'activo';
     return '<div style="border:1px solid var(--gris2);border-radius:var(--radio-sm);padding:12px 14px;margin-bottom:10px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-      + '<span style="font-size:13px;font-weight:600;">Crédito #' + String(p.id).padStart(3,'0') + '</span>'
-      + '<span style="font-size:11px;background:var(--gris);padding:2px 8px;border-radius:20px;color:var(--texto2);">' + (p.estado||'activo') + '</span>'
+      + '<span style="font-size:13px;font-weight:600;">Crédito #' + String(pid).padStart(3,'0') + '</span>'
+      + '<span style="font-size:11px;background:var(--gris);padding:2px 8px;border-radius:20px;color:var(--texto2);">' + estado + '</span>'
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">'
       + '<div><span style="font-size:11px;color:var(--texto2);">Capital</span><br><strong>$' + fmt(cap) + '</strong></div>'
@@ -10860,37 +10858,46 @@ function abrirEditarPrestamoGrupo(key) {
       + '<div style="margin-top:8px;background:var(--gris);border-radius:4px;height:6px;">'
       + '<div style="width:' + pct + '%;background:var(--verde);height:6px;border-radius:4px;"></div>'
       + '</div>'
-      + '<div style="display:flex;justify-content:space-between;margin-top:4px;">'
+      + '<div style="display:flex;justify-content:space-between;margin-top:6px;">'
       + '<span style="font-size:11px;color:var(--texto2);">' + pct + '% pagado</span>'
-      + '<button onclick="cerrarModal('modal-editar-prestamo-grupo');abrirEditarPrestamo(' + p.id + ');" '
-      + 'style="font-size:11px;padding:3px 10px;border:1px solid var(--gris2);background:none;border-radius:var(--radio-sm);cursor:pointer;">Editar este</button>'
+      + '<button data-editid="' + pid + '" class="btn-editar-credito-individual" style="font-size:11px;padding:3px 10px;border:1px solid var(--gris2);background:none;border-radius:var(--radio-sm);cursor:pointer;">Editar este</button>'
       + '</div>'
       + '</div>';
   }).join('');
 
-  // Crear o reusar modal de grupo
-  let modal = document.getElementById('modal-editar-prestamo-grupo');
+  var modal = document.getElementById('modal-editar-prestamo-grupo');
   if(!modal) {
     modal = document.createElement('div');
     modal.id = 'modal-editar-prestamo-grupo';
     modal.className = 'modal-overlay';
     document.body.appendChild(modal);
-    modal.addEventListener('click', e => { if(e.target===modal) cerrarModal('modal-editar-prestamo-grupo'); });
+    modal.addEventListener('click', function(e) {
+      if(e.target===modal) modal.classList.remove('open');
+    });
   }
 
   modal.innerHTML = '<div class="modal" style="width:520px;max-width:96vw;">'
     + '<h2>Créditos de ' + nombre + '</h2>'
     + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;background:var(--gris);border-radius:var(--radio-sm);">'
     + '<div style="width:42px;height:42px;border-radius:50%;background:var(--azul);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">' + iniciales + '</div>'
-    + '<div>'
-    + '<div style="font-size:14px;font-weight:600;">' + nombre + '</div>'
-    + '<div style="font-size:12px;color:var(--texto2);">' + prestamosGrupo.length + ' créditos · Capital total: $' + fmt(capitalTotal) + ' · Pendiente: $' + fmt(pendienteTotal) + '</div>'
+    + '<div><div style="font-size:14px;font-weight:600;">' + nombre + '</div>'
+    + '<div style="font-size:12px;color:var(--texto2);">' + prestamosGrupo.length + ' créditos &middot; Capital: $' + fmt(capitalTotal) + ' &middot; Pendiente: $' + fmt(pendienteTotal) + '</div>'
     + '</div></div>'
     + filas
-    + '<div class="modal-actions"><button class="btn btn-secondary" onclick="cerrarModal('modal-editar-prestamo-grupo')">Cerrar</button></div>'
+    + '<div class="modal-actions"><button onclick="document.getElementById('modal-editar-prestamo-grupo').classList.remove('open');" class="btn btn-secondary">Cerrar</button></div>'
     + '</div>';
 
   modal.classList.add('open');
+
+  // Vincular botones después de insertar HTML
+  modal.querySelectorAll('.btn-editar-credito-individual').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      modal.classList.remove('open');
+      abrirEditarPrestamo(parseInt(btn.dataset.editid));
+    });
+  });
+}
+
 }
 
 function abrirEditarPrestamo(id) {
