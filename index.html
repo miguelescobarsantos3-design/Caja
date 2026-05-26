@@ -833,10 +833,9 @@ function _mergeMovimientos(locales, remotos) {
 // Si quieres una sola PC autorizada, usa "Activar este equipo maestro".
 // ═══════════════════════════════════════════════════════
 function cajaEsMovilOPWA() {
-  // FIX 2026-05-23:
-  // La app instalada en PC también corre en modo standalone, pero NO debe tratarse como celular.
-  // Antes: return esMovil || esStandalone; eso bloqueaba guardar desde la PWA de escritorio.
-  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  // 2026-05-25: Solo el dispositivo con modo MAESTRO puede subir a Firestore.
+  // Si no tiene maestro activado, se trata como móvil (solo lectura).
+  return !cajaModoMaestro();
 }
 
 function cajaEsPWAStandalone() {
@@ -856,15 +855,9 @@ function cajaBloqueadaLectura() {
 }
 
 function cajaPuedeGuardarFirebase() {
-  // Si se marcó manualmente como maestro, sí puede subir.
-  if(cajaModoMaestro()) return true;
-
-  // Si se marcó como lectura, nunca sube.
-  if(cajaBloqueadaLectura()) return false;
-
-  // Regla automática: PC sí puede subir, incluso si está instalada como PWA.
-  // Sólo celular/tablet queda lectura por defecto para evitar que un móvil viejo pise la nube.
-  return !cajaEsMovilOPWA();
+  // Solo puede subir a Firestore el dispositivo con modo MAESTRO activado explícitamente.
+  // Esto evita que cualquier dispositivo con datos viejos pise la nube.
+  return cajaModoMaestro();
 }
 
 function activarMaestroCaja() {
@@ -10777,11 +10770,10 @@ function normalizarVisibilidadSocios() {
   // 3) Activa escucha en tiempo real.
   // 4) NO sube datos locales al abrir, para no pisar la nube con información vieja.
   iniciarFirebase();
-  // Siempre forzar carga desde Firestore al arrancar en cualquier dispositivo.
-  // El localStorage local puede tener datos viejos — Firestore es la fuente de verdad.
-  var _forzarFirestoreAlArrancar = true;
-  try { localStorage.setItem('caja_ts', '0'); } catch(e) {}
-  console.log('Arranque: forzando carga desde Firestore.');
+  // Al arrancar: bajar Firestore solo si es más reciente que el local.
+  // NO se pone caja_ts='0' para no pisar datos locales más nuevos.
+  var _forzarFirestoreAlArrancar = false;
+  console.log('Arranque: verificando Firestore vs local.');
   setTimeout(function() {
     if(_fbDb) {
       cargarDesdFirebase(_forzarFirestoreAlArrancar).then(function(cargadoDesdeFirebase) {
