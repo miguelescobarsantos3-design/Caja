@@ -9888,7 +9888,9 @@ function normalizarVisibilidadSocios() {
 (function instalarTandasEspeciales(){
   var T300_G1 = ['HAROLDO','JUAN ANTONIO','ERI ROMERO','NANCY','UBALDO','CARBALLO','RAFAEL','GERMAN','MIGUEL','RAMON','JULIO'];
   var T300_G2 = ['JUAN ANTONIO','JUAN ANTONIO B','WILBER','JORGE','UBALDO','CARBALLO','MIGUEL','RAFAEL','EUGENIO','RAMON','SANTIAGO'];
-  var T1000_P = ['NANCY','WILBER','UBALDO','AMERICA','NANCY','AMERICA','MIGUEL'];
+  // Lista base — solo se usa si DB no tiene participantes guardados
+  var T1000_P_BASE = ['NANCY','WILBER','UBALDO','AMERICA','NANCY','AMERICA','MIGUEL'];
+  var T1000_P = T1000_P_BASE.slice(); // se sobreescribe en getTanda1000()
 
   window.T300_G1 = T300_G1;
   window.T300_G2 = T300_G2;
@@ -9982,6 +9984,16 @@ function normalizarVisibilidadSocios() {
       });
       delete DB.tanda1000.quincenas;
       delete DB.tanda1000.__miguelTurno7Agregado;
+    }
+
+    // SIEMPRE sincronizar T1000_P desde DB (Firestore puede haber cargado después del init)
+    if(Array.isArray(DB.tanda1000.participantes) && DB.tanda1000.participantes.length > 0) {
+      T1000_P.length = 0;
+      DB.tanda1000.participantes.forEach(function(p){ T1000_P.push(p); });
+    } else {
+      DB.tanda1000.participantes = T1000_P_BASE.slice();
+      T1000_P.length = 0;
+      DB.tanda1000.participantes.forEach(function(p){ T1000_P.push(p); });
     }
     return DB.tanda1000;
   };
@@ -10118,7 +10130,10 @@ function normalizarVisibilidadSocios() {
     var km = document.getElementById('t1000-kpi-monto');
     if(kf) kf.textContent = dinero(t.fondo || 0);
     if(ke) ke.textContent = dinero(t.entregado || 0);
-    if(km) km.textContent = dinero(monto1000 * (T1000_P.length - 1)) + ' (×' + (T1000_P.length - 1) + ')';
+    // Por tanda = participantes que AÚN NO han cobrado × monto
+    var nEntregados = (t.entregas || []).length;
+    var pendientesCount = Math.max(0, T1000_P.length - nEntregados);
+    if(km) km.textContent = dinero(monto1000 * pendientesCount) + ' (×' + pendientesCount + ')';
     var nE = (t.entregas || []).length;
     if(kp) kp.textContent = nE < T1000_P.length ? T1000_P[nE] : '—';
     var pagos = T1000_P.map(function(n,i){
@@ -10327,12 +10342,16 @@ function normalizarVisibilidadSocios() {
     var nombre = T1000_P[idx];
     if(!confirm('¿Eliminar a '+nombre+' (T'+(idx+1)+')? Sus aportes también se eliminarán.')) return;
     var t = window.getTanda1000();
+    // Eliminar aportes de este participante
+    if(t.aportes) t.aportes = t.aportes.filter(function(a){ return a.idx !== idx; });
+    t.aportes && t.aportes.forEach(function(a){ if(a.idx > idx) a.idx--; });
     // Eliminar movimientos de este turno
     t.movimientos = (t.movimientos||[]).filter(function(m){ return m.idx !== idx; });
-    // Reindexar movimientos de turnos posteriores
     t.movimientos.forEach(function(m){ if(m.idx > idx) m.idx--; });
-    // Eliminar del array
+    // Eliminar del array y persistir
     T1000_P.splice(idx, 1);
+    t.participantes = T1000_P.slice(); // guardar en DB para que no reaparezca
+    DB.tanda1000 = t;
     guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
