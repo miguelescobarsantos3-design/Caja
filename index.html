@@ -10130,10 +10130,9 @@ function normalizarVisibilidadSocios() {
     var km = document.getElementById('t1000-kpi-monto');
     if(kf) kf.textContent = dinero(t.fondo || 0);
     if(ke) ke.textContent = dinero(t.entregado || 0);
-    // Por tanda = participantes que AÚN NO han cobrado × monto
-    var nEntregados = (t.entregas || []).length;
-    var pendientesCount = Math.max(0, T1000_P.length - nEntregados);
-    if(km) km.textContent = dinero(monto1000 * pendientesCount) + ' (×' + pendientesCount + ')';
+    // Por tanda = (total participantes - 1) × monto (el cobrador no aporta ese turno)
+    var porTanda = monto1000 * (T1000_P.length - 1);
+    if(km) km.textContent = dinero(porTanda) + ' (×' + (T1000_P.length - 1) + ')';
     var nE = (t.entregas || []).length;
     if(kp) kp.textContent = nE < T1000_P.length ? T1000_P[nE] : '—';
     var pagos = T1000_P.map(function(n,i){
