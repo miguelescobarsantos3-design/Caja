@@ -6814,6 +6814,60 @@ function mostrarReciboPrestamo(socio, monto, fecha, concepto, pendiente, interes
 
 function cerrarRecibo() { document.getElementById('recibo-overlay').classList.remove('open'); }
 
+function mostrarReciboCumple(folio, aportante, monto, fecha, notas, festejados, turnosPagados, totalFestejados) {
+  reciboActual = {tipo:'cumple', socio:aportante, monto:monto, fecha:fecha,
+    concepto:'Tanda cumpleaños — '+(festejados||[]).join(', '),
+    saldo:0, notas:notas, folio:folio,
+    festejados:festejados, turnosPagados:turnosPagados, totalFestejados:totalFestejados};
+
+  var iniciales = aportante.split(' ').slice(0,2).map(function(p){ return p[0]||''; }).join('').toUpperCase();
+
+  // Header morado para cumpleaños
+  document.getElementById('recibo-header').className = 'recibo-header tanda';
+  document.getElementById('recibo-header').style.background = 'linear-gradient(135deg,#7c3aed,#a855f7)';
+  var logoEl = document.getElementById('recibo-logo'); if(logoEl) logoEl.textContent = 'Caja de Ahorro — Tanda Cumpleaños 2026';
+  document.getElementById('recibo-tipo').textContent = '🎂 Recibo de Pago';
+  document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+new Date().toLocaleDateString('es-MX');
+
+  // Avatar
+  document.getElementById('recibo-avatar').textContent = iniciales;
+  document.getElementById('recibo-avatar').style.background = 'rgba(255,255,255,0.2)';
+  document.getElementById('recibo-avatar').style.color = '#fff';
+  document.getElementById('recibo-socio').textContent = aportante;
+  document.getElementById('recibo-socio-meta').textContent = 'Participante tanda cumpleaños';
+
+  // Monto
+  document.getElementById('recibo-mov-label').textContent = 'TOTAL PAGADO';
+  document.getElementById('recibo-monto').textContent = '$'+fmt(monto);
+  document.getElementById('recibo-fecha').textContent = fecha;
+  document.getElementById('recibo-concepto').textContent = (festejados||[]).length+' turno'+(festejados.length!==1?'s':'')+' × $100';
+
+  // Progreso: lleva X de 31
+  document.getElementById('recibo-saldo-label').textContent = 'Lleva '+turnosPagados+' de '+totalFestejados+' turnos pagados';
+  var saldoEl = document.getElementById('recibo-saldo');
+  saldoEl.textContent = '$'+fmt(turnosPagados*100)+' acumulado';
+  saldoEl.style.color = '#7c3aed';
+
+  // Saldo anterior: mostrar cumpleaños cubiertos en este pago
+  var rowAnt = document.getElementById('recibo-row-saldo-ant');
+  rowAnt.style.display = 'block';
+  var rkEl = rowAnt.querySelector('.rk');
+  var rvEl = rowAnt.querySelector('.rv, #recibo-saldo-ant');
+  if(rkEl) rkEl.textContent = 'Cumpleaños cubiertos';
+  if(rvEl) { rvEl.textContent = (festejados||[]).join(', '); rvEl.style.textDecoration='none'; rvEl.style.color='#7c3aed'; rvEl.style.fontSize='11px'; }
+
+  // Fila total: mostrar fecha del pago
+  var rowDeuda = document.getElementById('recibo-row-total-deuda');
+  rowDeuda.style.display = 'none';
+
+  // Notas
+  var rn = document.getElementById('recibo-row-notas');
+  if(notas){ rn.style.display='flex'; document.getElementById('recibo-notas').textContent=notas; }
+  else { rn.style.display='none'; }
+
+  document.getElementById('recibo-overlay').classList.add('open');
+}
+
 function compartirWhatsApp() {
   const r = reciboActual;
   const tipos = {ahorro:'Recibo de Ahorro 💰', prestamo:'Recibo de Préstamo 📋', tanda:'Recibo de Tanda 🔄'};
@@ -8314,16 +8368,35 @@ function verReciboAnterior(folio) {
   const r = DB.recibos.find(x => x.folio === folio);
   if(!r) return;
 
+  // Recibos de cumpleaños: usar mostrarReciboCumple (mismo overlay, igual que los de ahorro/préstamo)
+  if(r.tipo === 'cumple') {
+    var turnosP = r.turnosPagados || (r.festejados ? r.festejados.length : 0);
+    var totalF  = r.totalFestejados || (DB.cumpleMatrix && DB.cumpleMatrix.festejados ? DB.cumpleMatrix.festejados.length : 31);
+    // Calcular progreso real desde la matrix si no está guardado en el recibo
+    if(!r.turnosPagados) {
+      var pm = DB.cumpleMatrix && DB.cumpleMatrix.participantes ? DB.cumpleMatrix.participantes.find(function(p){ return p.nombre===r.socio; }) : null;
+      if(pm && pm.aportes) {
+        turnosP = 0;
+        (DB.cumpleMatrix.festejados||[]).forEach(function(f){ var v=pm.aportes[f.nombre]; if(v>0||v==='propio') turnosP++; });
+      }
+    }
+    mostrarReciboCumple(r.folio, r.socio, r.monto, r.fecha, r.notas, r.festejados||[], turnosP, totalF);
+    return;
+  }
+
   // Reutilizar el modal de recibo existente
-  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda'};
-  const movLabels = {ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida'};
-  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda'};
+  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', tanda300:'Recibo Tanda $300', tanda1000:'Recibo Tanda $1,000'};
+  const movLabels = {ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida', tanda300:'Aportación Tanda $300', tanda1000:'Aportación Tanda $1,000'};
+  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda', tanda300:'Total aportado', tanda1000:'Total aportado'};
 
   // Restaurar reciboActual para que compartirWhatsApp funcione
   reciboActual = {...r};
 
   // Header
-  document.getElementById('recibo-header').className = 'recibo-header ' + r.tipo;
+  var bgHeader = r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'var(--azul)' : null;
+  document.getElementById('recibo-header').className = 'recibo-header ' + (r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'tanda' : r.tipo);
+  if(bgHeader) document.getElementById('recibo-header').style.background = bgHeader;
+  else document.getElementById('recibo-header').style.background = '';
   document.getElementById('recibo-tipo').textContent  = (tipos[r.tipo] || 'Recibo') +
     (r.estado === 'cancelado' ? ' — CANCELADO' : '');
   document.getElementById('recibo-folio').textContent =
@@ -8353,10 +8426,15 @@ function verReciboAnterior(folio) {
   // Saldo anterior (solo si aplica)
   const rowAnt = document.getElementById('recibo-row-saldo-ant');
   rowAnt.style.display = 'none';
+  // Reset estilos que pudo haber cambiado mostrarReciboCumple
+  var rkAnt = rowAnt.querySelector('.rk');
+  var rvAnt = rowAnt.querySelector('.rv, #recibo-saldo-ant');
+  if(rkAnt) rkAnt.textContent = 'Saldo antes del abono';
+  if(rvAnt) { rvAnt.style.textDecoration='line-through'; rvAnt.style.color=''; rvAnt.style.fontSize=''; }
 
   // Total
   const saldoEl = document.getElementById('recibo-saldo');
-  document.getElementById('recibo-saldo-label').textContent = saldoLabels[r.tipo];
+  document.getElementById('recibo-saldo-label').textContent = saldoLabels[r.tipo] || 'Saldo';
   saldoEl.textContent = '$' + fmt(r.saldo);
   saldoEl.style.color = r.estado==='cancelado' ? 'var(--gris3)' :
     r.tipo==='ahorro' ? 'var(--verde)' : r.tipo==='prestamo' ? 'var(--naranja)' : 'var(--amarillo)';
@@ -9080,7 +9158,14 @@ function confirmarEntregaCumple(){
   // Actualizar ahorro del socio especial CUMPLEAÑOS
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
-  generarReciboCumple('entrega',nombre,monto,fecha,'Feliz cumpleaños 🎂');
+  // Mostrar recibo de entrega en el overlay existente (igual que ahorro/préstamo)
+  var _folioEnt = String(folioCounter++).padStart(4,'0');
+  DB.recibos = DB.recibos || [];
+  DB.recibos.unshift({folio:_folioEnt, tipo:'cumple', socio:nombre, monto:monto, fecha:fecha,
+    fechaEmision:new Date().toLocaleDateString('es-MX'),
+    concepto:'Entrega cumpleaños — '+nombre, festejados:[nombre], saldo:0,
+    notas:'Feliz cumpleaños 🎂', estado:'vigente'});
+  mostrarReciboCumple(_folioEnt, nombre, monto, fecha, 'Feliz cumpleaños 🎂', [nombre], 0, 0);
   renderCumple();
   if(typeof guardarEnLocal==='function') guardarEnLocal();
   if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -11322,45 +11407,41 @@ function confirmarAporteCumple(){
 function generarReciboCumpleVisual(aportante, monto, fecha, notas, festejados) {
   var folio = String(folioCounter++).padStart(4,'0');
   DB.recibos = DB.recibos || [];
-  DB.recibos.unshift({folio:folio,tipo:'cumple',socio:aportante,monto:monto,fecha:fecha,fechaEmision:new Date().toLocaleDateString('es-MX'),concepto:'Tanda cumpleaños — '+festejados.join(', '),festejados:festejados,saldo:0,notas:notas,estado:'vigente'});
-  var festHtml = festejados.map(function(f,i){
+
+  // Calcular progreso del participante (cuántos lleva de 31)
+  var totalFestejados = (DB.cumpleMatrix && DB.cumpleMatrix.festejados) ? DB.cumpleMatrix.festejados.length : 31;
+  var partInfo = DB.cumpleMatrix && DB.cumpleMatrix.participantes ? DB.cumpleMatrix.participantes.find(function(p){ return p.nombre===aportante; }) : null;
+  var turnosPagados = 0;
+  if(partInfo && partInfo.aportes) {
+    (DB.cumpleMatrix.festejados||[]).forEach(function(f){
+      var v = partInfo.aportes[f.nombre];
+      if(v==='propio') return;
+      // Contar los que ya estaban pagados ANTES de este aporte
+      if(v > 0 && festejados.indexOf(f.nombre) === -1) turnosPagados++;
+    });
+    // Más los que acaba de pagar ahora
+    turnosPagados += festejados.length;
+  } else {
+    turnosPagados = festejados.length;
+  }
+
+  DB.recibos.unshift({
+    folio:folio, tipo:'cumple', socio:aportante, monto:monto, fecha:fecha,
+    fechaEmision:new Date().toLocaleDateString('es-MX'),
+    concepto:'Tanda cumpleaños — '+festejados.join(', '),
+    festejados:festejados, saldo:0, notas:notas, estado:'vigente',
+    turnosPagados:turnosPagados, totalFestejados:totalFestejados
+  });
+
+  // Armar HTML del desglose de cumpleaños para las notas del recibo
+  var festLineas = festejados.map(function(f,i){
     var ci = (DB.cumple||[]).find(function(c){ return c.nombre===f; });
     var fd = ci&&ci.fecha ? ci.fecha.slice(5).replace('-','/') : '';
-    return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;">'
-      +'<span style="font-weight:500;">Turno #'+(i+1)+' — '+f+'</span>'
-      +'<span style="color:#888;font-size:12px;">'+fd+'</span>'
-      +'<span style="font-weight:700;color:#7c3aed;">$100</span></div>';
-  }).join('');
-  var win = window.open('','_blank','width=460,height=650');
-  if(!win) return;
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo Cumpleaños</title>'
-    +'<style>body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#f5f5f5;}'
-    +'.card{background:#fff;border-radius:12px;max-width:400px;margin:0 auto;box-shadow:0 2px 16px rgba(0,0,0,.1);overflow:hidden;}'
-    +'.hdr{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:20px 24px;}'
-    +'.hdr h3{margin:0;font-size:11px;opacity:.8;letter-spacing:1px;text-transform:uppercase;}'
-    +'.hdr h1{margin:6px 0 4px;font-size:22px;}.hdr p{margin:0;font-size:11px;opacity:.7;}'
-    +'.body{padding:20px 24px;}.row{display:flex;justify-content:space-between;padding:7px 0;}'
-    +'.lbl{font-size:12px;color:#888;}.val{font-weight:600;font-size:14px;}'
-    +'.big{text-align:center;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin:12px 0;}'
-    +'.big .n{font-size:40px;font-weight:800;color:#7c3aed;}'
-    +'.big .s{font-size:12px;color:#888;margin-top:4px;}'
-    +'.sec h4{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;}'
-    +'.foot{background:#f8f8f8;padding:12px 24px;text-align:center;font-size:11px;color:#aaa;}'
-    +'button{display:block;width:100%;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;margin-top:16px;}'
-    +'@media print{button{display:none;}body{background:#fff;}.card{box-shadow:none;}}'
-    +'</style></head><body><div class="card">'
-    +'<div class="hdr"><h3>Caja de Ahorro — Tanda Cumpleaños 2026</h3><h1>🎂 Recibo de Pago</h1>'
-    +'<p>Folio #'+folio+' &nbsp;·&nbsp; '+new Date().toLocaleDateString('es-MX')+'</p></div>'
-    +'<div class="body">'
-    +'<div class="row"><span class="lbl">Participante</span><span class="val">'+aportante+'</span></div>'
-    +'<div class="row"><span class="lbl">Fecha de pago</span><span class="val">'+fecha+'</span></div>'
-    +'<div class="big"><div class="lbl">TOTAL PAGADO</div><div class="n">$'+fmt(monto)+'</div>'
-    +'<div class="s">'+festejados.length+' turno'+(festejados.length>1?'s':'')+' × $100</div></div>'
-    +'<div class="sec"><h4>Cumpleaños cubiertos</h4>'+festHtml+'</div>'
-    +(notas?'<div class="row"><span class="lbl">Notas</span><span class="val">'+notas+'</span></div>':'')
-    +'<button onclick="window.print()">🖨 Imprimir recibo</button>'
-    +'</div><div class="foot">Caja de Ahorro y Préstamo · Control 2026</div></div></body></html>');
-  win.document.close();
+    return 'Turno #'+(i+1)+' — '+f+' ('+fd+')  $100';
+  }).join('\n');
+
+  // Usar overlay del recibo existente (igual que ahorro/préstamo)
+  mostrarReciboCumple(folio, aportante, monto, fecha, notas, festejados, turnosPagados, totalFestejados);
 }
 
 function fixFondoCumple() {
