@@ -11127,30 +11127,42 @@ async function enviarSeleccionadosWA() {
 
   if(!imagenes.length) { alert('No se generaron imagenes'); return; }
 
-  // Movil: Web Share API
+  // Móvil: Web Share API — en lotes de 10 para no superar el límite del sistema
   if(navigator.share && navigator.canShare) {
-    try {
-      var files = imagenes.map(function(x){
-        return new File([x.blob], 'Recibo-'+x.folio+'.png', {type:'image/png'});
-      });
-      if(navigator.canShare({files: files})) {
-        await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
-        return;
-      }
-    } catch(e) {}
+    var LOTE = 10;
+    var lotes = [];
+    for(var l=0; l<imagenes.length; l+=LOTE) lotes.push(imagenes.slice(l, l+LOTE));
+    var compartidos = 0;
+    for(var li=0; li<lotes.length; li++) {
+      try {
+        var files = lotes[li].map(function(x){
+          return new File([x.blob], 'Recibo-'+x.folio+'.png', {type:'image/png'});
+        });
+        if(navigator.canShare({files: files})) {
+          if(lotes.length > 1) {
+            var ok = await new Promise(function(res){
+              res(confirm('Lote ' + (li+1) + ' de ' + lotes.length + ' (' + files.length + ' recibos). Toca OK para compartir.'));
+            });
+            if(!ok) break;
+          }
+          await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
+          compartidos += files.length;
+        }
+      } catch(e) { console.warn('Share lote ' + li, e); }
+    }
+    if(compartidos > 0) {
+      if(typeof toast === 'function') toast('✅ ' + compartidos + ' recibo(s) compartidos');
+      return;
+    }
   }
 
-  // PC: descargar uno por uno
-  imagenes.forEach(function(x, i) {
-    setTimeout(function() {
-      var url = URL.createObjectURL(x.blob);
-      var a = document.createElement('a');
-      a.href = url; a.download = 'Recibo-' + x.folio + '.png';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, i * 400);
-  });
+  // PC / fallback: no descargar — los recibos ya están guardados en la app
+  if(typeof toast === 'function') {
+    toast('📋 Los recibos ya están guardados en la sección Recibos. Ábrelos desde el celular para enviarlos por WhatsApp.');
+  } else {
+    alert('Los recibos están guardados en la sección Recibos de la app.
+Para enviarlos por WhatsApp, ábrelos desde el celular.');
+  }
 }
 
 function generarReciboCanvas(folio) {
