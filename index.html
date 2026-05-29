@@ -7771,6 +7771,10 @@ function confirmarCancelacion() {
   reciboACancelar = null;
   cerrarModal('modal-cancelar');
   renderRecibos(_filtroRecibosActual || 'todos');
+  renderPrestamos();
+  renderAhorros();
+  renderDashboard();
+  if(typeof guardarRapido === 'function') guardarRapido();
 }
 
 
