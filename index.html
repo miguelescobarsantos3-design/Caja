@@ -1138,7 +1138,7 @@ async function cargarDesdFirebase(forzar) {
     }
 
     // En arranque, Firestore manda. Esto evita que localStorage viejo de la PWA gane por tener timestamp reciente.
-    return cajaAplicarDatosFirebaseSeguro(datos, 'carga inicial', true);
+    return cajaAplicarDatosFirebaseSeguro(datos, 'carga inicial', forzar);
 
   } catch(e) {
     console.warn('Error cargando desde Firestore:', e.message);
@@ -9974,7 +9974,7 @@ function normalizarVisibilidadSocios() {
   var T300_G1 = ['HAROLDO','JUAN ANTONIO','ERI ROMERO','NANCY','UBALDO','CARBALLO','RAFAEL','GERMAN','MIGUEL','RAMON','JULIO'];
   var T300_G2 = ['JUAN ANTONIO','JUAN ANTONIO B','WILBER','JORGE','UBALDO','CARBALLO','MIGUEL','RAFAEL','EUGENIO','RAMON','SANTIAGO'];
   // Lista base — solo se usa si DB no tiene participantes guardados
-  var T1000_P_BASE = ['NANCY','WILBER','UBALDO','AMERICA','NANCY','AMERICA','MIGUEL'];
+  var T1000_P_BASE = ['NANCY','WILBER','UBALDO','AMERICA','NANCY','AMERICA'];
   var T1000_P = T1000_P_BASE.slice(); // se sobreescribe en getTanda1000()
 
   window.T300_G1 = T300_G1;
