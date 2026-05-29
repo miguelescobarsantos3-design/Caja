@@ -1,7 +1,7 @@
 
 // Caja 2026 — Service Worker
 // Versión: 20260525-02
-const SW_VERSION = '20260525-02';
+const SW_VERSION = '20260528-01';
 const CACHE_NAME = 'caja-2026-' + SW_VERSION;
  
 // Archivos esenciales que se cachean al instalar
