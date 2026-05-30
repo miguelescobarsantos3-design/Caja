@@ -7728,9 +7728,22 @@ function confirmarCancelacion() {
     DB.recibos = DB.recibos.filter(x => x.folio !== r.folio);
   } else {
     // Revertir movimiento según tipo
-    if((r.tipo === 'ahorro' || r.tipo === 'retiro') && r._snapshot) {
-      const s = DB.socios.find(x => x.id === r._snapshot.socioId);
-      if(s) s.ahorro = r._snapshot.ahorro_antes;
+    if(r.tipo === 'ahorro' || r.tipo === 'retiro') {
+      let s = null;
+      if(r._snapshot && r._snapshot.socioId) {
+        s = DB.socios.find(x => x.id === r._snapshot.socioId);
+      }
+      if(!s) {
+        // Fallback: buscar por nombre (quitar prefijo "#XX ")
+        var nomLimpio = (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+        s = DB.socios.find(x => (x.nombre||'').toUpperCase() === nomLimpio);
+      }
+      if(s) {
+        var antes = r._snapshot && r._snapshot.ahorro_antes != null
+          ? r._snapshot.ahorro_antes
+          : (s.ahorro - (r.tipo === 'retiro' ? -r.monto : r.monto));
+        s.ahorro = antes;
+      }
     }
     if(r.tipo === 'prestamo') {
       // Revertir abono en todos los préstamos del deudor (proporcional)
