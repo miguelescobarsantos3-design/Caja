@@ -1024,6 +1024,10 @@ async function guardarEnFirebase() {
 
     var ahora = Date.now();
 
+    // Marcar ANTES del await para que el listener no sobreescriba mientras subimos
+    localStorage.setItem('yo_guarde_ts', String(ahora));
+    try { sessionStorage.setItem('yo_guarde_ts', String(ahora)); } catch(e) {}
+
     var datos = {
       socios:         DB.socios || [],
       prestamos:      DB.prestamos || [],
