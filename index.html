@@ -3381,12 +3381,18 @@ window.addEventListener('unhandledrejection', function(e) {
           <button onclick="enviarSeleccionadosWA()" style="background:#fff;color:#1a3a6b;border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">📲 Enviar por WhatsApp</button>
           <button onclick="limpiarSeleccion()" style="background:rgba(255,255,255,0.2);color:#fff;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">✕</button>
         </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="search-bar" style="width:220px;">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="recibos-buscar" placeholder="Nombre, folio, monto..." oninput="renderRecibos()" style="font-size:13px;">
+        </div>
         <div class="tabs" id="recibos-tabs" style="margin:0;">
-        <div class="tab active" onclick="filtrarRecibos('todos',this)">Todos</div>
-        <div class="tab" onclick="filtrarRecibos('ahorro',this)">Ahorro</div>
-        <div class="tab" onclick="filtrarRecibos('prestamo',this)">Préstamo</div>
-        <div class="tab" onclick="filtrarRecibos('tanda',this)">Tanda</div>
-        <div class="tab" onclick="filtrarRecibos('cancelado',this)">Cancelados</div>
+          <div class="tab active" onclick="filtrarRecibos('todos',this)">Todos</div>
+          <div class="tab" onclick="filtrarRecibos('ahorro',this)">Ahorro</div>
+          <div class="tab" onclick="filtrarRecibos('prestamo',this)">Préstamo</div>
+          <div class="tab" onclick="filtrarRecibos('tanda',this)">Tanda</div>
+          <div class="tab" onclick="filtrarRecibos('cancelado',this)">Cancelados</div>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -7633,12 +7639,26 @@ function capturaEstado(tipo, socio, monto) {
 }
 
 function renderRecibos(filtro) {
-  filtro = filtro || 'todos';
-  const lista = (filtro === 'todos'
+  var _inputBuscar = document.getElementById('recibos-buscar');
+  if(filtro && typeof filtro === 'string' && filtro !== '') {
+    _filtroRecibosActual = filtro;
+  } else {
+    filtro = _filtroRecibosActual || 'todos';
+  }
+  var busqueda = (_inputBuscar ? (_inputBuscar.value||'').trim().toLowerCase() : '');
+  var listaBase = filtro === 'todos'
     ? DB.recibos.slice()
-    : DB.recibos.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente'))
-    .sort(function(a, b){
-      // Ordenar por folio descendente (más reciente primero)
+    : DB.recibos.filter(r => filtro === 'cancelado' ? r.estado === 'cancelado' : r.tipo === filtro && r.estado === 'vigente');
+  if(busqueda) {
+    listaBase = listaBase.filter(function(r) {
+      return (r.socio||'').toLowerCase().includes(busqueda) ||
+             (r.folio||'').toLowerCase().includes(busqueda) ||
+             (r.concepto||'').toLowerCase().includes(busqueda) ||
+             (r.fecha||'').includes(busqueda) ||
+             String(r.monto||0).includes(busqueda);
+    });
+  }
+  const lista = listaBase.sort(function(a, b){
       var fa = parseInt(a.folio) || 0, fb = parseInt(b.folio) || 0;
       return fb - fa;
     });
