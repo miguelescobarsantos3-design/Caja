@@ -6625,7 +6625,7 @@ function procesarRetiro() {
   document.getElementById('recibo-header').className = 'recibo-header prestamo';
   document.getElementById('recibo-header').style.background = 'var(--rojo)';
   document.getElementById('recibo-tipo').textContent  = 'Recibo de Retiro';
-  document.getElementById('recibo-folio').textContent = 'Folio #' + folio + ' · ' + new Date().toLocaleDateString('es-MX');
+  document.getElementById('recibo-folio').textContent = 'Folio #' + folio + ' · ' + new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX');
   document.getElementById('recibo-avatar').textContent      = iniciales;
   document.getElementById('recibo-avatar').style.background = 'rgba(255,255,255,0.2)';
   document.getElementById('recibo-avatar').style.color      = '#fff';
@@ -6714,7 +6714,7 @@ function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
   const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda'};
   document.getElementById('recibo-header').className = `recibo-header ${tipo}`;
   document.getElementById('recibo-tipo').textContent = tipos[tipo]||'Recibo';
-  document.getElementById('recibo-folio').textContent = `Folio #${folio} · ${new Date().toLocaleDateString('es-MX')}`;
+  document.getElementById('recibo-folio').textContent = `Folio #${folio} · ${new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX')}`;
   document.getElementById('recibo-monto').textContent = `$${fmt(monto)}`;
   document.getElementById('recibo-socio').textContent = socio;
   document.getElementById('recibo-fecha').textContent = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -6767,7 +6767,7 @@ function mostrarReciboPrestamo(socio, monto, fecha, concepto, pendiente, interes
   // Header
   document.getElementById('recibo-header').className = 'recibo-header prestamo';
   document.getElementById('recibo-tipo').textContent  = 'Recibo de Préstamo';
-  document.getElementById('recibo-folio').textContent = `Folio #${folio} · ${new Date().toLocaleDateString('es-MX')}`;
+  document.getElementById('recibo-folio').textContent = `Folio #${folio} · ${new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX')}`;
 
   // Avatar + nombre
   const nombreLimpio = limpiarNombre(socio);
@@ -6837,7 +6837,7 @@ function mostrarReciboCumple(folio, aportante, monto, fecha, notas, festejados, 
   document.getElementById('recibo-header').style.background = 'linear-gradient(135deg,#7c3aed,#a855f7)';
   var logoEl = document.getElementById('recibo-logo'); if(logoEl) logoEl.textContent = 'Caja de Ahorro — Tanda Cumpleaños 2026';
   document.getElementById('recibo-tipo').textContent = '🎂 Recibo de Pago';
-  document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+new Date().toLocaleDateString('es-MX');
+  document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX');
 
   // Avatar
   document.getElementById('recibo-avatar').textContent = iniciales;
@@ -7608,7 +7608,7 @@ function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
   const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda'};
   document.getElementById('recibo-header').className = 'recibo-header ' + tipo;
   document.getElementById('recibo-tipo').textContent  = tipos[tipo] || 'Recibo';
-  document.getElementById('recibo-folio').textContent = '#' + folio + ' · ' + new Date().toLocaleDateString('es-MX');
+  document.getElementById('recibo-folio').textContent = '#' + folio + ' · ' + new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX');
   document.getElementById('recibo-monto').textContent = '$' + fmt(monto);
   document.getElementById('recibo-socio').textContent = socio;
   document.getElementById('recibo-fecha').textContent = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -11773,7 +11773,7 @@ function tgGenerarRecibo(t,quien,monto,fecha,notas,numTurno,turno,turnosPagados,
     +'@media print{button{display:none;}body{background:#fff;}.card{box-shadow:none;}}'
     +'</style></head><body><div class="card">'
     +'<div class="hdr"><h3>Caja de Ahorro - Tanda '+t.nombre+'</h3><h1>Recibo de Pago</h1>'
-    +'<p>Folio #'+folio+' - '+new Date().toLocaleDateString('es-MX')+'</p></div>'
+    +'<p>Folio #'+folio+' - '+new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX')+'</p></div>'
     +'<div class="body">'
     +'<div class="row"><span class="lbl">Participante</span><span class="val">'+quien+'</span></div>'
     +'<div class="row"><span class="lbl">Fecha de pago</span><span class="val">'+fecha+'</span></div>'
@@ -12998,7 +12998,7 @@ window.mostrarReciboTanda = function(tipo, socio, monto, fecha, concepto, pagado
 
   document.getElementById('recibo-header').className = 'recibo-header tanda';
   document.getElementById('recibo-tipo').textContent = encabezado;
-  document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+new Date().toLocaleDateString('es-MX');
+  document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+new Date((fecha||'')+'T12:00:00').toLocaleDateString('es-MX');
   document.getElementById('recibo-monto').textContent = '$'+fmt(monto);
   document.getElementById('recibo-socio').textContent = socio;
   document.getElementById('recibo-fecha').textContent = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
