@@ -4412,6 +4412,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <button class="btn btn-secondary" id="ficha-btn-editar" onclick="">✏️ Editar</button>
       <button class="btn btn-secondary" id="ficha-btn-ec" onclick="" style="display: none;">📄 Estado de cuenta</button>
       <button class="btn btn-secondary" id="ficha-btn-nuevo-prestamo" onclick="abrirNuevoPrestamoDesdeFicha()" style="background:#fff3e0;color:#e65100;border:1px solid #ffb74d;">📋 Nuevo préstamo</button>
+      <button class="btn btn-secondary" id="ficha-btn-retiro" onclick="retiroDesdeFicha()" style="background:#fdf0ef;color:var(--rojo);border:1px solid #f5c6c6;">💸 Retiro</button>
       <button class="btn btn-primary" id="ficha-btn-pago" onclick="">+ Registrar pago</button>
     </div>
     <div id="ficha-similares-container" style="display:none;padding:0 24px 16px;"></div>
@@ -5351,6 +5352,20 @@ function renderSocios() {
 }
 
 function verSocio(id) { abrirFichaSocio(id); }
+
+function retiroDesdeFicha() {
+  var id = window._fichaId || _fichaId;
+  if(!id) return;
+  cerrarModal('modal-ficha-socio');
+  goto('pagos');
+  setTimeout(function() {
+    elegirTipo('retiro');
+    setTimeout(function() {
+      var sel = document.getElementById('rt-socio');
+      if(sel) { sel.value = id; cargarResumenRetiro(); }
+    }, 180);
+  }, 150);
+}
 
 function abrirPagoSocio(id) {
   goto('pagos');
