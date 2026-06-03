@@ -3078,11 +3078,17 @@ window.addEventListener('unhandledrejection', function(e) {
 
     <!-- ─── HISTORIAL ─── -->
   <div class="content view" id="view-historial">
-    <div class="tabs" id="historial-tabs">
-      <div class="tab active" onclick="tabHistorial('todos')">Todos</div>
-      <div class="tab" onclick="tabHistorial('ahorro')">Ahorros</div>
-      <div class="tab" onclick="tabHistorial('prestamo')">Préstamos</div>
-      <div class="tab" onclick="tabHistorial('tanda')">Tandas</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="search-bar" style="width:240px;">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="historial-buscar" placeholder="Nombre, fecha, monto..." oninput="renderHistorial()" style="font-size:13px;">
+      </div>
+      <div class="tabs" id="historial-tabs" style="margin:0;">
+        <div class="tab active" onclick="tabHistorial('todos')">Todos</div>
+        <div class="tab" onclick="tabHistorial('ahorro')">Ahorros</div>
+        <div class="tab" onclick="tabHistorial('prestamo')">Préstamos</div>
+        <div class="tab" onclick="tabHistorial('tanda')">Tandas</div>
+      </div>
     </div>
     <div class="card">
       <div class="timeline" id="historial-list"></div>
@@ -5711,17 +5717,43 @@ function renderCumple() {
   }
 }
 function renderHistorial(filtro) {
-  let movs = filtro==='todos' ? DB.movimientos : DB.movimientos.filter(m=>m.tipo===filtro);
+  var _inputH = document.getElementById('historial-buscar');
+  if(filtro && typeof filtro === 'string') { window._filtroHistorial = filtro; }
+  else { filtro = window._filtroHistorial || 'todos'; }
+  var busqueda = (_inputH ? (_inputH.value||'').trim().toLowerCase() : '');
+  var movs = filtro==='todos' ? DB.movimientos.slice() : DB.movimientos.filter(function(m){return m.tipo===filtro;});
+  if(busqueda) {
+    movs = movs.filter(function(m) {
+      return (m.socio||'').toLowerCase().includes(busqueda) ||
+             (m.fecha||'').includes(busqueda) ||
+             (m.notas||'').toLowerCase().includes(busqueda) ||
+             String(m.monto||0).includes(busqueda);
+    });
+  }
   const hl = document.getElementById('historial-list');
-  hl.innerHTML = movs.map(m=>`
-    <div class="tl-item">
-      <div class="tl-dot ${m.tipo}"></div>
-      <div class="tl-info">
-        <div class="tl-title">${(() => { const _s = DB.socios.find(x=>x.nombre===m.socio||m.socio.includes(x.nombre)); return _s ? '<span class="mono text-sm" style="color:var(--texto2);margin-right:6px;">#'+String(_s.id).padStart(2,'0')+'</span>'+m.socio : m.socio; })()}</div>
-        <div class="tl-sub">${labelTipo(m.tipo)} · ${m.fecha}${m.notas?' · '+m.notas:''}</div>
-      </div>
-      <div class="tl-amount ${'retiro'===m.tipo?'negativo':'positivo'}">${'retiro'===m.tipo?'-':'+'}\$${fmt(Math.abs(m.monto))}</div>
-    </div>`).join('') || '<div class="empty"><div class="icon">≡</div><p>Sin movimientos</p></div>';
+  hl.innerHTML = movs.map(function(m) {
+    const _s = DB.socios.find(function(x){return x.nombre===m.socio||(m.socio&&m.socio.includes(x.nombre));});
+    const numBadge = _s ? '<span class="mono text-sm" style="color:var(--texto2);margin-right:6px;">#'+String(_s.id).padStart(2,'0')+'</span>' : '';
+    const recibo = DB.recibos.find(function(r) {
+      return r.estado !== 'cancelado' &&
+             (r.socio||'').toUpperCase() === (m.socio||'').toUpperCase() &&
+             Math.abs(Number(r.monto||0) - Math.abs(Number(m.monto||0))) < 0.01 &&
+             (r.fecha||r.fechaEmision||'') === (m.fecha||'');
+    });
+    const reciboBtn = recibo
+      ? '<button onclick="verReciboAnterior(\'' + recibo.folio + '\')" style="background:none;border:1px solid var(--verde);color:var(--verde);padding:2px 8px;border-radius:6px;font-size:11px;cursor:pointer;margin-left:6px;">📄 #'+recibo.folio+'</button>'
+      : '';
+    const signo = m.tipo==='retiro' ? '-' : '+';
+    const clase = m.tipo==='retiro' ? 'negativo' : 'positivo';
+    return '<div class="tl-item">' +
+      '<div class="tl-dot '+m.tipo+'"></div>' +
+      '<div class="tl-info" style="flex:1;">' +
+        '<div class="tl-title">'+numBadge+(m.socio||(m.notas||''))+reciboBtn+'</div>' +
+        '<div class="tl-sub">'+labelTipo(m.tipo)+' · '+(m.fecha||'')+((m.notas)?' · '+m.notas:'')+'</div>' +
+      '</div>' +
+      '<div class="tl-amount '+clase+'">'+signo+'$'+fmt(Math.abs(m.monto))+'</div>' +
+    '</div>';
+  }).join('') || '<div class="empty"><div class="icon">≡</div><p>Sin movimientos</p></div>';
 }
 
 function tabHistorial(filtro) {
