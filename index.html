@@ -11206,116 +11206,45 @@ async function enviarSeleccionadosWA() {
 }
 
 function generarReciboCanvas(folio) {
+  // Usa el overlay real (html2canvas) para que el formato sea idéntico al recibo en pantalla
   return new Promise(function(resolve, reject) {
     try {
       var r = DB.recibos.find(function(x){ return x.folio === folio; });
       if(!r) { reject('No encontrado: ' + folio); return; }
 
-      var tipos       = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Prestamo', tanda:'Recibo de Tanda'};
-      var movLabels   = {ahorro:'Deposito de ahorro', prestamo:'Abono recibido', tanda:'Aportacion'};
-      var saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto tanda'};
-      var colH = r.tipo==='ahorro' ? '#0d5c35' : r.tipo==='prestamo' ? '#7c3a00' : '#5a4400';
-      var colA = r.tipo==='ahorro' ? '#1a9e5c' : r.tipo==='prestamo' ? '#e07820' : '#d4a800';
-
-      var nombre = (r.socio||'').replace(/^#\d+\s+/, '');
-      var iniciales = nombre.split(' ').slice(0,2).map(function(p){ return p[0]||''; }).join('').toUpperCase();
-      var _s = DB.socios.find(function(x){ return x.nombre === nombre || x.nombre === r.socio; });
-      var meta = _s ? ('Socio #' + String(_s.id).padStart(2,'0') + ' - ' + (_s.freq||'')) : (r.concepto||'');
-      var montoStr = '$' + Number(r.monto||0).toLocaleString('es-MX');
-      var saldoStr  = '$' + Number(r.saldo||0).toLocaleString('es-MX');
-
-      var W = 720, H = 820;
-      var cv = document.createElement('canvas');
-      cv.width = W; cv.height = H;
-      var c = cv.getContext('2d');
-
-      // Fondo
-      c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
-
-      // Header
-      c.fillStyle = colH; c.fillRect(0, 0, W, 150);
-      c.fillStyle = 'rgba(255,255,255,0.55)';
-      c.font = '400 20px Arial,sans-serif';
-      c.fillText('Caja de Ahorro y Prestamo 2026', 40, 38);
-      c.fillStyle = '#ffffff';
-      c.font = 'bold 36px Arial,sans-serif';
-      c.fillText(tipos[r.tipo]||'Recibo', 40, 88);
-      c.fillStyle = 'rgba(255,255,255,0.6)';
-      c.font = '400 19px Arial,sans-serif';
-      c.fillText('Folio #' + r.folio + ' - ' + (r.fechaEmision||r.fecha||''), 40, 126);
-
-      // Avatar
-      c.fillStyle = colA;
-      c.beginPath(); c.arc(72, 210, 38, 0, Math.PI*2); c.fill();
-      c.fillStyle = '#fff'; c.font = 'bold 24px Arial,sans-serif';
-      c.textAlign = 'center'; c.fillText(iniciales, 72, 218); c.textAlign = 'left';
-
-      // Nombre
-      c.fillStyle = '#111'; c.font = 'bold 28px Arial,sans-serif';
-      c.fillText(nombre.substring(0,34), 126, 204);
-      c.fillStyle = '#888'; c.font = '400 19px Arial,sans-serif';
-      c.fillText(meta.substring(0,40), 126, 232);
-
-      // Separador
-      c.strokeStyle = '#e0e0e0'; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(40, 268); c.lineTo(W-40, 268); c.stroke();
-
-      // Caja monto
-      c.fillStyle = '#f5f5f5';
-      dibujarRRect(c, 40, 288, W-80, 148, 10);
-      c.fill();
-      c.fillStyle = '#999'; c.font = '400 17px Arial,sans-serif';
-      c.textAlign = 'center';
-      c.fillText((movLabels[r.tipo]||'Monto').toUpperCase(), W/2, 326);
-      c.fillStyle = '#111'; c.font = 'bold 60px Arial,sans-serif';
-      c.fillText(montoStr, W/2, 412);
-      c.textAlign = 'left';
-
-      // Fecha / Concepto
-      c.fillStyle = '#f9f9f9';
-      dibujarRRect(c, 40, 462, 305, 86, 8); c.fill();
-      dibujarRRect(c, 362, 462, W-402, 86, 8); c.fill();
-      c.fillStyle = '#888'; c.font = '400 16px Arial,sans-serif';
-      c.fillText('Fecha', 58, 488);
-      c.fillStyle = '#111'; c.font = 'bold 19px Arial,sans-serif';
-      c.fillText(r.fecha||'', 58, 526);
-      c.fillStyle = '#888'; c.font = '400 16px Arial,sans-serif';
-      c.fillText('Concepto', 380, 488);
-      c.fillStyle = '#111'; c.font = 'bold 19px Arial,sans-serif';
-      c.fillText((r.concepto||'').substring(0,22), 380, 526);
-
-      // Saldo total
-      c.strokeStyle = '#e0e0e0';
-      c.beginPath(); c.moveTo(40, 574); c.lineTo(W-40, 574); c.stroke();
-      c.fillStyle = '#555'; c.font = '500 21px Arial,sans-serif';
-      c.fillText(saldoLabels[r.tipo]||'Saldo', 40, 620);
-      c.fillStyle = colA; c.font = 'bold 40px Arial,sans-serif';
-      c.textAlign = 'right'; c.fillText(saldoStr, W-40, 620); c.textAlign = 'left';
-
-      // Notas
-      if(r.notas) {
-        c.fillStyle = '#aaa'; c.font = '400 16px Arial,sans-serif';
-        c.fillText((r.notas||'').substring(0,52), 40, 668);
+      // Abrir el overlay con el recibo real
+      if(typeof verReciboAnterior === 'function') {
+        verReciboAnterior(folio);
       }
 
-      // Footer
-      c.fillStyle = '#f0f0f0'; c.fillRect(0, H-48, W, 48);
-      c.fillStyle = '#bbb'; c.font = '400 15px Arial,sans-serif';
-      c.textAlign = 'center';
-      c.fillText('Caja de Ahorro y Prestamo Control 2026', W/2, H-16);
-      c.textAlign = 'left';
+      // Esperar que el DOM se pinte, luego capturar
+      setTimeout(function() {
+        var card = document.getElementById('recibo-card');
+        if(!card) { reject('recibo-card no encontrado'); return; }
+        var footer = card.querySelector('.recibo-footer');
+        if(footer) footer.style.display = 'none';
 
-      // Exportar como PNG via dataURL
-      var dataURL = cv.toDataURL('image/png');
-      var arr = dataURL.split(',');
-      var mime = 'image/png';
-      var bstr = atob(arr[1]);
-      var u8 = new Uint8Array(bstr.length);
-      for(var i=0; i<bstr.length; i++) u8[i] = bstr.charCodeAt(i);
-      resolve(new Blob([u8], {type: mime}));
-
-    } catch(err) {
-      reject(err);
+        html2canvas(card, {
+          scale: 3,
+          useCORS: true,
+          backgroundColor: '#fefefe',
+          logging: false,
+          width: card.offsetWidth,
+          height: card.offsetHeight,
+          scrollX: 0,
+          scrollY: 0
+        }).then(function(canvas) {
+          if(footer) footer.style.display = 'flex';
+          canvas.toBlob(function(blob) {
+            resolve(blob);
+          }, 'image/png');
+        }).catch(function(e) {
+          if(footer) footer.style.display = 'flex';
+          reject(e);
+        });
+      }, 150);
+    } catch(e) {
+      reject(e);
     }
   });
 }
