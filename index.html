@@ -214,6 +214,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
 .recibo-header.ahorro { background: var(--verde); }
 .recibo-header.prestamo { background: var(--naranja); }
 .recibo-header.tanda { background: var(--amarillo); }
+.recibo-header.retiro { background: var(--rojo); }
 .recibo-logo { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; opacity: 0.85; margin-bottom: 12px; }
 .recibo-tipo { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
 .recibo-folio { font-size: 11px; opacity: 0.7; margin-top: 4px; font-family: 'DM Mono', monospace; }
@@ -6831,7 +6832,7 @@ function mostrarReciboPrestamo(socio, monto, fecha, concepto, pendiente, interes
     : 'Deudor externo';
 
   // Movimiento
-  document.getElementById('recibo-mov-label').textContent = 'Abono recibido';
+  document.getElementById('recibo-mov-label').textContent = r.tipo==='retiro' ? 'Monto retirado' : r.tipo==='ahorro' ? 'Depósito de ahorro' : 'Abono recibido';
   document.getElementById('recibo-monto').textContent     = `$${fmt(monto)}`;
   document.getElementById('recibo-fecha').textContent     = new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
   document.getElementById('recibo-concepto').textContent  = estado==='liquidado'?'¡Préstamo liquidado!':'Abono a préstamo';
@@ -8485,7 +8486,8 @@ function verReciboAnterior(folio) {
   document.getElementById('recibo-header').className = 'recibo-header ' + (r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'tanda' : r.tipo);
   if(bgHeader) document.getElementById('recibo-header').style.background = bgHeader;
   else document.getElementById('recibo-header').style.background = '';
-  document.getElementById('recibo-tipo').textContent  = (tipos[r.tipo] || 'Recibo') +
+  var tipoLabel = tipos[r.tipo] || (r.tipo==='retiro' ? 'Comprobante de Retiro' : 'Recibo');
+  document.getElementById('recibo-tipo').textContent  = tipoLabel +
     (r.estado === 'cancelado' ? ' — CANCELADO' : '');
   document.getElementById('recibo-folio').textContent =
     'Folio #' + r.folio + ' · ' + r.fechaEmision;
