@@ -5012,7 +5012,7 @@ Diana"></textarea>
 
       <div class="recibo-row" id="recibo-row-notas" style="display:none;margin-top:10px;border-top:1px dashed var(--gris2);padding-top:10px;">
         <span class="rk">Notas</span>
-        <span class="rv" id="recibo-notas">—</span>
+        <span class="rv" id="recibo-notas" style="font-size:16px;font-weight:700;color:var(--azul);">—</span>
       </div>
     </div>
     <div class="recibo-footer" style="flex-wrap: wrap; gap: 8px; display: flex;">
@@ -10516,7 +10516,7 @@ function normalizarVisibilidadSocios() {
       var cobrador = cb.dataset.nombre;
       var idx = parseInt(cb.dataset.idx, 10);
       t.movimientos.push({ aportante:aportante, cobrador:cobrador, grupo:grupo, monto:monto300, fecha:fecha, notas:notas||'' });
-      turnosCubiertos.push('G'+grupo+' T'+(idx+1)+' ('+cobrador+')');
+      turnosCubiertos.push('Grupo '+grupo+' — Turno '+(idx+1)+' ('+cobrador+')');
       total += monto300;
     });
     var pagadoTotal = sumaT300Aportante(t, aportante);
@@ -10765,7 +10765,7 @@ function normalizarVisibilidadSocios() {
       var idx = parseInt(cb.dataset.idx, 10);
       var cobrador = T1000_P[idx];
       t.movimientos.push({ aportante:aportante, cobrador:cobrador, idx:idx, monto:monto1000, fecha:fecha, notas:notas||'' });
-      turnosCubiertos1000.push('T'+(idx+1)+' ('+cobrador+')');
+      turnosCubiertos1000.push('Turno '+(idx+1)+' ('+cobrador+')');
       total += monto1000;
     });
     var pagadoTotalT1000 = sumaT1000Aportante(t, aportante);
