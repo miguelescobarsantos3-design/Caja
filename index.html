@@ -9235,181 +9235,7 @@ Fondo disponible: $${fmt(saldo)}
   win.document.write('<html><head><title>Recibo</title><style>body{font-family:monospace;white-space:pre;padding:20px;font-size:14px;} @media print{body{font-size:12px;}}</style></head><body>');
   win.document.write(recibo.replace(/</g,'&lt;').replace(/>/g,'&gt;'));
   win.document.write('<br><br><button onclick="window.print()" style="padding:8px 20px;background:#1a7f5a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨 Imprimir</button>');
-  win.document.write('
-<!-- ─── LOGIN OVERLAY ─── -->
-<div id="login-overlay">
-  <div class="login-box">
-    <div class="login-lock-icon">🔐</div>
-    <div class="login-logo">Caja de Ahorro 2026</div>
-    <div class="login-sub" id="login-sub-msg">Ingresa tus credenciales para continuar</div>
-    <form onsubmit="intentarLogin(event)">
-      <input type="text" id="login-usuario" placeholder="Usuario" autocomplete="username" autocapitalize="none">
-      <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password">
-      <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
-      <button type="submit" class="login-btn">Entrar</button>
-    </form>
-    <div id="login-timeout-info"></div>
-  </div>
-</div>
-
-<script>
-// ══════════════════════════════════════════════════
-// SEGURIDAD — LOGIN CON USUARIO Y CONTRASEÑA
-// ══════════════════════════════════════════════════
-(function() {
-
-  var CAJA_INACTIVIDAD_MIN = 15; // minutos antes de bloquear
-  var _loginTimer = null;
-  var _loginActivo = false;
-
-  // Hash simple (no criptográfico, suficiente para este contexto)
-  function hashSimple(str) {
-    var h = 0;
-    for(var i = 0; i < str.length; i++) {
-      h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-    }
-    return String(h >>> 0);
-  }
-
-  function getCredenciales() {
-    try {
-      var c = localStorage.getItem('caja_creds');
-      return c ? JSON.parse(c) : null;
-    } catch(e) { return null; }
-  }
-
-  function setCredenciales(usuario, pass) {
-    localStorage.setItem('caja_creds', JSON.stringify({
-      u: usuario.trim().toLowerCase(),
-      p: hashSimple(pass)
-    }));
-  }
-
-  // Credenciales por defecto si no hay ninguna guardada
-  function inicializarCredenciales() {
-    if(!getCredenciales()) {
-      setCredenciales('admin', 'caja2026');
-    }
-  }
-
-  function verificar(usuario, pass) {
-    var c = getCredenciales();
-    if(!c) return false;
-    return c.u === usuario.trim().toLowerCase() && c.p === hashSimple(pass);
-  }
-
-  function estaDesbloqueado() {
-    var s = sessionStorage.getItem('caja_sesion');
-    if(!s) return false;
-    try {
-      var d = JSON.parse(s);
-      return d.ok && (Date.now() - d.ts) < CAJA_INACTIVIDAD_MIN * 60 * 1000;
-    } catch(e) { return false; }
-  }
-
-  function marcarSesion() {
-    sessionStorage.setItem('caja_sesion', JSON.stringify({ok:true, ts:Date.now()}));
-  }
-
-  function bloquear(msg) {
-    _loginActivo = true;
-    var overlay = document.getElementById('login-overlay');
-    var sub = document.getElementById('login-sub-msg');
-    if(sub) sub.textContent = msg || 'Ingresa tus credenciales para continuar';
-    if(overlay) overlay.classList.add('visible');
-    var u = document.getElementById('login-usuario');
-    if(u) { u.value = ''; setTimeout(function(){ u.focus(); }, 100); }
-    var p = document.getElementById('login-pass');
-    if(p) p.value = '';
-    var err = document.getElementById('login-error');
-    if(err) err.style.display = 'none';
-    resetInactividad();
-  }
-
-  function desbloquear() {
-    _loginActivo = false;
-    marcarSesion();
-    var overlay = document.getElementById('login-overlay');
-    if(overlay) overlay.classList.remove('visible');
-    iniciarTimerInactividad();
-  }
-
-  window.intentarLogin = function(e) {
-    if(e) e.preventDefault();
-    var u = (document.getElementById('login-usuario').value||'').trim();
-    var p = document.getElementById('login-pass').value;
-    var err = document.getElementById('login-error');
-    if(verificar(u, p)) {
-      err.style.display = 'none';
-      desbloquear();
-    } else {
-      err.style.display = 'block';
-      document.getElementById('login-pass').value = '';
-      document.getElementById('login-pass').focus();
-    }
-  };
-
-  function resetInactividad() {
-    if(_loginTimer) clearTimeout(_loginTimer);
-    _loginTimer = null;
-  }
-
-  function iniciarTimerInactividad() {
-    resetInactividad();
-    _loginTimer = setTimeout(function() {
-      if(!_loginActivo) bloquear('Sesión cerrada por inactividad (' + CAJA_INACTIVIDAD_MIN + ' min)');
-    }, CAJA_INACTIVIDAD_MIN * 60 * 1000);
-  }
-
-  // Reiniciar timer en cualquier interacción
-  document.addEventListener('click', function() { if(!_loginActivo) { marcarSesion(); iniciarTimerInactividad(); } });
-  document.addEventListener('keydown', function() { if(!_loginActivo) { marcarSesion(); iniciarTimerInactividad(); } });
-
-  // Botón de cierre de sesión
-  window.cerrarSesionCaja = function() {
-    sessionStorage.removeItem('caja_sesion');
-    bloquear('Sesión cerrada. Ingresa tus credenciales.');
-  };
-
-  // Cambiar contraseña
-  window.cambiarPasswordCaja = function() {
-    var u = prompt('Nuevo usuario:');
-    if(!u || !u.trim()) return;
-    var p1 = prompt('Nueva contraseña:');
-    if(!p1) return;
-    var p2 = prompt('Confirmar contraseña:');
-    if(p1 !== p2) { alert('Las contraseñas no coinciden'); return; }
-    setCredenciales(u, p1);
-    alert('✅ Credenciales actualizadas. Usuario: ' + u.trim().toLowerCase());
-  };
-
-  // Cambiar tiempo de inactividad
-  window.cambiarInactividadCaja = function() {
-    var min = parseInt(prompt('Minutos de inactividad antes de bloquear (actual: ' + CAJA_INACTIVIDAD_MIN + '):', CAJA_INACTIVIDAD_MIN));
-    if(isNaN(min) || min < 1) return;
-    CAJA_INACTIVIDAD_MIN = min;
-    localStorage.setItem('caja_inactividad_min', String(min));
-    alert('✅ Inactividad configurada a ' + min + ' minutos');
-    iniciarTimerInactividad();
-  };
-
-  // Inicializar
-  window.addEventListener('DOMContentLoaded', function() {
-    inicializarCredenciales();
-    var minGuardado = parseInt(localStorage.getItem('caja_inactividad_min'));
-    if(!isNaN(minGuardado) && minGuardado > 0) CAJA_INACTIVIDAD_MIN = minGuardado;
-    var info = document.getElementById('login-timeout-info');
-    if(info) info.textContent = 'Bloqueo automático tras ' + CAJA_INACTIVIDAD_MIN + ' min de inactividad';
-    if(estaDesbloqueado()) {
-      desbloquear();
-    } else {
-      bloquear();
-    }
-  });
-
-})();
-</script>
-</body></html>');
+  win.document.write('');
   win.document.close();
 }
 function abrirEntregaCumple(){
@@ -13785,4 +13611,111 @@ function smpCalcular() {
   </div>
 </div>
 
+
+<!-- ─── LOGIN OVERLAY ─── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-lock-icon">🔐</div>
+    <div class="login-logo">Caja de Ahorro 2026</div>
+    <div class="login-sub" id="login-sub-msg">Ingresa tus credenciales para continuar</div>
+    <form onsubmit="intentarLogin(event)">
+      <input type="text" id="login-usuario" placeholder="Usuario" autocomplete="username" autocapitalize="none">
+      <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password">
+      <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
+      <button type="submit" class="login-btn">Entrar</button>
+    </form>
+    <div id="login-timeout-info"></div>
+  </div>
+</div>
+<script>
+(function() {
+  var CAJA_INACTIVIDAD_MIN = 15;
+  var _loginTimer = null;
+  var _loginActivo = false;
+
+  function hashSimple(str) {
+    var h = 0;
+    for(var i = 0; i < str.length; i++) { h = (Math.imul(31, h) + str.charCodeAt(i)) | 0; }
+    return String(h >>> 0);
+  }
+  function getCredenciales() {
+    try { var c = localStorage.getItem('caja_creds'); return c ? JSON.parse(c) : null; } catch(e) { return null; }
+  }
+  function setCredenciales(u, p) {
+    localStorage.setItem('caja_creds', JSON.stringify({u: u.trim().toLowerCase(), p: hashSimple(p)}));
+  }
+  function inicializarCredenciales() {
+    if(!getCredenciales()) setCredenciales('admin', 'caja2026');
+  }
+  function verificar(u, p) {
+    var c = getCredenciales();
+    return c && c.u === u.trim().toLowerCase() && c.p === hashSimple(p);
+  }
+  function estaDesbloqueado() {
+    var s = sessionStorage.getItem('caja_sesion');
+    if(!s) return false;
+    try { var d = JSON.parse(s); return d.ok && (Date.now() - d.ts) < CAJA_INACTIVIDAD_MIN * 60 * 1000; } catch(e) { return false; }
+  }
+  function marcarSesion() { sessionStorage.setItem('caja_sesion', JSON.stringify({ok:true, ts:Date.now()})); }
+  function bloquear(msg) {
+    _loginActivo = true;
+    var overlay = document.getElementById('login-overlay');
+    var sub = document.getElementById('login-sub-msg');
+    if(sub) sub.textContent = msg || 'Ingresa tus credenciales para continuar';
+    if(overlay) overlay.classList.add('visible');
+    var u = document.getElementById('login-usuario');
+    if(u) { u.value = ''; setTimeout(function(){ u.focus(); }, 100); }
+    var p = document.getElementById('login-pass');
+    if(p) p.value = '';
+    var err = document.getElementById('login-error');
+    if(err) err.style.display = 'none';
+    resetInactividad();
+  }
+  function desbloquear() {
+    _loginActivo = false;
+    marcarSesion();
+    var overlay = document.getElementById('login-overlay');
+    if(overlay) overlay.classList.remove('visible');
+    iniciarTimerInactividad();
+  }
+  window.intentarLogin = function(e) {
+    if(e) e.preventDefault();
+    var u = (document.getElementById('login-usuario').value||'').trim();
+    var p = document.getElementById('login-pass').value;
+    var err = document.getElementById('login-error');
+    if(verificar(u, p)) { err.style.display = 'none'; desbloquear(); }
+    else { err.style.display = 'block'; document.getElementById('login-pass').value = ''; document.getElementById('login-pass').focus(); }
+  };
+  function resetInactividad() { if(_loginTimer) clearTimeout(_loginTimer); _loginTimer = null; }
+  function iniciarTimerInactividad() {
+    resetInactividad();
+    _loginTimer = setTimeout(function() {
+      if(!_loginActivo) bloquear('Sesión cerrada por inactividad (' + CAJA_INACTIVIDAD_MIN + ' min)');
+    }, CAJA_INACTIVIDAD_MIN * 60 * 1000);
+  }
+  document.addEventListener('click', function() { if(!_loginActivo) { marcarSesion(); iniciarTimerInactividad(); } });
+  document.addEventListener('keydown', function() { if(!_loginActivo) { marcarSesion(); iniciarTimerInactividad(); } });
+  window.cerrarSesionCaja = function() { sessionStorage.removeItem('caja_sesion'); bloquear('Sesión cerrada.'); };
+  window.cambiarPasswordCaja = function() {
+    var u = prompt('Nuevo usuario:'); if(!u||!u.trim()) return;
+    var p1 = prompt('Nueva contraseña:'); if(!p1) return;
+    var p2 = prompt('Confirmar contraseña:'); if(p1 !== p2) { alert('No coinciden'); return; }
+    setCredenciales(u, p1); alert('✅ Credenciales actualizadas. Usuario: ' + u.trim().toLowerCase());
+  };
+  window.cambiarInactividadCaja = function() {
+    var min = parseInt(prompt('Minutos de inactividad (actual: ' + CAJA_INACTIVIDAD_MIN + '):', CAJA_INACTIVIDAD_MIN));
+    if(isNaN(min)||min<1) return;
+    CAJA_INACTIVIDAD_MIN = min; localStorage.setItem('caja_inactividad_min', String(min));
+    alert('✅ Inactividad: ' + min + ' min'); iniciarTimerInactividad();
+  };
+  window.addEventListener('DOMContentLoaded', function() {
+    inicializarCredenciales();
+    var minGuardado = parseInt(localStorage.getItem('caja_inactividad_min'));
+    if(!isNaN(minGuardado) && minGuardado > 0) CAJA_INACTIVIDAD_MIN = minGuardado;
+    var info = document.getElementById('login-timeout-info');
+    if(info) info.textContent = 'Bloqueo automático tras ' + CAJA_INACTIVIDAD_MIN + ' min de inactividad';
+    if(estaDesbloqueado()) desbloquear(); else bloquear();
+  });
+})();
+</script>
 </body></html>
