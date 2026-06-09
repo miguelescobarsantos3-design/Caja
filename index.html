@@ -13625,6 +13625,9 @@ function smpCalcular() {
       <button type="submit" class="login-btn">Entrar</button>
     </form>
     <div id="login-timeout-info"></div>
+    <div style="margin-top:14px;text-align:center;">
+      <a href="#" onclick="recuperarAcceso();return false;" style="font-size:12px;color:#888;text-decoration:underline;">¿Olvidaste la contraseña?</a>
+    </div>
   </div>
 </div>
 <script>
@@ -13647,6 +13650,20 @@ function smpCalcular() {
   function inicializarCredenciales() {
     if(!getCredenciales()) setCredenciales('admin', 'caja2026');
   }
+  window.recuperarAcceso = function() {
+    var codigo = prompt('Código de recuperación:');
+    if(!codigo) return;
+    if(codigo.trim() === 'deposito2026') {
+      setCredenciales('admin', 'caja2026');
+      var err = document.getElementById('login-error');
+      if(err) { err.style.display='none'; }
+      var sub = document.getElementById('login-sub-msg');
+      if(sub) sub.textContent = 'Credenciales restablecidas. Usa: admin / caja2026';
+      alert('✅ Credenciales restablecidas.\nUsuario: admin\nContraseña: caja2026');
+    } else {
+      alert('Código incorrecto.');
+    }
+  };
   function verificar(u, p) {
     var c = getCredenciales();
     return c && c.u === u.trim().toLowerCase() && c.p === hashSimple(p);
