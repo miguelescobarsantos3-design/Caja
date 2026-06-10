@@ -6552,12 +6552,13 @@ function procesarPrestamo() {
   const c = obtenerConsolidado(key);
   if(!c) return;
 
-  // El pago va directo al capital/pendiente total del préstamo.
-  // Utilidades se actualiza de forma separada (no se descuenta del pago).
-  const interesAbonado = 0;
+  // Actualizar cobrado en Utilidades (para contabilidad), sin que afecte la reducción del pendiente.
+  const desglose = (typeof aplicarAbonoUtilidad === 'function') ? aplicarAbonoUtilidad(c.nombre, monto) : {interesAbonado:0};
+  const interesAbonado = desglose.interesAbonado || 0;
   const capitalAbonado = monto;
 
-  let restante = capitalAbonado;
+  // El pendiente siempre se reduce por el monto completo.
+  let restante = monto;
   let todosLiquidados = true;
   const prestamosOrdenados = c.ids.map(id => DB.prestamos.find(x => x.id === id)).filter(Boolean)
     .sort((a,b) => a.id - b.id);
@@ -12517,12 +12518,13 @@ function prActualizarInteres() {
     var c = typeof obtenerConsolidado === 'function' ? obtenerConsolidado(key) : null;
     if (!c) return;
 
-    // El pago va directo al capital/pendiente total del préstamo.
-    // Utilidades se actualiza de forma separada (no se descuenta del pago).
-    var interesAbonado = 0;
+    // Actualizar cobrado en Utilidades (para contabilidad), sin que afecte la reducción del pendiente.
+    var desglose = (typeof window.aplicarAbonoUtilidad === 'function') ? window.aplicarAbonoUtilidad(c.nombre, monto) : {interesAbonado:0};
+    var interesAbonado = (desglose && desglose.interesAbonado) || 0;
     var capitalAbonado = monto;
 
-    var restante = capitalAbonado;
+    // El pendiente siempre se reduce por el monto completo.
+    var restante = monto;
     var prestamosOrdenados = (c.ids || []).map(function(id){ return DB.prestamos.find(function(x){ return x.id === id; }); }).filter(Boolean).sort(function(a,b){ return a.id - b.id; });
     var todosLiquidados = true;
     prestamosOrdenados.forEach(function(p){
