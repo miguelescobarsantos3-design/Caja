@@ -6736,6 +6736,10 @@ function procesarRetiro() {
   if(motivo){ rn.style.display='flex'; document.getElementById('recibo-notas').textContent=motivo; }
   else { rn.style.display='none'; }
   document.getElementById('recibo-overlay').classList.add('open');
+
+  if(typeof renderAhorros === 'function') renderAhorros();
+  if(typeof renderDashboard === 'function') renderDashboard();
+  if(typeof guardarDatos === 'function') guardarDatos();
 }
 
 // ── TANDA ────────────────────────────────────────
@@ -12580,6 +12584,7 @@ function prActualizarInteres() {
     var resumen = document.getElementById('pago-resumen'); if (resumen) resumen.innerHTML = '<div class="empty"><div class="icon">◎</div><p>Selecciona un préstamo</p></div>';
 
     window.actualizarTotalesUtilidadesUI(false);
+    if (typeof window.renderUtilidades === 'function') window.renderUtilidades();
     if (typeof renderPrestamos === 'function') renderPrestamos();
     if (typeof renderDashboard === 'function') renderDashboard();
     if (typeof guardarEnLocal === 'function') guardarEnLocal();
