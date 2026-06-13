@@ -1430,7 +1430,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <div style="position:relative;">
         <div class="search-bar" style="width:300px;">
           <span class="search-icon">⌕</span>
-          <input type="text" id="global-search" placeholder="Nombre, #número o monto..." oninput="buscarEnVivo(this.value)" onkeydown="if(event.key==='Escape')cerrarBuscador()" autocomplete="off">
+          <input type="search" id="global-search" placeholder="Nombre, #número o monto..." oninput="buscarEnVivo(this.value)" onkeydown="if(event.key==='Escape')cerrarBuscador()" autocomplete="off" name="caja-busqueda-2026">
           <span id="search-clear" style="cursor: pointer; color: var(--gris3); display: none;" onclick="cerrarBuscador()">✕</span>
         </div>
         <div id="search-results" style="display: none; position: absolute; top: calc(100% + 6px); right: 0px; background: var(--blanco); border-radius: var(--radio); box-shadow: var(--sombra-lg); width: 360px; max-height: 400px; overflow-y: auto; border: 1px solid var(--gris2); z-index: 50;"><div style="padding: 10px 14px; cursor: pointer; border-bottom: 0.5px solid var(--gris); display: flex; align-items: center; gap: 10px;"><div style="width: 38px; height: 38px; border-radius: 50%; background: var(--verde); display: flex; align-items: center; justify-content: center; font-family: Syne, sans-serif; font-size: 11px; font-weight: 800; color: rgb(255, 255, 255); flex-shrink: 0;">#014</div><div style="flex: 1 1 0%; min-width: 0px;"><div style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">DIANA DONAJI LOPEZ</div><div style="font-size: 11px; color: var(--texto2);">Ahorro: $279,082</div></div><div style="display: flex; flex-direction: column; gap: 2px; flex-shrink: 0;"><span class="badge badge-green" style="font-size: 10px;">Ahorro</span></div></div></div>
@@ -13733,6 +13733,11 @@ function smpCalcular() {
     alert('✅ Inactividad: ' + min + ' min'); iniciarTimerInactividad();
   };
   window.addEventListener('DOMContentLoaded', function() {
+    // Limpiar buscador por si Chrome autollenó con credenciales guardadas
+    setTimeout(function() {
+      var gs = document.getElementById('global-search');
+      if(gs && gs.value && gs.value.length < 30) gs.value = '';
+    }, 300);
     inicializarCredenciales();
     var minGuardado = parseInt(localStorage.getItem('caja_inactividad_min'));
     if(!isNaN(minGuardado) && minGuardado > 0) CAJA_INACTIVIDAD_MIN = minGuardado;
