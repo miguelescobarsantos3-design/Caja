@@ -3124,7 +3124,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
       <div class="search-bar" style="width:240px;">
         <span class="search-icon">🔍</span>
-        <input type="text" id="historial-buscar" placeholder="Nombre, fecha, monto..." oninput="renderHistorial()" style="font-size:13px;">
+        <input type="text" id="historial-buscar" placeholder="Nombre, fecha, monto..." oninput="renderHistorial()" style="font-size:13px;" autocomplete="off">
       </div>
       <div class="tabs" id="historial-tabs" style="margin:0;">
         <div class="tab active" onclick="tabHistorial('todos')">Todos</div>
@@ -3433,7 +3433,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div class="search-bar" style="width:220px;">
           <span class="search-icon">🔍</span>
-          <input type="text" id="recibos-buscar" placeholder="Nombre, folio, monto..." oninput="renderRecibos()" style="font-size:13px;">
+          <input type="text" id="recibos-buscar" placeholder="Nombre, folio, monto..." oninput="renderRecibos()" style="font-size:13px;" autocomplete="off">
         </div>
         <div class="tabs" id="recibos-tabs" style="margin:0;">
           <div class="tab active" onclick="filtrarRecibos('todos',this)">Todos</div>
@@ -13625,9 +13625,9 @@ function smpCalcular() {
     <div class="login-lock-icon">🔐</div>
     <div class="login-logo">Caja de Ahorro 2026</div>
     <div class="login-sub" id="login-sub-msg">Ingresa tus credenciales para continuar</div>
-    <form onsubmit="intentarLogin(event)">
-      <input type="text" id="login-usuario" placeholder="Usuario" autocomplete="username" autocapitalize="none">
-      <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password">
+    <form onsubmit="intentarLogin(event)" autocomplete="off">
+      <input type="text" id="login-usuario" placeholder="Usuario" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="new-password">
       <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
       <button type="submit" class="login-btn">Entrar</button>
     </form>
