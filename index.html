@@ -7348,14 +7348,15 @@ function buscarEnVivo(q) {
     row.addEventListener('mouseout',  function(){ row.style.background = ''; });
     row.addEventListener('click', function(){
       cerrarBuscador();
-      if(socio) {
+      if(p.es_socio && socio) {
         abrirFichaSocio(socio.id);
       } else {
-        // Buscar cualquier préstamo del deudor (activo o liquidado)
+        // Buscar cualquier préstamo del deudor (activo o liquidado) por nombre
         const todosLosPrs = DB.prestamos.filter(function(pr){
           return pr.nombre.toUpperCase() === p.nombre.toUpperCase();
         });
         if(todosLosPrs.length) { abrirEstadoCuenta(todosLosPrs[0].id); }
+        else if(p.es_socio && socio) { abrirFichaSocio(socio.id); }
       }
     });
     // Botón pago rápido en resultado de búsqueda
