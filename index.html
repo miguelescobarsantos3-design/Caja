@@ -9083,21 +9083,21 @@ function compartirImagenWA() {
         }
       }
 
-      // 2. Fallback PC: copiar imagen al portapapeles + abrir WhatsApp Web
+      // 2. Fallback PC: copiar imagen al portapapeles + abrir WhatsApp app
+      const r2 = reciboActual;
+      const tipos2 = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', retiro:'Recibo de Retiro'};
+      const msg2 = (tipos2[r2.tipo]||'Recibo') + ' #' + (r2.folio||'') + '\nSocio: ' + (r2.socio||'') + '\nMonto: $' + fmt(r2.monto) + '\nFecha: ' + (r2.fecha||'') + '\n_Caja de Ahorro 2026_';
       if(navigator.clipboard && window.ClipboardItem) {
         try {
           await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
-          window.open('https://web.whatsapp.com/', '_blank');
-          if(typeof toast === 'function') toast('✅ Imagen copiada. Selecciona el chat en WhatsApp Web y pega con Ctrl+V.');
+          window.open('https://wa.me/?text=' + encodeURIComponent(msg2), '_blank');
+          if(typeof toast === 'function') toast('✅ Imagen copiada. Selecciona el chat y pega con Ctrl+V.');
           return;
         } catch(e2) { console.warn('Clipboard error:', e2); }
       }
 
-      // 3. Último recurso: texto por wa.me
-      const r = reciboActual;
-      const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', retiro:'Recibo de Retiro'};
-      const msg = (tipos[r.tipo]||'Recibo') + ' #' + (r.folio||'') + '\nSocio: ' + (r.socio||'') + '\nMonto: $' + fmt(r.monto) + '\nFecha: ' + (r.fecha||'') + '\n_Caja de Ahorro 2026_';
-      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      // 3. Último recurso: solo texto por wa.me
+      window.open('https://wa.me/?text=' + encodeURIComponent(msg2), '_blank');
     }, 'image/png');
   });
 }
@@ -11297,7 +11297,7 @@ async function enviarSeleccionadosWA() {
 
   // 2. Fallback: copiar al portapapeles uno por uno (cada 4 segundos)
   if(navigator.clipboard && window.ClipboardItem) {
-    window.open('https://web.whatsapp.com/', '_blank');
+    window.open('https://wa.me/', '_blank');
     for(var ci=0; ci<imagenes.length; ci++) {
       try {
         await navigator.clipboard.write([new ClipboardItem({'image/png': imagenes[ci].blob})]);
