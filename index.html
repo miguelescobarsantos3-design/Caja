@@ -11248,11 +11248,12 @@ async function enviarSeleccionadosWA() {
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
     if(!files.length) continue;
 
-    // Confirmar antes de cada lote (renueva activación de usuario)
-    if(totalLotes > 1) {
-      var ok = confirm('Lote '+(li+1)+' de '+totalLotes+' ('+files.length+' recibos). OK para compartir.');
-      if(!ok) break;
-    }
+    // Confirmar siempre — renueva la activación de usuario justo antes del share
+    var msg = totalLotes > 1
+      ? 'Lote '+(li+1)+' de '+totalLotes+' ('+files.length+' recibos). OK para compartir.'
+      : '¿Compartir '+files.length+' recibo(s) por WhatsApp?';
+    var ok = confirm(msg);
+    if(!ok) break;
 
     // Compartir inmediatamente
     if(navigator.share) {
