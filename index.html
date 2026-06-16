@@ -11254,7 +11254,6 @@ async function enviarSeleccionadosWA() {
         var files = lotes[li].map(function(x){
           return new File([x.blob], 'Recibo-'+x.folio+'.png', {type:'image/png'});
         });
-        if(navigator.canShare({files: files})) {
           if(lotes.length > 1) {
             var ok = await new Promise(function(res){
               res(confirm('Lote ' + (li+1) + ' de ' + lotes.length + ' (' + files.length + ' recibos). Toca OK para compartir.'));
@@ -11263,7 +11262,6 @@ async function enviarSeleccionadosWA() {
           }
           await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
           compartidos += files.length;
-        }
       } catch(e) { console.warn('Share lote ' + li, e); }
     }
     if(compartidos > 0) {
