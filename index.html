@@ -9068,38 +9068,34 @@ function compartirImagenWA() {
   const txtOrig = btn ? btn.textContent : '';
   if(btn) { btn.textContent = 'Generando...'; btn.disabled = true; }
 
-  capturarRecibo(async function(canvas) {
+  capturarRecibo(canvas => {
     if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
-    canvas.toBlob(async function(blob) {
+    canvas.toBlob(blob => {
       const file = new File([blob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
 
-      // 1. Intentar Web Share API (funciona en móvil y Chrome escritorio 86+)
-      if(navigator.share) {
-        try {
-          await navigator.share({files:[file], title:'Recibo Caja de Ahorro', text:'Recibo #'+(reciboActual.folio||'')+' - '+(reciboActual.socio||'')});
-          return;
-        } catch(e) {
-          if(e.name === 'AbortError') return; // usuario canceló
-        }
+      // 1. Windows Share dialog (muestra WhatsApp, Teams, etc.)
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+        navigator.share({
+          files: [file],
+          title: 'Recibo Caja de Ahorro',
+          text: 'Recibo #' + (reciboActual.folio||'') + ' - ' + (reciboActual.socio||'')
+        }).catch(e => { if(e.name !== 'AbortError') _waFallback(blob); });
+        return;
       }
 
-      // 2. Fallback PC: copiar imagen al portapapeles + abrir WhatsApp app
-      const r2 = reciboActual;
-      const tipos2 = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', retiro:'Recibo de Retiro'};
-      const msg2 = (tipos2[r2.tipo]||'Recibo') + ' #' + (r2.folio||'') + '\nSocio: ' + (r2.socio||'') + '\nMonto: $' + fmt(r2.monto) + '\nFecha: ' + (r2.fecha||'') + '\n_Caja de Ahorro 2026_';
-      if(navigator.clipboard && window.ClipboardItem) {
-        try {
-          await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
-          window.open('https://wa.me/?text=' + encodeURIComponent(msg2), '_blank');
-          if(typeof toast === 'function') toast('✅ Imagen copiada. Selecciona el chat y pega con Ctrl+V.');
-          return;
-        } catch(e2) { console.warn('Clipboard error:', e2); }
-      }
-
-      // 3. Último recurso: solo texto por wa.me
-      window.open('https://wa.me/?text=' + encodeURIComponent(msg2), '_blank');
+      // 2. Fallback: portapapeles + wa.me
+      _waFallback(blob);
     }, 'image/png');
   });
+}
+
+function _waFallback(blob) {
+  if(navigator.clipboard && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(() => {
+      if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
+    }).catch(() => {});
+  }
+  window.open('https://wa.me/', '_blank');
 }
 
 // [INIT movido al final]
@@ -11276,26 +11272,11 @@ async function enviarSeleccionadosWA() {
     }
   }
 
-  // PC / fallback: intentar Web Share o portapapeles secuencial
+  // PC fallback: portapapeles secuencial + wa.me
   if(!imagenes.length) {
     if(typeof toast === 'function') toast('⚠️ No se pudieron generar las imágenes.');
     return;
   }
-
-  // 1. Intentar Web Share API con todos los archivos (Chrome escritorio 86+)
-  if(navigator.share) {
-    var files = imagenes.map(function(item) {
-      return new File([item.blob], 'Recibo-' + item.folio + '.png', {type:'image/png'});
-    });
-    try {
-      await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
-      return;
-    } catch(e) {
-      if(e.name === 'AbortError') return;
-    }
-  }
-
-  // 2. Fallback: copiar al portapapeles uno por uno (cada 4 segundos)
   if(navigator.clipboard && window.ClipboardItem) {
     window.open('https://wa.me/', '_blank');
     for(var ci=0; ci<imagenes.length; ci++) {
@@ -11305,10 +11286,9 @@ async function enviarSeleccionadosWA() {
         if(ci < imagenes.length - 1) await new Promise(function(res){ setTimeout(res, 4000); });
       } catch(e2) { console.error('Clipboard recibo', ci, e2); }
     }
-    if(typeof toast === 'function') toast('✅ Todos los recibos enviados.');
+    if(typeof toast === 'function') toast('✅ Listos.');
     return;
   }
-
   if(typeof toast === 'function') toast('⚠️ Usa el botón WhatsApp en cada recibo individual.');
 }
 
