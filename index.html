@@ -11245,7 +11245,7 @@ async function enviarSeleccionadosWA() {
 
   // Móvil: Web Share API — en lotes de 10 para no superar el límite del sistema
   if(navigator.share && navigator.canShare) {
-    var LOTE = 10;
+    var LOTE = 5;
     var lotes = [];
     for(var l=0; l<imagenes.length; l+=LOTE) lotes.push(imagenes.slice(l, l+LOTE));
     var compartidos = 0;
