@@ -7732,6 +7732,7 @@ function capturaEstado(tipo, socio, monto) {
   return null;
 }
 
+var _filtroRecibosActual = 'todos';
 function renderRecibos(filtro) {
   var _inputBuscar = document.getElementById('recibos-buscar');
   if(filtro && typeof filtro === 'string' && filtro !== '') {
