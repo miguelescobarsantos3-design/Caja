@@ -11229,65 +11229,44 @@ async function enviarSeleccionadosWA() {
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
   var btn = document.querySelector('#barra-seleccion button');
   var textoOrig = btn ? btn.innerHTML : '';
-  var imagenes = [];
+  var LOTE = 5;
+  var totalLotes = Math.ceil(folios.length / LOTE);
+  var compartidos = 0;
 
-  for(var i=0; i<folios.length; i++) {
-    if(btn) { btn.innerHTML = '⏳ ' + (i+1) + '/' + folios.length; btn.disabled = true; }
-    try {
-      var blob = await generarReciboCanvas(folios[i]);
-      if(blob) imagenes.push({blob: blob, folio: folios[i]});
-    } catch(e) { console.error('Error folio ' + folios[i], e); }
-  }
+  for(var li=0; li<totalLotes; li++) {
+    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
 
-  if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-
-  if(!imagenes.length) { alert('No se generaron imagenes'); return; }
-
-  // Móvil: Web Share API — en lotes de 10 para no superar el límite del sistema
-  if(navigator.share && navigator.canShare) {
-    var LOTE = 5;
-    var lotes = [];
-    for(var l=0; l<imagenes.length; l+=LOTE) lotes.push(imagenes.slice(l, l+LOTE));
-    var compartidos = 0;
-    for(var li=0; li<lotes.length; li++) {
+    // Generar imágenes de este lote
+    var files = [];
+    for(var i=0; i<loteFolios.length; i++) {
+      if(btn) { btn.innerHTML = '⏳ Lote '+(li+1)+'/'+totalLotes+' — '+( i+1)+'/'+loteFolios.length; btn.disabled = true; }
       try {
-        var files = lotes[li].map(function(x){
-          return new File([x.blob], 'Recibo-'+x.folio+'.png', {type:'image/png'});
-        });
-          if(lotes.length > 1) {
-            var ok = await new Promise(function(res){
-              res(confirm('Lote ' + (li+1) + ' de ' + lotes.length + ' (' + files.length + ' recibos). Toca OK para compartir.'));
-            });
-            if(!ok) break;
-          }
-          await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
-          compartidos += files.length;
-      } catch(e) { console.warn('Share lote ' + li, e); }
+        var blob = await generarReciboCanvas(loteFolios[i]);
+        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
+      } catch(e) { console.error('Error folio ' + loteFolios[i], e); }
     }
-    if(compartidos > 0) {
-      if(typeof toast === 'function') toast('✅ ' + compartidos + ' recibo(s) compartidos');
-      return;
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    if(!files.length) continue;
+
+    // Confirmar antes de cada lote (renueva activación de usuario)
+    if(totalLotes > 1) {
+      var ok = confirm('Lote '+(li+1)+' de '+totalLotes+' ('+files.length+' recibos). OK para compartir.');
+      if(!ok) break;
+    }
+
+    // Compartir inmediatamente
+    if(navigator.share) {
+      try {
+        await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
+        compartidos += files.length;
+      } catch(e) {
+        if(e.name === 'AbortError') break;
+        console.warn('Share lote '+li, e);
+      }
     }
   }
 
-  // PC fallback: portapapeles secuencial + wa.me
-  if(!imagenes.length) {
-    if(typeof toast === 'function') toast('⚠️ No se pudieron generar las imágenes.');
-    return;
-  }
-  if(navigator.clipboard && window.ClipboardItem) {
-    window.open('https://wa.me/', '_blank');
-    for(var ci=0; ci<imagenes.length; ci++) {
-      try {
-        await navigator.clipboard.write([new ClipboardItem({'image/png': imagenes[ci].blob})]);
-        if(typeof toast === 'function') toast('📋 Recibo ' + (ci+1) + '/' + imagenes.length + ' listo — pega en el chat (Ctrl+V)');
-        if(ci < imagenes.length - 1) await new Promise(function(res){ setTimeout(res, 4000); });
-      } catch(e2) { console.error('Clipboard recibo', ci, e2); }
-    }
-    if(typeof toast === 'function') toast('✅ Listos.');
-    return;
-  }
-  if(typeof toast === 'function') toast('⚠️ Usa el botón WhatsApp en cada recibo individual.');
+  if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) compartidos');
 }
 
 function generarReciboCanvas(folio) {
