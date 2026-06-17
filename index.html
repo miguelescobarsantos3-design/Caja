@@ -4770,9 +4770,18 @@ window.addEventListener('unhandledrejection', function(e) {
 
 <!-- MODAL UNIFICAR SOCIOS -->
 <div class="modal-overlay" id="modal-unificar-socios">
-  <div class="modal" style="width:560px;max-width:96vw;">
+  <div class="modal" style="width:600px;max-width:96vw;max-height:90vh;overflow-y:auto;">
     <h2>&#128279; Unificar registros</h2>
-    <p style="color:var(--texto2);font-size:13px;margin-bottom:16px;">Fusiona dos registros. El <strong>principal</strong> conserva su ahorro y recibe los prestamos del secundario. El secundario se elimina.</p>
+
+    <!-- SECCIÓN: Buscar parecidos automático -->
+    <div style="margin-bottom:16px;">
+      <button class="btn btn-secondary" onclick="buscarParecidosGlobal()" style="width:100%;justify-content:center;">🔍 Buscar posibles duplicados automáticamente</button>
+      <div id="unif-parecidos-lista" style="margin-top:10px;"></div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--gris);margin-bottom:16px;">
+
+    <p style="color:var(--texto2);font-size:13px;margin-bottom:16px;">O selecciona manualmente. El <strong>principal</strong> conserva su ahorro y recibe los préstamos del secundario. El secundario se elimina.</p>
     <div class="form-row">
       <div class="form-group">
         <label>Principal (conservar)</label>
@@ -13196,6 +13205,56 @@ function _todosLosRegistros(){
     }
   });
   return lista.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); });
+}
+
+function buscarParecidosGlobal() {
+  var contenedor = document.getElementById('unif-parecidos-lista');
+  if(!contenedor) return;
+  var todos = _todosLosRegistros();
+  var pares = [];
+  var vistos = {};
+  for(var i = 0; i < todos.length; i++) {
+    for(var j = i + 1; j < todos.length; j++) {
+      var a = todos[i], b = todos[j];
+      var key = [a.nombre, b.nombre].sort().join('||');
+      if(vistos[key]) continue;
+      vistos[key] = true;
+      var sim = _similitud(a.nombre, b.nombre);
+      if(sim >= 0.5) pares.push({a: a, b: b, sim: sim});
+    }
+  }
+  pares.sort(function(x, y){ return y.sim - x.sim; });
+
+  if(!pares.length) {
+    contenedor.innerHTML = '<p style="color:var(--verde);font-size:13px;">✅ No se encontraron duplicados.</p>';
+    return;
+  }
+
+  contenedor.innerHTML = '';
+  var titulo = document.createElement('p');
+  titulo.style.cssText = 'font-size:12px;color:var(--texto2);margin-bottom:8px;';
+  titulo.textContent = pares.length + ' posible(s) duplicado(s):';
+  contenedor.appendChild(titulo);
+
+  pares.forEach(function(par) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--gris);border-radius:8px;margin-bottom:6px;font-size:12px;';
+    var pct = Math.round(par.sim * 100);
+    var badge = pct >= 80 ? 'var(--rojo)' : pct >= 65 ? 'var(--naranja)' : 'var(--amarillo-dark,#b8860b)';
+    row.innerHTML =
+      '<span style="flex-shrink:0;background:'+badge+';color:#fff;border-radius:4px;padding:2px 6px;font-weight:700;">'+pct+'%</span>' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+        '<strong>'+(par.a.id?'#'+String(par.a.id).padStart(2,'0')+' ':'')+par.a.nombre+'</strong>' +
+        ' <span style="color:var(--texto2);">↔</span> ' +
+        (par.b.id?'#'+String(par.b.id).padStart(2,'0')+' ':'')+par.b.nombre +
+      '</span>';
+    var btn = document.createElement('button');
+    btn.textContent = 'Unificar';
+    btn.style.cssText = 'flex-shrink:0;font-size:11px;padding:4px 12px;border-radius:6px;border:none;background:var(--verde);color:#fff;cursor:pointer;';
+    (function(p, s){ btn.addEventListener('click', function(){ abrirUnificarConNombre(p, s); }); })(par.a.nombre, par.b.nombre);
+    row.appendChild(btn);
+    contenedor.appendChild(row);
+  });
 }
 
 function detectarNombreSimilarPrestamo(valor){
