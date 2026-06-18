@@ -3055,15 +3055,13 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="card">
       <div class="card-header">
         <div class="card-title">Préstamos por deudor</div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <div class="search-bar" style="width:240px;">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <div class="search-bar" style="width:200px;min-width:140px;">
             <span class="search-icon">⌕</span>
             <input type="text" id="pr-search" placeholder="Buscar deudor..." oninput="renderPrestamos()" autocomplete="off">
           </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-secondary" onclick="abrirSimuladorPrestamo()" style="background:linear-gradient(135deg,#1a7a5e,#2ea87a);color:white;border:none;">&#128202; Simulador</button>
-            <button class="btn btn-primary" onclick="abrirNuevoPrestamo()">+ Nuevo préstamo</button>
-          </div>
+          <button class="btn btn-secondary" onclick="abrirSimuladorPrestamo()" style="background:linear-gradient(135deg,#1a7a5e,#2ea87a);color:white;border:none;white-space:nowrap;">📊 Simulador</button>
+          <button class="btn btn-primary" onclick="abrirNuevoPrestamo()" style="white-space:nowrap;">+ Nuevo préstamo</button>
         </div>
       </div>
       <table>
@@ -13437,11 +13435,13 @@ function smpFmt(n) {
 }
 
 function smpGetTasa(monto, meses) {
-  // Tasa anual por tramos (igual que la caja original)
-  if(monto <= 5000)  return meses <= 3  ? 0.10 : meses <= 6 ? 0.12 : 0.15;
-  if(monto <= 15000) return meses <= 3  ? 0.08 : meses <= 6 ? 0.10 : 0.12;
-  if(monto <= 30000) return meses <= 6  ? 0.08 : meses <= 12? 0.10 : 0.12;
-  return               meses <= 6  ? 0.07 : meses <= 12? 0.08 : 0.10;
+  // Tasa anual según plazo: mín 14%, máx 24%
+  if(meses <= 3)  return 0.14;
+  if(meses <= 6)  return 0.16;
+  if(meses <= 12) return 0.18;
+  if(meses <= 18) return 0.20;
+  if(meses <= 24) return 0.22;
+  return 0.24;
 }
 
 function smpActualizarMeses() {
@@ -13582,8 +13582,16 @@ function smpCalcular() {
       </div>
 
       <!-- Tasa auto -->
-      <div style="background:#f0faf5;border:1px solid #a7f3d0;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#065f46;">
-        🏦 Tasa aplicada automáticamente según monto y plazo: <strong id="smp-tasa-display">—</strong>
+      <div style="background:#f0faf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#065f46;">
+        <div style="font-weight:700;margin-bottom:8px;">🏦 Tasa sugerida según plazo: <span id="smp-tasa-display" style="font-size:15px;color:#1a7a5e;">—</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
+          <span style="background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:20px;">1–3 meses → 14%</span>
+          <span style="background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:20px;">4–6 meses → 16%</span>
+          <span style="background:#fef9c3;color:#854d0e;padding:3px 8px;border-radius:20px;">7–12 meses → 18%</span>
+          <span style="background:#fef9c3;color:#854d0e;padding:3px 8px;border-radius:20px;">13–18 meses → 20%</span>
+          <span style="background:#fee2e2;color:#991b1b;padding:3px 8px;border-radius:20px;">19–24 meses → 22%</span>
+          <span style="background:#fee2e2;color:#991b1b;padding:3px 8px;border-radius:20px;">+24 meses → 24%</span>
+        </div>
       </div>
 
       <!-- KPIs -->
@@ -13769,19 +13777,4 @@ function smpCalcular() {
     CAJA_INACTIVIDAD_MIN = min; localStorage.setItem('caja_inactividad_min', String(min));
     alert('✅ Inactividad: ' + min + ' min'); iniciarTimerInactividad();
   };
-  window.addEventListener('DOMContentLoaded', function() {
-    // Limpiar buscador por si Chrome autollenó con credenciales guardadas
-    setTimeout(function() {
-      var gs = document.getElementById('global-search');
-      if(gs && gs.value && gs.value.length < 30) gs.value = '';
-    }, 300);
-    inicializarCredenciales();
-    var minGuardado = parseInt(localStorage.getItem('caja_inactividad_min'));
-    if(!isNaN(minGuardado) && minGuardado > 0) CAJA_INACTIVIDAD_MIN = minGuardado;
-    var info = document.getElementById('login-timeout-info');
-    if(info) info.textContent = 'Bloqueo automático tras ' + CAJA_INACTIVIDAD_MIN + ' min de inactividad';
-    if(estaDesbloqueado()) desbloquear(); else bloquear();
-  });
-})();
-</script>
-</body></html>
+  wind
