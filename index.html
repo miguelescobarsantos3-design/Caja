@@ -160,7 +160,7 @@ tr:hover td { background: #fafaf8; }
 /* ─── MODAL ─── */
 .modal-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(20,20,16,0.55); z-index: 100;
+  background: rgba(0,0,0,0.75); z-index: 100;
   align-items: center; justify-content: center;
 }
 .modal-overlay.open { display: flex; }
@@ -13777,4 +13777,19 @@ function smpCalcular() {
     CAJA_INACTIVIDAD_MIN = min; localStorage.setItem('caja_inactividad_min', String(min));
     alert('✅ Inactividad: ' + min + ' min'); iniciarTimerInactividad();
   };
-  wind
+  window.addEventListener('DOMContentLoaded', function() {
+    // Limpiar buscador por si Chrome autollenó con credenciales guardadas
+    setTimeout(function() {
+      var gs = document.getElementById('global-search');
+      if(gs && gs.value && gs.value.length < 30) gs.value = '';
+    }, 300);
+    inicializarCredenciales();
+    var minGuardado = parseInt(localStorage.getItem('caja_inactividad_min'));
+    if(!isNaN(minGuardado) && minGuardado > 0) CAJA_INACTIVIDAD_MIN = minGuardado;
+    var info = document.getElementById('login-timeout-info');
+    if(info) info.textContent = 'Bloqueo automático tras ' + CAJA_INACTIVIDAD_MIN + ' min de inactividad';
+    if(estaDesbloqueado()) desbloquear(); else bloquear();
+  });
+})();
+</script>
+</body></html>

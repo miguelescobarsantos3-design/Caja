@@ -1,0 +1,9 @@
+# Archivos temporales LibreOffice
+.~lock.*#
+
+# Archivos temporales Windows
+Thumbs.db
+desktop.ini
+
+# Archivos temporales Mac
+.DS_Store
