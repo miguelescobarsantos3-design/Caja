@@ -907,6 +907,40 @@ function cajaTsLocal() {
   return parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
 }
 
+// ── PROTECCIÓN HISTÓRICA: High-Water Marks ──────────────────────────────────
+// Garantiza que ningún guardado pueda REDUCIR conteos de movimientos/recibos.
+// Se actualiza en cada guardado/carga exitosa. Solo sube, nunca baja.
+function cajaActualizarHWM(datos) {
+  var campos = [
+    ['movimientos', (datos.movimientos||[]).length],
+    ['recibos',     (datos.recibos||[]).length],
+    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0)],
+    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0)]
+  ];
+  campos.forEach(function(c) {
+    var prev = parseInt(localStorage.getItem('caja_hwm_'+c[0])||'0', 10) || 0;
+    if(c[1] > prev) localStorage.setItem('caja_hwm_'+c[0], String(c[1]));
+  });
+}
+function cajaObtenerHWM(campo) {
+  return parseInt(localStorage.getItem('caja_hwm_'+campo)||'0', 10) || 0;
+}
+function cajaVerificarHWM(datos) {
+  var checks = [
+    ['movimientos', (datos.movimientos||[]).length,   'movimientos generales'],
+    ['recibos',     (datos.recibos||[]).length,       'recibos'],
+    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0), 'movimientos Tanda $300'],
+    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0), 'movimientos Tanda $1000']
+  ];
+  var problemas = [];
+  checks.forEach(function(c) {
+    var hwm = cajaObtenerHWM(c[0]);
+    if(hwm > 0 && c[1] < hwm) problemas.push(c[2]+': tiene '+c[1]+', máximo histórico '+hwm);
+  });
+  return problemas;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function cajaGuardarSnapshotLocal(datos) {
   try {
     var ts = Number(datos && datos.ts ? datos.ts : Date.now());
@@ -914,6 +948,7 @@ function cajaGuardarSnapshotLocal(datos) {
     localStorage.setItem('caja_ahorro_2026', json);
     localStorage.setItem('caja_ahorro_2026_backup_total', json);
     localStorage.setItem('caja_ts', String(ts));
+    cajaActualizarHWM(datos); // 🛡️ actualiza máximos históricos
   } catch(e) {
     console.warn('No se pudo guardar snapshot local:', e.message);
   }
@@ -977,13 +1012,19 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
   window.__aplicandoDatosFirebase = true;
 
   try {
-    // IMPORTANTE:
-    // Ya NO hacemos merge de tanda300/tanda1000 al bajar de Firestore.
-    // Antes se fusionaba con localStorage y eso podía revivir datos viejos.
+    // PROTECCIÓN HISTÓRICA: para movimientos y recibos, nunca reducir el conteo.
+    // Se toma el array con MÁS registros (local vs Firebase).
+    var _localMovs  = DB.movimientos || [];
+    DB.movimientos  = ((datos.movimientos||[]).length >= _localMovs.length)
+                      ? (datos.movimientos || []) : _localMovs;
+
+    var _localRecs  = DB.recibos || [];
+    DB.recibos      = ((datos.recibos||[]).length >= _localRecs.length)
+                      ? (datos.recibos || []) : _localRecs;
+
     DB.socios       = datos.socios       || [];
     DB.prestamos    = datos.prestamos    || [];
     DB.tandas       = datos.tandas       || [];
-    DB.movimientos  = datos.movimientos  || [];
     DB.cumple       = datos.cumple       || [];
     DB.fondoCumple  = datos.fondoCumple  || [];
     DB.configCumple = datos.configCumple || {aportacion:100, participantes:32};
@@ -991,11 +1032,34 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     DB.utilidades   = (datos.utilidades || []).sort(function(a,b){
       return (a.nombre||'').localeCompare(b.nombre||'', 'es', {sensitivity:'base'});
     });
-    DB.recibos      = datos.recibos      || [];
     DB._directorio  = datos._directorio  || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
-    DB.tanda300     = datos.tanda300     || null;
-    DB.tanda1000    = datos.tanda1000    || null;
+
+    // tanda300: aplicar propiedades nuevas pero nunca reducir movimientos
+    var _localT300Movs = (DB.tanda300 && DB.tanda300.movimientos) ? DB.tanda300.movimientos : [];
+    if(datos.tanda300) {
+      DB.tanda300 = datos.tanda300;
+      if((datos.tanda300.movimientos||[]).length < _localT300Movs.length) {
+        DB.tanda300 = Object.assign({}, datos.tanda300, {movimientos: _localT300Movs});
+        console.warn('⚠️ tanda300.movimientos protegidos: Firebase='+( datos.tanda300.movimientos||[]).length+' < local='+_localT300Movs.length);
+      }
+    } else {
+      DB.tanda300 = null;
+    }
+
+    // tanda1000: ídem
+    var _localT1000Movs = (DB.tanda1000 && DB.tanda1000.movimientos) ? DB.tanda1000.movimientos : [];
+    if(datos.tanda1000) {
+      DB.tanda1000 = datos.tanda1000;
+      if((datos.tanda1000.movimientos||[]).length < _localT1000Movs.length) {
+        DB.tanda1000 = Object.assign({}, datos.tanda1000, {movimientos: _localT1000Movs});
+        console.warn('⚠️ tanda1000.movimientos protegidos: Firebase='+(datos.tanda1000.movimientos||[]).length+' < local='+_localT1000Movs.length);
+      }
+    } else {
+      DB.tanda1000 = null;
+    }
+
+    cajaActualizarHWM({movimientos:DB.movimientos, recibos:DB.recibos, tanda300:DB.tanda300, tanda1000:DB.tanda1000});
 
     if(datos.cuentas && typeof aplicarCuentasPersistidas === 'function') aplicarCuentasPersistidas(datos.cuentas);
     if(typeof fixSocioIds === 'function') fixSocioIds();
@@ -1079,6 +1143,15 @@ async function guardarEnFirebase() {
       _dispositivo:   window._dispositivoId || 'desconocido',
       _modoGuardado:  cajaModoMaestro() ? 'MAESTRO' : 'PC_AUTO'
     };
+
+    // 🛡️ Protección histórica: bloquear si vamos a perder recibos o movimientos
+    var _hwmProblemas = cajaVerificarHWM(datos);
+    if(_hwmProblemas.length > 0) {
+      console.error('🛑 BLOQUEADO guardarEnFirebase — pérdida de datos detectada:', _hwmProblemas);
+      if(typeof toast === 'function') toast('⚠️ Guardado cancelado: pérdida de datos detectada. ' + _hwmProblemas.join('; '));
+      if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
+      return false;
+    }
 
     // Escritura completa y limpia: sin merge de tanda vieja.
     await _fbDb.collection('caja').doc('datos').set(datos);
