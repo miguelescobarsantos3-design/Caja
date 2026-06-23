@@ -11294,7 +11294,6 @@ function editarDesdeEC() {
   const p = _ecPrestamoActual;
   if(!p) return;
 
-  // Si hay varios préstamos para este deudor, dejar elegir cuál editar
   const todos = DB.prestamos.filter(x => x.nombre.toLowerCase() === p.nombre.toLowerCase()).sort((a,b) => a.id - b.id);
 
   if(todos.length === 1) {
@@ -11303,25 +11302,41 @@ function editarDesdeEC() {
     return;
   }
 
-  // Crear selector de préstamo a editar
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = '<div style="background:var(--fondo);border-radius:var(--radio);padding:24px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
-    + '<h3 style="margin-bottom:4px;font-size:16px;">¿Cuál préstamo editar?</h3>'
-    + '<p style="font-size:13px;color:var(--texto2);margin-bottom:16px;">' + p.nombre + '</p>'
-    + '<div style="display:grid;gap:8px;">'
-    + todos.map(pr => {
-        const cap = pr.capital || pr.monto || 0;
-        const pend = pr.pendiente || 0;
-        const est = pr.estado === 'liquidado' ? '✓ Liquidado' : 'Activo $' + fmt(pend) + ' pend.';
-        return '<button onclick="document.body.removeChild(this.closest(\'[style*=z-index:10000]\'));cerrarModal(\'modal-estado-cuenta\');setTimeout(()=>abrirEditarPrestamo('+pr.id+'),120);" '
-          + 'style="text-align:left;padding:12px 14px;border:1.5px solid var(--gris2);background:var(--gris);border-radius:var(--radio-sm);cursor:pointer;font-size:13px;">'
-          + '<strong>Préstamo #' + String(pr.id).padStart(3,'0') + '</strong> — $' + fmt(cap) + '<br>'
-          + '<span style="color:var(--texto2);font-size:12px;">' + est + '</span></button>';
-      }).join('')
-    + '</div>'
-    + '<button onclick="document.body.removeChild(this.parentElement.parentElement)" style="margin-top:14px;width:100%;padding:8px;border:1.5px solid var(--gris2);background:none;border-radius:var(--radio-sm);cursor:pointer;font-size:13px;">Cancelar</button>'
-    + '</div>';
+  // Quitar selector anterior si existe
+  var prev = document.getElementById('_selector-prestamo-edit');
+  if(prev) prev.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = '_selector-prestamo-edit';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:19999;display:flex;align-items:center;justify-content:center;';
+
+  var btns = todos.map(function(pr) {
+    var cap = pr.capital || pr.monto || 0;
+    var pend = pr.pendiente || 0;
+    var est = pr.estado === 'liquidado' ? '✓ Liquidado' : 'Activo — $' + fmt(pend) + ' pendiente';
+    var btn = document.createElement('button');
+    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 14px;border:1.5px solid #d1d5db;background:#f9fafb;border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:8px;';
+    btn.innerHTML = '<strong style="color:#111;">Préstamo #' + String(pr.id).padStart(3,'0') + ' — $' + fmt(cap) + '</strong><br><span style="color:#6b7280;font-size:12px;">' + est + '</span>';
+    btn.onclick = function() {
+      overlay.remove();
+      cerrarModal('modal-estado-cuenta');
+      setTimeout(function(){ abrirEditarPrestamo(pr.id); }, 150);
+    };
+    return btn;
+  });
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.style.cssText = 'display:block;width:100%;padding:9px;border:1.5px solid #d1d5db;background:none;border-radius:10px;cursor:pointer;font-size:13px;color:#374151;margin-top:4px;';
+  cancelBtn.onclick = function(){ overlay.remove(); };
+
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#ffffff;border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.35);';
+  box.innerHTML = '<h3 style="margin:0 0 4px;font-size:16px;color:#111;">¿Cuál préstamo editar?</h3><p style="margin:0 0 16px;font-size:13px;color:#6b7280;">' + p.nombre + '</p>';
+  btns.forEach(function(b){ box.appendChild(b); });
+  box.appendChild(cancelBtn);
+
+  overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
 
