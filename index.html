@@ -11175,7 +11175,13 @@ function guardarEdicionPrestamo() {
 
   cerrarModal('modal-editar-prestamo');
   renderPrestamos();
-  if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof guardarDatos === 'function') guardarDatos({render:false, firebase:true});
+  else {
+    if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+  }
+  // Regresar al Estado de cuenta del mismo deudor para continuar en contexto
+  setTimeout(() => abrirEstadoCuenta(_prEditandoId), 200);
 }
 
 function confirmarEliminarPrestamo() {
@@ -11199,7 +11205,11 @@ function confirmarEliminarPrestamo() {
     document.body.removeChild(overlay);
     cerrarModal('modal-editar-prestamo');
     renderPrestamos();
-    if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    if(typeof guardarDatos === 'function') guardarDatos({render:false, firebase:true});
+    else {
+      if(typeof guardarEnLocal === 'function') guardarEnLocal();
+      if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+    }
   };
 }
 
@@ -11283,8 +11293,36 @@ function procesarRespaldoJSON(input) {
 function editarDesdeEC() {
   const p = _ecPrestamoActual;
   if(!p) return;
-  cerrarModal('modal-estado-cuenta');
-  setTimeout(() => abrirEditarPrestamo(p.id), 150);
+
+  // Si hay varios préstamos para este deudor, dejar elegir cuál editar
+  const todos = DB.prestamos.filter(x => x.nombre.toLowerCase() === p.nombre.toLowerCase()).sort((a,b) => a.id - b.id);
+
+  if(todos.length === 1) {
+    cerrarModal('modal-estado-cuenta');
+    setTimeout(() => abrirEditarPrestamo(todos[0].id), 150);
+    return;
+  }
+
+  // Crear selector de préstamo a editar
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:var(--fondo);border-radius:var(--radio);padding:24px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<h3 style="margin-bottom:4px;font-size:16px;">¿Cuál préstamo editar?</h3>'
+    + '<p style="font-size:13px;color:var(--texto2);margin-bottom:16px;">' + p.nombre + '</p>'
+    + '<div style="display:grid;gap:8px;">'
+    + todos.map(pr => {
+        const cap = pr.capital || pr.monto || 0;
+        const pend = pr.pendiente || 0;
+        const est = pr.estado === 'liquidado' ? '✓ Liquidado' : 'Activo $' + fmt(pend) + ' pend.';
+        return '<button onclick="document.body.removeChild(this.closest(\'[style*=z-index:10000]\'));cerrarModal(\'modal-estado-cuenta\');setTimeout(()=>abrirEditarPrestamo('+pr.id+'),120);" '
+          + 'style="text-align:left;padding:12px 14px;border:1.5px solid var(--gris2);background:var(--gris);border-radius:var(--radio-sm);cursor:pointer;font-size:13px;">'
+          + '<strong>Préstamo #' + String(pr.id).padStart(3,'0') + '</strong> — $' + fmt(cap) + '<br>'
+          + '<span style="color:var(--texto2);font-size:12px;">' + est + '</span></button>';
+      }).join('')
+    + '</div>'
+    + '<button onclick="document.body.removeChild(this.parentElement.parentElement)" style="margin-top:14px;width:100%;padding:8px;border:1.5px solid var(--gris2);background:none;border-radius:var(--radio-sm);cursor:pointer;font-size:13px;">Cancelar</button>'
+    + '</div>';
+  document.body.appendChild(overlay);
 }
 
 function previewTotalEdicion() {
