@@ -10493,6 +10493,8 @@ function normalizarVisibilidadSocios() {
     if(fechaEl) fechaEl.value = hoy();
     var notasEl = modal.querySelector('#ta300-notas');
     if(notasEl) notasEl.value = '';
+    var montoTurnoEl = modal.querySelector('#ta300-monto-turno');
+    if(montoTurnoEl) montoTurnoEl.value = monto300;
     // Renderizar lista de turnos G1 y G2
     window._ta300RefrescarTurnos();
     modal.classList.add('open');
@@ -10573,10 +10575,11 @@ function normalizarVisibilidadSocios() {
   window._ta300ActualizarMonto = function(){
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
+    var montoPorTurno = parseInt((document.getElementById('ta300-monto-turno')||{}).value||monto300, 10) || monto300;
     var cbs = document.querySelectorAll('.ta300-turno-cb:not([disabled]):checked');
-    var total = cbs.length * monto300;
+    var total = cbs.length * montoPorTurno;
     var el = document.getElementById('ta300-monto-calculado');
-    if(el) el.textContent = '$'+fmt(total);
+    if(el) el.textContent = '$'+fmt(total) + (montoPorTurno < monto300 ? ' ⚠ parcial' : '');
     var cnt = document.getElementById('ta300-turnos-count');
     if(cnt) cnt.textContent = '('+cbs.length+' seleccionado'+(cbs.length!==1?'s':'')+')';
   };
@@ -10589,17 +10592,19 @@ function normalizarVisibilidadSocios() {
     if(!aportante){ alert('Selecciona un participante.'); return; }
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
+    var montoPorTurno = parseInt((document.getElementById('ta300-monto-turno')||{}).value||monto300, 10) || monto300;
     var cbs = document.querySelectorAll('.ta300-turno-cb:not([disabled]):checked');
     if(!cbs.length){ alert('Selecciona al menos un turno.'); return; }
+    var esParcial = montoPorTurno < monto300;
     var turnosCubiertos = [];
     var total = 0;
     cbs.forEach(function(cb){
       var grupo = parseInt(cb.dataset.grupo, 10);
       var cobrador = cb.dataset.nombre;
       var idx = parseInt(cb.dataset.idx, 10);
-      t.movimientos.push({ aportante:aportante, cobrador:cobrador, grupo:grupo, monto:monto300, fecha:fecha, notas:notas||'' });
-      turnosCubiertos.push('Grupo '+grupo+' — Turno '+(idx+1)+' ('+cobrador+')');
-      total += monto300;
+      t.movimientos.push({ aportante:aportante, cobrador:cobrador, grupo:grupo, monto:montoPorTurno, fecha:fecha, notas:notas||(esParcial?'Aportación parcial':'') });
+      turnosCubiertos.push('Grupo '+grupo+' — Turno '+(idx+1)+' ('+cobrador+')'+(esParcial?' $'+fmt(montoPorTurno)+'/'+fmt(monto300):''));
+      total += montoPorTurno;
     });
     var pagadoTotal = sumaT300Aportante(t, aportante);
     var concepto = 'Aporte Tanda $300 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
@@ -13019,8 +13024,12 @@ function prActualizarInteres() {
         <div id="ta300-turnos-g2" style="display:grid;gap:4px;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
+    <div class="form-group" style="margin-bottom:10px;">
+      <label style="font-size:13px;">Monto por turno <span style="color:var(--texto2);font-weight:400;">(cambia para aportación parcial)</span></label>
+      <input type="number" id="ta300-monto-turno" value="300" min="1" step="1" oninput="window._ta300ActualizarMonto()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:15px;font-weight:700;background:var(--fondo);">
+    </div>
     <div style="background:rgba(26,122,90,0.08);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:13px;color:var(--texto2);">Monto a registrar:</span>
+      <span style="font-size:13px;color:var(--texto2);">Total a registrar:</span>
       <strong id="ta300-monto-calculado" style="font-size:20px;color:var(--verde);">$0</strong>
     </div>
     <div class="form-row">
