@@ -10182,10 +10182,12 @@ function normalizarVisibilidadSocios() {
 // TANDAS 300 / 1000 — igual que Cumpleaños + aportes editables
 // ══════════════════════════════════════════════════
 (function instalarTandasEspeciales(){
-  var T300_G1_BASE = ['HAROLDO','JUAN ANTONIO','ERI ROMERO','NANCY','UBALDO','CARBALLO','RAFAEL','GERMAN','MIGUEL','RAMON','JULIO'];
-  var T300_G2_BASE = ['JUAN ANTONIO','JUAN ANTONIO B','WILBER','JORGE','UBALDO','CARBALLO','MIGUEL','RAFAEL','EUGENIO','RAMON','SANTIAGO'];
-  var T300_G1 = (DB.tanda300 && DB.tanda300.g1 && DB.tanda300.g1.length) ? DB.tanda300.g1.slice() : T300_G1_BASE.slice();
-  var T300_G2 = (DB.tanda300 && DB.tanda300.g2 && DB.tanda300.g2.length) ? DB.tanda300.g2.slice() : T300_G2_BASE.slice();
+  var T300_G1_BASE = ['HAROLDO','JUAN ANTONIO A','ERI ROMERO','NANCY','UBALDO A','CARBALLO A','RAFAEL A','GERMAN','MIGUEL A','RAMON A','JULIO'];
+  var T300_G2_BASE = ['JUAN ANTONIO B','JUAN ANTONIO C','WILBER','JORGE','UBALDO B','CARBALLO B','MIGUEL B','RAFAEL B','EUGENIO','RAMON B','SANTIAGO'];
+  // Usar DB solo si tiene nombres con sufijos A/B/C; si no, usar BASE (evita que Firebase sin sufijos sobreescriba)
+  function _t300TieneSufijos(arr){ return Array.isArray(arr) && arr.some(function(n){ return /\s[ABC]$/.test(n); }); }
+  var T300_G1 = _t300TieneSufijos(DB.tanda300 && DB.tanda300.g1) ? DB.tanda300.g1.slice() : T300_G1_BASE.slice();
+  var T300_G2 = _t300TieneSufijos(DB.tanda300 && DB.tanda300.g2) ? DB.tanda300.g2.slice() : T300_G2_BASE.slice();
   // Lista base — solo se usa si DB no tiene participantes guardados
   var T1000_P_BASE = ['NANCY','WILBER','UBALDO','AMERICA','NANCY','AMERICA'];
   var T1000_P = (DB.tanda1000 && DB.tanda1000.participantes && DB.tanda1000.participantes.length) ? DB.tanda1000.participantes.slice() : T1000_P_BASE.slice();
@@ -10230,6 +10232,15 @@ function normalizarVisibilidadSocios() {
         });
       });
       delete DB.tanda300.quincenas;
+    }
+    // Sincronizar T300_G1/G2 desde DB solo si DB trae nombres con sufijos A/B/C
+    if(_t300TieneSufijos(DB.tanda300.g1)) {
+      T300_G1.length = 0;
+      DB.tanda300.g1.forEach(function(p){ T300_G1.push(p); });
+    }
+    if(_t300TieneSufijos(DB.tanda300.g2)) {
+      T300_G2.length = 0;
+      DB.tanda300.g2.forEach(function(p){ T300_G2.push(p); });
     }
     return DB.tanda300;
   };
