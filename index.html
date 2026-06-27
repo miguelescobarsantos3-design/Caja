@@ -5333,7 +5333,7 @@ function renderDashboard() {
   (function() {
     var pend = utilTot.pendiente || 0;
     var elP = document.getElementById('kpi-util-pendiente');
-    if(elP) elP.textContent = '$' + fmt(Math.round(pend));
+    if(elP) elP.textContent = '$' + fmt(pend);
   })();
   document.getElementById('kpi-utilidades').textContent = (typeof fmtUtil === 'function') ? fmtUtil(utilidades) : fmt(utilidades);
   const elPend = document.getElementById('kpi-utilidades-pend');
@@ -8185,7 +8185,6 @@ function compartirEstadoCuentaWA() {
       if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
         navigator.share({
           files: [file],
-          title: 'Estado de cuenta — ' + (p ? p.nombre : ''),
         }).catch(() => _descargarEC(blob, nombre));
       } else {
         // PC: descargar imagen
@@ -9171,9 +9170,7 @@ function compartirImagenWA() {
       // 1. Windows Share dialog (muestra WhatsApp, Teams, etc.)
       if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
         navigator.share({
-          files: [file],
-          title: 'Recibo Caja de Ahorro',
-          text: 'Recibo #' + (reciboActual.folio||'') + ' - ' + (reciboActual.socio||'')
+          files: [file]
         }).catch(e => { if(e.name !== 'AbortError') _waFallback(blob); });
         return;
       }
@@ -9791,7 +9788,6 @@ function enviarReciboImagen() {
       if(navigator.share && navigator.canShare && navigator.canShare({files:[new File([blob],'recibo.png',{type:'image/png'})]})) {
         const file = new File([blob], 'recibo_caja.png', {type:'image/png'});
         navigator.share({
-          title: 'Recibo Caja de Ahorro',
           files: [file]
         }).catch(() => descargarImagen(blob));
       } else {
@@ -10242,6 +10238,16 @@ function normalizarVisibilidadSocios() {
       T300_G2.length = 0;
       DB.tanda300.g2.forEach(function(p){ T300_G2.push(p); });
     }
+    // Auto-normalizar nombres A/B/C en movimientos (resistente a Firebase con datos viejos)
+    ;(function(){
+      var mG1={'JUAN ANTONIO':'JUAN ANTONIO A','UBALDO':'UBALDO A','CARBALLO':'CARBALLO A','RAFAEL':'RAFAEL A','MIGUEL':'MIGUEL A','RAMON':'RAMON A'};
+      var mG2={'JUAN ANTONIO':'JUAN ANTONIO C','UBALDO':'UBALDO B','CARBALLO':'CARBALLO B','RAFAEL':'RAFAEL B','MIGUEL':'MIGUEL B','RAMON':'RAMON B'};
+      (DB.tanda300.movimientos||[]).forEach(function(m){
+        var map=m.grupo===1?mG1:mG2;
+        if(map[m.aportante])m.aportante=map[m.aportante];
+        if(map[m.cobrador])m.cobrador=map[m.cobrador];
+      });
+    })();
     return DB.tanda300;
   };
 
@@ -11424,7 +11430,7 @@ async function enviarSeleccionadosWA() {
     // Compartir inmediatamente
     if(navigator.share) {
       try {
-        await navigator.share({files: files, title: 'Recibos Caja de Ahorro'});
+        await navigator.share({files: files});
         compartidos += files.length;
       } catch(e) {
         if(e.name === 'AbortError') break;
