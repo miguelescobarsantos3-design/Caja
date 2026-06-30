@@ -11411,34 +11411,54 @@ async function enviarSeleccionadosWA() {
     // Generar imágenes de este lote
     var files = [];
     for(var i=0; i<loteFolios.length; i++) {
-      if(btn) { btn.innerHTML = '⏳ Lote '+(li+1)+'/'+totalLotes+' — '+(i+1)+'/'+loteFolios.length; btn.disabled = true; }
+      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+loteFolios.length+' generando...'; btn.disabled = true; }
       try {
         var blob = await generarReciboCanvas(loteFolios[i]);
         if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
       } catch(e) { console.error('Error folio ' + loteFolios[i], e); }
     }
-    // Cerrar overlay antes del confirm para que no bloquee el share sheet
+    // Cerrar overlay del recibo
     if(typeof cerrarRecibo === 'function') cerrarRecibo();
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
     if(!files.length) continue;
 
-    // Confirmar siempre — renueva la activación de usuario justo antes del share
-    var msg = totalLotes > 1
-      ? 'Lote '+(li+1)+' de '+totalLotes+' ('+files.length+' recibos). OK para compartir.'
-      : '¿Compartir '+files.length+' recibo(s) por WhatsApp?';
-    var ok = confirm(msg);
-    if(!ok) break;
+    // Mostrar botón real (confirm() no da activación para navigator.share en Chrome)
+    var loteFiles = files; // captura para el closure
+    var loteLi = li;
+    var shared = await new Promise(function(resolve) {
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      var titulo = totalLotes > 1
+        ? 'Lote '+(loteLi+1)+' de '+totalLotes+': '+loteFiles.length+' recibo(s)'
+        : loteFiles.length+' recibo(s) listo(s)';
+      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
+        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+titulo+'</p>'
+        +'<button id="__wa_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+        +'<br><button id="__wa_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+        +'</div>';
+      document.body.appendChild(ov);
 
-    // Compartir inmediatamente
-    if(navigator.share) {
-      try {
-        await navigator.share({files: files});
-        compartidos += files.length;
-      } catch(e) {
-        if(e.name === 'AbortError') break;
-        console.warn('Share lote '+li, e);
-      }
-    }
+      // El share se llama DENTRO del onclick para tener activación de usuario real
+      ov.querySelector('#__wa_share_btn').onclick = async function() {
+        ov.remove();
+        if(navigator.share) {
+          try {
+            await navigator.share({files: loteFiles});
+            compartidos += loteFiles.length;
+          } catch(e) {
+            if(e.name !== 'AbortError') console.warn('Share lote '+loteLi, e);
+          }
+        }
+        resolve(true);
+      };
+      ov.querySelector('#__wa_cancel_btn').onclick = function() {
+        ov.remove();
+        resolve(false);
+      };
+    });
+
+    if(!shared) break;
   }
 
   if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) compartidos');
