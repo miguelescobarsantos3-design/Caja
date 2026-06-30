@@ -11401,31 +11401,42 @@ async function enviarSeleccionadosWA() {
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
   var btn = document.querySelector('#barra-seleccion button');
   var textoOrig = btn ? btn.innerHTML : '';
+  var LOTE = 5;
+  var totalLotes = Math.ceil(folios.length / LOTE);
   var compartidos = 0;
 
-  // Enviar uno por uno (WhatsApp solo acepta 1 archivo a la vez via Web Share)
-  for(var i=0; i<folios.length; i++) {
-    if(btn) { btn.innerHTML = '⏳ Generando '+(i+1)+'/'+folios.length; btn.disabled = true; }
-    var blob;
-    try {
-      blob = await generarReciboCanvas(folios[i]);
-    } catch(e) { console.error('Error folio ' + folios[i], e); continue; }
+  for(var li=0; li<totalLotes; li++) {
+    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
+
+    // Generar imágenes de este lote
+    var files = [];
+    for(var i=0; i<loteFolios.length; i++) {
+      if(btn) { btn.innerHTML = '⏳ Lote '+(li+1)+'/'+totalLotes+' — '+(i+1)+'/'+loteFolios.length; btn.disabled = true; }
+      try {
+        var blob = await generarReciboCanvas(loteFolios[i]);
+        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
+      } catch(e) { console.error('Error folio ' + loteFolios[i], e); }
+    }
+    // Cerrar overlay antes del confirm para que no bloquee el share sheet
+    if(typeof cerrarRecibo === 'function') cerrarRecibo();
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    if(!blob) continue;
+    if(!files.length) continue;
 
-    var file = new File([blob], 'Recibo-'+folios[i]+'.png', {type:'image/png'});
-
-    // confirm() renueva la activación de usuario justo antes del share
-    var ok = confirm((i+1)+' de '+folios.length+': recibo '+folios[i]+'. OK para enviar.');
+    // Confirmar siempre — renueva la activación de usuario justo antes del share
+    var msg = totalLotes > 1
+      ? 'Lote '+(li+1)+' de '+totalLotes+' ('+files.length+' recibos). OK para compartir.'
+      : '¿Compartir '+files.length+' recibo(s) por WhatsApp?';
+    var ok = confirm(msg);
     if(!ok) break;
 
+    // Compartir inmediatamente
     if(navigator.share) {
       try {
-        await navigator.share({files: [file]});
-        compartidos++;
+        await navigator.share({files: files});
+        compartidos += files.length;
       } catch(e) {
         if(e.name === 'AbortError') break;
-        console.warn('Share recibo '+folios[i], e);
+        console.warn('Share lote '+li, e);
       }
     }
   }
