@@ -14078,9 +14078,7 @@ function _renderTablaAmortizacion(p) {
     // Determinar estado: ¿ya pasó la fecha? ¿pagado?
     var hoy = new Date();
     var vencido  = fechaPago < hoy && totalPagado < (i * intPorPeriodo + (esUltimo ? capital : 0));
-    var rowStyle = '';
-    var estadoBadge = '';
-    if(i % 2 === 0) rowStyle = 'background:#f8fafb;';
+    var rowStyle = i % 2 === 0 ? 'background:#f8fafb;' : 'background:#ffffff;';
 
     var tr = document.createElement('tr');
     tr.style.cssText = rowStyle + 'border-bottom:1px solid #f0f2f5;';
@@ -14129,7 +14127,7 @@ function _actualizarTablaPreview() {
     var capEste  = esUltimo ? cap : 0;
     var fStr = fechaPago.getDate()+'/'+(fechaPago.getMonth()+1)+'/'+fechaPago.getFullYear();
     var tr = document.createElement('tr');
-    tr.style.cssText = (i%2===0?'background:#f8fafb;':'') + 'border-bottom:1px solid #f0f2f5;';
+    tr.style.cssText = (i%2===0?'background:#f8fafb;':'background:#ffffff;') + 'border-bottom:1px solid #f0f2f5;';
     tr.innerHTML =
       '<td style="padding:6px 8px;text-align:center;color:#9ca3af;font-size:12px;">'+i+'</td>'+
       '<td style="padding:6px 8px;font-size:12px;">'+fStr+'</td>'+
@@ -14143,7 +14141,7 @@ function _actualizarTablaPreview() {
 
 <!-- ══ MODAL TABLA DE AMORTIZACIÓN ══ -->
 <div class="modal-overlay" id="modal-tabla-amort" style="z-index:9990;background:rgba(0,0,0,0.82);">
-  <div class="modal-card" style="width:620px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;">
+  <div class="modal-card" style="width:620px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;background:#ffffff;">
     <div style="background:linear-gradient(135deg,#1a3a6b,#2563eb);padding:18px 22px;border-radius:14px 14px 0 0;color:white;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
