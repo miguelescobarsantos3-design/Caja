@@ -14038,6 +14038,8 @@ function _renderTablaAmortizacionMulti(prestamos, nombreCliente) {
   var totalInt  = prestamos.reduce(function(s,p){ return s + (p.interesTotal||p.interes||0); }, 0);
   var totalCon  = totalCap + totalInt;
   var totalPag  = prestamos.reduce(function(s,p){ return s + (p.pagado||0); }, 0);
+  // Usar pendiente guardado en DB para coincidir exactamente con la ficha
+  var totalPend = prestamos.reduce(function(s,p){ return s + (p.pendiente||0); }, 0);
   var intPP     = 0; // mixto, no aplica un solo valor
 
   document.getElementById('ta-titulo').textContent = nombreCliente + ' · ' + prestamos.length + ' préstamos';
@@ -14092,7 +14094,7 @@ function _renderTablaAmortizacionMulti(prestamos, nombreCliente) {
   document.getElementById('ta-total-cap').textContent   = '$' + fmt(totalCap);
   document.getElementById('ta-total-pago').textContent  = '$' + fmt(totalCon);
   document.getElementById('ta-pagado-actual').textContent     = '$' + fmt(totalPag);
-  document.getElementById('ta-pendiente-actual').textContent  = '$' + fmt(Math.max(0, totalCon - totalPag));
+  document.getElementById('ta-pendiente-actual').textContent  = '$' + fmt(totalPend);
 }
 
 function _renderTablaAmortizacion(p) {
@@ -14169,7 +14171,7 @@ function _renderTablaAmortizacion(p) {
   document.getElementById('ta-total-cap').textContent   = '$' + fmt(capital);
   document.getElementById('ta-total-pago').textContent  = '$' + fmt(totalConInt);
   document.getElementById('ta-pagado-actual').textContent = '$' + fmt(capitalPagado);
-  document.getElementById('ta-pendiente-actual').textContent = '$' + fmt(Math.max(0, totalConInt - capitalPagado));
+  document.getElementById('ta-pendiente-actual').textContent = '$' + fmt(p.pendiente || Math.max(0, totalConInt - capitalPagado));
 }
 
 // Preview en formulario de nuevo préstamo
