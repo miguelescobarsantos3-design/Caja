@@ -5639,7 +5639,7 @@ function renderPrestamos(filtro) {
         + '<button class="btn btn-secondary btn-sm pr-pago-btn" data-key="' + c.key + '">Pago</button>'
         + '<button class="btn btn-secondary btn-sm pr-edit-btn" data-id="' + (prId ? prId.id : '') + '" data-key="' + c.key + '" title="Editar">✏️</button>'
         + '<button class="btn btn-secondary btn-sm pr-ec-btn" data-id="' + (prId ? prId.id : '') + '" data-nombre="' + c.nombre + '">📄 Estado</button>'
-        + '<button class="btn btn-secondary btn-sm pr-amort-btn" data-id="' + (prId ? prId.id : '') + '" title="Tabla de pagos">📋</button>'
+        + '<button class="btn btn-secondary btn-sm pr-amort-btn" data-ids="' + c.ids.join(',') + '" data-nombre="' + c.nombre + '" title="Tabla de pagos">📋</button>'
       + '</td>'
       + '</tr>';
   }).join('') || '<tr><td colspan="7"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
@@ -5666,8 +5666,9 @@ function renderPrestamos(filtro) {
       }
       const amort = e.target.closest('.pr-amort-btn');
       if(amort) {
-        const id = parseInt(amort.dataset.id);
-        if(id) abrirTablaAmortizacion(id);
+        const ids = (amort.dataset.ids || '').split(',').map(Number).filter(Boolean);
+        const nombre = amort.dataset.nombre || '';
+        if(ids.length) abrirTablaAmortizacionMulti(ids, nombre);
         return;
       }
     };
@@ -14016,10 +14017,82 @@ function smpCalcular() {
 // TABLA DE AMORTIZACIÓN
 // ══════════════════════════════════════════════════
 function abrirTablaAmortizacion(prestamoId) {
-  var p = DB.prestamos.find(function(x){ return x.id === prestamoId; });
-  if(!p) return;
-  _renderTablaAmortizacion(p);
+  abrirTablaAmortizacionMulti([prestamoId], '');
+}
+
+function abrirTablaAmortizacionMulti(ids, nombre) {
+  var prestamos = ids.map(function(id){ return DB.prestamos.find(function(x){ return x.id === id; }); }).filter(Boolean);
+  if(!prestamos.length) return;
+
+  if(prestamos.length === 1) {
+    _renderTablaAmortizacion(prestamos[0]);
+  } else {
+    // Múltiples préstamos: renderizar cada uno concatenado
+    _renderTablaAmortizacionMulti(prestamos, nombre);
+  }
   document.getElementById('modal-tabla-amort').classList.add('open');
+}
+
+function _renderTablaAmortizacionMulti(prestamos, nombreCliente) {
+  var totalCap  = prestamos.reduce(function(s,p){ return s + (p.capital||0); }, 0);
+  var totalInt  = prestamos.reduce(function(s,p){ return s + (p.interesTotal||p.interes||0); }, 0);
+  var totalCon  = totalCap + totalInt;
+  var totalPag  = prestamos.reduce(function(s,p){ return s + (p.pagado||0); }, 0);
+  var intPP     = 0; // mixto, no aplica un solo valor
+
+  document.getElementById('ta-titulo').textContent = nombreCliente + ' · ' + prestamos.length + ' préstamos';
+  document.getElementById('ta-kpi-capital').textContent  = '$' + fmt(totalCap);
+  document.getElementById('ta-kpi-interes').textContent  = '$' + fmt(totalInt);
+  document.getElementById('ta-kpi-total').textContent    = '$' + fmt(totalCon);
+  document.getElementById('ta-kpi-periodo').textContent  = prestamos.length + ' créd.';
+
+  var tbody = document.getElementById('ta-tbody');
+  tbody.innerHTML = '';
+
+  // Renderizar cada préstamo como sección separada
+  prestamos.forEach(function(p, pi) {
+    var capital      = p.capital || 0;
+    var interesTotal = p.interesTotal || p.interes || 0;
+    var pagos        = p.pagos || 1;
+    var freq         = p.freq || 'quincenal';
+    var fechaInicio  = p.fecha ? new Date(p.fecha + 'T12:00:00') : new Date();
+    var intPorP      = pagos > 0 ? Math.round(interesTotal / pagos * 100) / 100 : 0;
+
+    // Separador de préstamo
+    var trSep = document.createElement('tr');
+    trSep.innerHTML = '<td colspan="5" style="background:#1a3a6b;color:#fff;padding:6px 10px;font-size:11px;font-weight:700;letter-spacing:0.5px;">'
+      + 'PRÉSTAMO ' + (pi+1) + ' · $' + fmt(capital) + ' · ' + pagos + ' pagos ' + freq
+      + (p.fecha ? ' · desde ' + p.fecha : '') + '</td>';
+    tbody.appendChild(trSep);
+
+    for(var i = 1; i <= pagos; i++) {
+      var fechaPago = new Date(fechaInicio);
+      if(freq === 'quincenal')       fechaPago.setDate(fechaPago.getDate() + (i-1)*15);
+      else if(freq === 'mensual')    fechaPago.setMonth(fechaPago.getMonth() + (i-1));
+      else if(freq === 'semanal')    fechaPago.setDate(fechaPago.getDate() + (i-1)*7);
+
+      var esUltimo = (i === pagos);
+      var intEste  = i < pagos ? intPorP : Math.round((interesTotal - intPorP*(pagos-1))*100)/100;
+      var capEste  = esUltimo ? capital : 0;
+      var fStr     = fechaPago.getDate()+'/'+(fechaPago.getMonth()+1)+'/'+fechaPago.getFullYear();
+      var rowBg    = i % 2 === 0 ? 'background:#f8fafb;' : 'background:#ffffff;';
+      var tr = document.createElement('tr');
+      tr.style.cssText = rowBg + 'border-bottom:1px solid #f0f2f5;';
+      tr.innerHTML =
+        '<td style="padding:7px 10px;text-align:center;color:#9ca3af;font-size:12px;">' + i + '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;">' + fStr + '</td>' +
+        '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:12px;color:#f59e0b;">$' + fmt(intEste) + '</td>' +
+        '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:12px;color:'+(capEste>0?'#1a7a5e':'#9ca3af')+';">$'+fmt(capEste)+'</td>' +
+        '<td style="padding:7px 10px;text-align:right;font-family:monospace;font-size:13px;font-weight:700;color:#1a3a6b;">$'+fmt(intEste+capEste)+'</td>';
+      tbody.appendChild(tr);
+    }
+  });
+
+  document.getElementById('ta-total-int').textContent   = '$' + fmt(totalInt);
+  document.getElementById('ta-total-cap').textContent   = '$' + fmt(totalCap);
+  document.getElementById('ta-total-pago').textContent  = '$' + fmt(totalCon);
+  document.getElementById('ta-pagado-actual').textContent     = '$' + fmt(totalPag);
+  document.getElementById('ta-pendiente-actual').textContent  = '$' + fmt(Math.max(0, totalCon - totalPag));
 }
 
 function _renderTablaAmortizacion(p) {
