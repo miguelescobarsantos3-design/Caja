@@ -4388,7 +4388,7 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
 
     <!-- Resumen superior -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0 20px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0 10px;">
       <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
         <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Capital</div>
         <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;" id="ec-capital">$20,500</div>
@@ -4398,13 +4398,16 @@ window.addEventListener('unhandledrejection', function(e) {
         <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--verde);" id="ec-pagado">$0</div>
       </div>
       <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Saldo</div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Saldo préstamo</div>
         <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--naranja);" id="ec-saldo">$20,500</div>
       </div>
-      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Total préstamo</div>
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;" id="ec-total-interes">$20,500</div>
+      <div style="background:#e8f5e9;border-radius:var(--radio-sm);padding:12px;text-align:center;border:1px solid #a5d6a7;">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#2e7d32;margin-bottom:4px;">💰 Ahorro</div>
+        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:#1b5e20;" id="ec-ahorro">$0</div>
       </div>
+    </div>
+    <div id="ec-ahorro-wrap" style="display:none;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:var(--radio-sm);padding:8px 14px;margin-bottom:12px;font-size:12px;color:#1b5e20;">
+      <strong>Ahorro acumulado:</strong> <span id="ec-ahorro-detalle"></span>
     </div>
 
     <!-- Tabla movimientos -->
@@ -8103,10 +8106,16 @@ function abrirEstadoCuenta(prestamoId) {
     (multi ? ' · ' + todos.length + ' préstamos consolidados' : ' · Préstamo #' + String(p.id).padStart(3,'0'));
 
   // KPIs con totales consolidados
+  // Ahorro del socio
+  const socioEC = DB.socios.find(function(s){ return s.nombre.toLowerCase() === p.nombre.toLowerCase(); });
+  const ahorroEC = socioEC ? (socioEC.ahorro || 0) : 0;
+
   document.getElementById('ec-capital').textContent      = '$' + fmt(capitalTotal);
   document.getElementById('ec-pagado').textContent       = '$' + fmt(pagadoTotal);
   document.getElementById('ec-saldo').textContent        = '$' + fmt(pendienteTotal);
-  document.getElementById('ec-total-interes').textContent = '$' + fmt(totalConInt);
+  document.getElementById('ec-ahorro').textContent       = '$' + fmt(ahorroEC);
+  if(document.getElementById('ec-ahorro-detalle'))
+    document.getElementById('ec-ahorro-detalle').textContent = '$' + fmt(ahorroEC) + (socioEC ? ' · cuota ' + fmt(socioEC.cuota||0) + ' ' + (socioEC.freq||'quincenal') : '');
 
   // Progreso
   const pct = capitalTotal > 0 ? Math.min(100, Math.round(pagadoTotal / capitalTotal * 100)) : 0;
@@ -8208,22 +8217,36 @@ function compartirEstadoCuentaWA() {
     logging: false
   }).then(canvas => {
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    canvas.toBlob(blob => {
+    canvas.toBlob(function(blob) {
       const p = _ecPrestamoActual;
       const nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
       const file = new File([blob], 'EstadoCuenta-' + nombre + '.png', {type:'image/png'});
 
-      // Móvil: Web Share API
-      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
-        navigator.share({
-          files: [file],
-        }).catch(() => _descargarEC(blob, nombre));
+      if(navigator.share) {
+        // Botón real para activación de usuario (navigator.share requiere gesto)
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+          +'<div style="font-size:36px;margin-bottom:8px;">📊</div>'
+          +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Estado de cuenta listo<br><strong>' + (p ? p.nombre : '') + '</strong></p>'
+          +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+          +'<br><button id="__ec_dl_btn" style="margin-top:10px;background:none;border:1px solid #ccc;color:#555;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;width:100%;">⬇️ Descargar imagen</button>'
+          +'<br><button id="__ec_cancel_btn" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;">Cancelar</button>'
+          +'</div>';
+        document.body.appendChild(ov);
+
+        ov.querySelector('#__ec_share_btn').onclick = async function() {
+          ov.remove();
+          try { await navigator.share({files: [file]}); }
+          catch(e) { if(e.name !== 'AbortError') _descargarEC(blob, nombre); }
+        };
+        ov.querySelector('#__ec_dl_btn').onclick = function() { ov.remove(); _descargarEC(blob, nombre); };
+        ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
       } else {
-        // PC: descargar imagen
         _descargarEC(blob, nombre);
       }
     }, 'image/png');
-  }).catch(err => {
+  }).catch(function(err) {
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
     alert('Error al generar imagen: ' + err.message);
   });
