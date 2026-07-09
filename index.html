@@ -4979,6 +4979,28 @@ window.addEventListener('unhandledrejection', function(e) {
       </div>
     </div>
 
+    <!-- Preview tabla de amortización -->
+    <div id="np-tabla-preview-wrap" style="display:none;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:#1a3a6b;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;">
+        <span>📋 Plan de pagos</span>
+        <span style="opacity:0.7;font-weight:400;letter-spacing:0;">Interés por período · Capital al final</span>
+      </div>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead style="position:sticky;top:0;background:#f1f5f9;">
+            <tr style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">
+              <th style="padding:6px 8px;text-align:center;">#</th>
+              <th style="padding:6px 8px;text-align:left;">Fecha</th>
+              <th style="padding:6px 8px;text-align:right;">Interés</th>
+              <th style="padding:6px 8px;text-align:right;">Capital</th>
+              <th style="padding:6px 8px;text-align:right;">Pago</th>
+            </tr>
+          </thead>
+          <tbody id="np-tabla-preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="form-group" style="padding:0 4px;margin-bottom:8px;">
       <label style="font-size:13px;font-weight:600;">¿De qué cuenta sale el préstamo?</label>
       <select id="np-cuenta" style="background:#fdf0e8;border-color:#fed7aa;">
@@ -5617,6 +5639,7 @@ function renderPrestamos(filtro) {
         + '<button class="btn btn-secondary btn-sm pr-pago-btn" data-key="' + c.key + '">Pago</button>'
         + '<button class="btn btn-secondary btn-sm pr-edit-btn" data-id="' + (prId ? prId.id : '') + '" data-key="' + c.key + '" title="Editar">✏️</button>'
         + '<button class="btn btn-secondary btn-sm pr-ec-btn" data-id="' + (prId ? prId.id : '') + '" data-nombre="' + c.nombre + '">📄 Estado</button>'
+        + '<button class="btn btn-secondary btn-sm pr-amort-btn" data-id="' + (prId ? prId.id : '') + '" title="Tabla de pagos">📋</button>'
       + '</td>'
       + '</tr>';
   }).join('') || '<tr><td colspan="7"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
@@ -5639,6 +5662,12 @@ function renderPrestamos(filtro) {
         const nombreEc = ec.dataset.nombre;
         const prEc = DB.prestamos.find(p => p.nombre.toLowerCase() === nombreEc.toLowerCase());
         if(prEc) abrirEstadoCuenta(prEc.id);
+        return;
+      }
+      const amort = e.target.closest('.pr-amort-btn');
+      if(amort) {
+        const id = parseInt(amort.dataset.id);
+        if(id) abrirTablaAmortizacion(id);
         return;
       }
     };
@@ -7370,16 +7399,18 @@ function previewNumeroExterno(val) {
 }
 
 function calcularPrestamo() {
-  const cap   = parseFloat(document.getElementById('np-capital').value)||0;
-  const pagos = parseInt(document.getElementById('np-pagos').value)||1;
-  if(!cap) { document.getElementById('prestamo-calc').style.display='none'; return; }
-  const total   = Math.round(cap * 100) / 100;
-  const ppp     = pagos > 0 ? Math.round(total/pagos) : total;
-  const div     = document.getElementById('prestamo-calc');
+  const cap      = parseFloat(document.getElementById('np-capital').value)||0;
+  const pagos    = parseInt(document.getElementById('np-pagos').value)||1;
+  const interesT = parseFloat(document.getElementById('np-interes-total').value)||0;
+  if(!cap) { document.getElementById('prestamo-calc').style.display='none'; var w=document.getElementById('np-tabla-preview-wrap'); if(w) w.style.display='none'; return; }
+  const total = Math.round((cap + interesT) * 100) / 100;
+  const intPP = pagos > 0 ? Math.round(interesT / pagos) : 0;
+  const div   = document.getElementById('prestamo-calc');
   div.style.display = 'block';
   document.getElementById('calc-capital').textContent = '$' + fmt(cap);
   document.getElementById('calc-total').textContent   = '$' + fmt(total);
-  document.getElementById('calc-pago').textContent    = '$' + fmt(ppp);
+  document.getElementById('calc-pago').textContent    = '$' + fmt(intPP) + '/período';
+  if(typeof _actualizarTablaPreview === 'function') _actualizarTablaPreview();
 }
 
 // ══════════════════════════════════════════════════
@@ -13980,5 +14011,208 @@ function smpCalcular() {
     if(estaDesbloqueado()) desbloquear(); else bloquear();
   });
 })();
+
+// ══════════════════════════════════════════════════
+// TABLA DE AMORTIZACIÓN
+// ══════════════════════════════════════════════════
+function abrirTablaAmortizacion(prestamoId) {
+  var p = DB.prestamos.find(function(x){ return x.id === prestamoId; });
+  if(!p) return;
+  _renderTablaAmortizacion(p);
+  document.getElementById('modal-tabla-amort').classList.add('open');
+}
+
+function _renderTablaAmortizacion(p) {
+  var capital      = p.capital || 0;
+  var interesTotal = p.interesTotal || p.interes || 0;
+  var pagos        = p.pagos || 1;
+  var freq         = p.freq || 'quincenal';
+  var fechaInicio  = p.fecha ? new Date(p.fecha + 'T12:00:00') : new Date();
+
+  // Pago por período = solo interés (capital al final)
+  var intPorPeriodo = pagos > 0 ? Math.round(interesTotal / pagos * 100) / 100 : interesTotal;
+  var totalConInt   = capital + interesTotal;
+
+  // Header del modal
+  document.getElementById('ta-titulo').textContent = p.nombre;
+  document.getElementById('ta-kpi-capital').textContent  = '$' + fmt(capital);
+  document.getElementById('ta-kpi-interes').textContent  = '$' + fmt(interesTotal);
+  document.getElementById('ta-kpi-total').textContent    = '$' + fmt(totalConInt);
+  document.getElementById('ta-kpi-periodo').textContent  = '$' + fmt(intPorPeriodo);
+
+  // Pagos ya registrados para este préstamo
+  var pagosRegistrados = (DB.movimientos || []).filter(function(m){
+    return m.tipo === 'prestamo' && !m.cancelado &&
+           (m.nombre || '').toUpperCase() === (p.nombre || '').toUpperCase();
+  });
+  var totalPagado = pagosRegistrados.reduce(function(s, m){ return s + (m.monto || 0); }, 0);
+  var capitalPagado = p.pagado || 0;
+
+  var tbody = document.getElementById('ta-tbody');
+  tbody.innerHTML = '';
+  var fechaCur = new Date(fechaInicio);
+
+  for(var i = 1; i <= pagos; i++) {
+    // Calcular fecha de este período
+    var fechaPago = new Date(fechaCur);
+    if(freq === 'quincenal') {
+      fechaPago = new Date(fechaInicio);
+      // Avanzar quincenas: cada 15 días aprox
+      var diasTotales = (i - 1) * 15;
+      fechaPago.setDate(fechaPago.getDate() + diasTotales);
+    } else if(freq === 'mensual') {
+      fechaPago = new Date(fechaInicio);
+      fechaPago.setMonth(fechaPago.getMonth() + (i - 1));
+    } else if(freq === 'semanal') {
+      fechaPago = new Date(fechaInicio);
+      fechaPago.setDate(fechaPago.getDate() + (i - 1) * 7);
+    }
+
+    var esUltimo   = (i === pagos);
+    var intEste    = i < pagos ? intPorPeriodo : Math.round((interesTotal - intPorPeriodo * (pagos - 1)) * 100) / 100;
+    var capEste    = esUltimo ? capital : 0;
+    var pagoEste   = intEste + capEste;
+
+    var fStr = fechaPago.getDate() + '/' + (fechaPago.getMonth() + 1) + '/' + fechaPago.getFullYear();
+
+    // Determinar estado: ¿ya pasó la fecha? ¿pagado?
+    var hoy = new Date();
+    var vencido  = fechaPago < hoy && totalPagado < (i * intPorPeriodo + (esUltimo ? capital : 0));
+    var rowStyle = '';
+    var estadoBadge = '';
+    if(i % 2 === 0) rowStyle = 'background:#f8fafb;';
+
+    var tr = document.createElement('tr');
+    tr.style.cssText = rowStyle + 'border-bottom:1px solid #f0f2f5;';
+    tr.innerHTML =
+      '<td style="padding:8px 10px;text-align:center;color:#9ca3af;font-size:13px;font-weight:700;">' + i + '</td>' +
+      '<td style="padding:8px 10px;font-size:13px;">' + fStr + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:13px;color:#f59e0b;">$' + fmt(intEste) + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:13px;color:' + (capEste > 0 ? '#1a7a5e' : '#9ca3af') + ';">$' + fmt(capEste) + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:14px;font-weight:700;color:#1a3a6b;">$' + fmt(pagoEste) + '</td>';
+    tbody.appendChild(tr);
+  }
+
+  // Totales
+  document.getElementById('ta-total-int').textContent   = '$' + fmt(interesTotal);
+  document.getElementById('ta-total-cap').textContent   = '$' + fmt(capital);
+  document.getElementById('ta-total-pago').textContent  = '$' + fmt(totalConInt);
+  document.getElementById('ta-pagado-actual').textContent = '$' + fmt(capitalPagado);
+  document.getElementById('ta-pendiente-actual').textContent = '$' + fmt(Math.max(0, totalConInt - capitalPagado));
+}
+
+// Preview en formulario de nuevo préstamo
+function _actualizarTablaPreview() {
+  var cap    = parseFloat(document.getElementById('np-capital').value) || 0;
+  var intT   = parseFloat(document.getElementById('np-interes-total').value) || 0;
+  var pagos  = parseInt(document.getElementById('np-pagos').value) || 1;
+  var freq   = document.getElementById('np-freq-pago').value;
+  var fecha  = document.getElementById('np-fecha').value;
+  var wrap   = document.getElementById('np-tabla-preview-wrap');
+  if(!cap || !pagos) { if(wrap) wrap.style.display = 'none'; return; }
+  if(wrap) wrap.style.display = 'block';
+
+  var intPorP = pagos > 0 ? Math.round(intT / pagos * 100) / 100 : 0;
+  var tbody = document.getElementById('np-tabla-preview-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  var fechaInicio = fecha ? new Date(fecha + 'T12:00:00') : new Date();
+
+  for(var i = 1; i <= pagos; i++) {
+    var fechaPago = new Date(fechaInicio);
+    if(freq === 'quincenal')  fechaPago.setDate(fechaPago.getDate() + (i-1)*15);
+    else if(freq === 'mensual') fechaPago.setMonth(fechaPago.getMonth() + (i-1));
+    else if(freq === 'semanal') fechaPago.setDate(fechaPago.getDate() + (i-1)*7);
+
+    var esUltimo = (i === pagos);
+    var intEste  = i < pagos ? intPorP : Math.round((intT - intPorP*(pagos-1))*100)/100;
+    var capEste  = esUltimo ? cap : 0;
+    var fStr = fechaPago.getDate()+'/'+(fechaPago.getMonth()+1)+'/'+fechaPago.getFullYear();
+    var tr = document.createElement('tr');
+    tr.style.cssText = (i%2===0?'background:#f8fafb;':'') + 'border-bottom:1px solid #f0f2f5;';
+    tr.innerHTML =
+      '<td style="padding:6px 8px;text-align:center;color:#9ca3af;font-size:12px;">'+i+'</td>'+
+      '<td style="padding:6px 8px;font-size:12px;">'+fStr+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;font-family:monospace;font-size:12px;color:#f59e0b;">$'+fmt(intEste)+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;font-family:monospace;font-size:12px;color:'+(capEste>0?'#1a7a5e':'#9ca3af')+';">$'+fmt(capEste)+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;font-family:monospace;font-size:13px;font-weight:700;color:#1a3a6b;">$'+fmt(intEste+capEste)+'</td>';
+    tbody.appendChild(tr);
+  }
+}
 </script>
+
+<!-- ══ MODAL TABLA DE AMORTIZACIÓN ══ -->
+<div class="modal-overlay" id="modal-tabla-amort" style="z-index:9990;background:rgba(0,0,0,0.82);">
+  <div class="modal-card" style="width:620px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:0;border-radius:14px;">
+    <div style="background:linear-gradient(135deg,#1a3a6b,#2563eb);padding:18px 22px;border-radius:14px 14px 0 0;color:white;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:17px;font-weight:800;letter-spacing:-0.5px;">📋 Tabla de pagos</div>
+          <div id="ta-titulo" style="font-size:13px;opacity:0.8;margin-top:2px;"></div>
+        </div>
+        <button onclick="document.getElementById('modal-tabla-amort').classList.remove('open')"
+          style="background:rgba(255,255,255,0.15);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;">✕</button>
+      </div>
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px;">
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:10px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px;">Capital</div>
+          <div id="ta-kpi-capital" style="font-family:monospace;font-size:15px;font-weight:700;margin-top:2px;">$0</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:10px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px;">Interés</div>
+          <div id="ta-kpi-interes" style="font-family:monospace;font-size:15px;font-weight:700;margin-top:2px;color:#fbbf24;">$0</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:10px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px;">Total</div>
+          <div id="ta-kpi-total" style="font-family:monospace;font-size:15px;font-weight:700;margin-top:2px;">$0</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:10px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px;">Pago/período</div>
+          <div id="ta-kpi-periodo" style="font-family:monospace;font-size:15px;font-weight:700;margin-top:2px;color:#6ee7b7;">$0</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:16px 20px;">
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;">
+        ⚠️ Modelo: interés fijo cobrado cada período · Capital completo al último pago
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f1f5f9;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">
+              <th style="padding:8px 10px;text-align:center;">#</th>
+              <th style="padding:8px 10px;text-align:left;">Fecha</th>
+              <th style="padding:8px 10px;text-align:right;">Interés</th>
+              <th style="padding:8px 10px;text-align:right;">Capital</th>
+              <th style="padding:8px 10px;text-align:right;">Total a pagar</th>
+            </tr>
+          </thead>
+          <tbody id="ta-tbody"></tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #e2e8f0;">
+              <td colspan="2" style="padding:9px 10px;font-size:12px;color:#64748b;">TOTALES</td>
+              <td id="ta-total-int" style="padding:9px 10px;text-align:right;font-family:monospace;color:#f59e0b;">$0</td>
+              <td id="ta-total-cap" style="padding:9px 10px;text-align:right;font-family:monospace;color:#1a7a5e;">$0</td>
+              <td id="ta-total-pago" style="padding:9px 10px;text-align:right;font-family:monospace;color:#1a3a6b;">$0</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <!-- Estado actual -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:#166534;font-weight:600;">Ya pagado</div>
+          <div id="ta-pagado-actual" style="font-family:monospace;font-size:18px;font-weight:700;color:#166534;">$0</div>
+        </div>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:#9a3412;font-weight:600;">Pendiente</div>
+          <div id="ta-pendiente-actual" style="font-family:monospace;font-size:18px;font-weight:700;color:#9a3412;">$0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body></html>
