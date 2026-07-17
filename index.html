@@ -1087,6 +1087,12 @@ async function guardarEnFirebase() {
     return false;
   }
 
+  // Cooldown: cuota Firebase agotada — no reintentar hasta que pase el tiempo
+  if(window.__fbCuotaHasta && Date.now() < window.__fbCuotaHasta) return false;
+
+  // Cooldown: bloqueo HWM activo — no repetir el intento ni el log
+  if(window.__hwmBloqueadoHasta && Date.now() < window.__hwmBloqueadoHasta) return false;
+
   // Candado principal: celular/PWA queda lectura por defecto.
   if(!cajaPuedeGuardarFirebase()) {
     console.warn('⛔ Este dispositivo está en modo lectura. No sube a Firestore para evitar datos viejos.', {
@@ -1149,6 +1155,7 @@ async function guardarEnFirebase() {
     if(_hwmProblemas.length > 0) {
       console.error('🛑 BLOQUEADO guardarEnFirebase — pérdida de datos detectada:', _hwmProblemas);
       if(typeof toast === 'function') toast('⚠️ Guardado cancelado: pérdida de datos detectada. ' + _hwmProblemas.join('; '));
+      window.__hwmBloqueadoHasta = Date.now() + 5 * 60 * 1000; // silencio 5 min
       if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
       return false;
     }
@@ -1163,11 +1170,20 @@ async function guardarEnFirebase() {
 
     if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('guardado');
 
+    // Éxito: limpiar cooldowns
+    window.__hwmBloqueadoHasta = 0;
+    window.__fbCuotaHasta = 0;
+
     console.log('✅ Firestore guardado desde dispositivo autorizado:', datos._dispositivo, '| modo:', datos._modoGuardado, '|', new Date(datos.ts).toLocaleString(), '| recibos:', datos.recibos.length, '| movimientos:', datos.movimientos.length);
     return true;
 
   } catch(e) {
-    console.warn('Error guardando en Firestore:', e.code || '', e.message);
+    if(e.code === 'resource-exhausted') {
+      window.__fbCuotaHasta = Date.now() + 2 * 60 * 1000; // silencio 2 min tras cuota agotada
+      console.warn('⚠️ Firebase cuota agotada. Próximo intento en 2 minutos.');
+    } else {
+      console.warn('Error guardando en Firestore:', e.code || '', e.message);
+    }
     if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('sin_conexion');
     return false;
 
