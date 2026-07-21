@@ -1574,6 +1574,11 @@ window.addEventListener('unhandledrejection', function(e) {
           </div>
           <div style="width:1px;background:rgba(255,255,255,0.12);"></div>
           <div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:2px;">Azteca</div>
+            <div style="font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,0.85);" id="hero-aztec">$0</div>
+          </div>
+          <div style="width:1px;background:rgba(255,255,255,0.12);"></div>
+          <div>
             <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:2px;">Efectivo</div>
             <div style="font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,0.85);" id="hero-efec">$43,000</div>
           </div>
@@ -3496,6 +3501,7 @@ window.addEventListener('unhandledrejection', function(e) {
                 <option value="bnmx">BNMX — Banamex</option>
                 <option value="nu">N U — Nu banco</option>
                 <option value="bbva">BBVA</option>
+                <option value="azteca">AZTC — Azteca</option>
                 <option value="efectivo">Efectivo (caja chica)</option>
               </select>
             </div>
@@ -5438,6 +5444,7 @@ function renderDashboard() {
     document.getElementById('hero-nu').textContent    = '$' + fmt(CUENTAS.nu.saldo);
     document.getElementById('hero-bbva').textContent  = '$' + fmt(CUENTAS.bbva.saldo);
     document.getElementById('hero-bnmx').textContent  = '$' + fmt(CUENTAS.bnmx.saldo);
+    document.getElementById('hero-aztec').textContent = '$' + fmt(CUENTAS.azteca ? CUENTAS.azteca.saldo : 0);
     document.getElementById('hero-efec').textContent  = '$' + fmt(CUENTAS.efectivo.saldo);
 
     const badge = document.getElementById('hero-cuadre-badge');
