@@ -3310,7 +3310,7 @@ window.addEventListener('unhandledrejection', function(e) {
       </div></div>
 
     <!-- Tarjetas cuentas -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px;min-width:0;" id="cuentas-grid"><div class="cuenta-card">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:28px;min-width:0;" id="cuentas-grid"><div class="cuenta-card">
       <div class="cuenta-card-header" style="background:#7b1fa2;">
         <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;color:rgba(255,255,255,0.7);text-transform:uppercase;">MP</div>
         <div style="font-size:12px;color:rgba(255,255,255,0.9);margin-top:2px;">Mercado Pago</div>
@@ -7649,7 +7649,9 @@ function renderCuentas() {
 
   // Tarjetas
   const grid = document.getElementById('cuentas-grid');
-  const iconos = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', efectivo:'💵' };
+  const n = Object.keys(CUENTAS).length;
+  grid.style.gridTemplateColumns = `repeat(${n},1fr)`;
+  const iconos = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵' };
   grid.innerHTML = Object.entries(CUENTAS).map(([k, c]) => {
     const pct = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : '0.0';
     const barW = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : 0;
@@ -7672,7 +7674,7 @@ function renderCuentas() {
 
   // Tabla
   const tb = document.getElementById('cuentas-tbody');
-  const iconMap = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', efectivo:'💵' };
+  const iconMap = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵' };
   tb.innerHTML = Object.entries(CUENTAS).map(([k, c]) => {
     const pct = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : '0.0';
     const esCero = c.saldo === 0;
