@@ -1769,6 +1769,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="kpi kpi-orange"><div class="kpi-accent"></div><div class="kpi-label">Próximo cobrador</div><div class="kpi-value" id="t300-kpi-proximo" style="font-size:16px;">—</div><div class="kpi-sub">turno actual</div></div>
       <div class="kpi kpi-yellow"><div class="kpi-accent"></div><div class="kpi-label">Por tanda</div><div class="kpi-value" id="t300-kpi-monto">$3,000</div><div class="kpi-sub"><button onclick="editarConfigT300()" style="background:none;border:none;cursor:pointer;color:var(--azul);font-size:11px;text-decoration:underline;">editar</button></div></div>
     </div>
+    <div id="t300-pendientes-box" style="margin-bottom:16px;"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <div class="card"><div class="card-header"><div class="card-title">Grupo 1</div></div><div id="t300-tabla-g1"></div></div>
       <div class="card"><div class="card-header"><div class="card-title">Grupo 2</div></div><div id="t300-tabla-g2"></div></div>
@@ -10514,6 +10515,46 @@ function normalizarVisibilidadSocios() {
     var e2 = document.getElementById('t300-tabla-g2');
     if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, T300_G1.length, t.entregas, 1, 't300');
     if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, T300_G2.length, t.entregas, 2, 't300');
+
+    // ── Recuadro pendientes de turno actual ──
+    var quinG1 = pG1.map(function(p){ return Math.floor(p/monto300); });
+    var quinG2 = pG2.map(function(p){ return Math.floor(p/monto300); });
+    var todasQ = quinG1.concat(quinG2);
+    // Turno actual = el más frecuente (mode)
+    var freq = {};
+    todasQ.forEach(function(q){ freq[q]=(freq[q]||0)+1; });
+    var turnoActual=0, maxF=0;
+    Object.keys(freq).forEach(function(q){
+      var qi=parseInt(q);
+      if(freq[q]>maxF||(freq[q]===maxF&&qi>turnoActual)){maxF=freq[q];turnoActual=qi;}
+    });
+    var pendG1 = T300_G1.filter(function(n,i){ return quinG1[i]<turnoActual; });
+    var pendG2 = T300_G2.filter(function(n,i){ return quinG2[i]<turnoActual; });
+    var pendBox = document.getElementById('t300-pendientes-box');
+    if(pendBox){
+      var total = pendG1.length + pendG2.length;
+      if(turnoActual===0 || total===0){
+        pendBox.innerHTML='';
+      } else {
+        var rows='';
+        pendG1.forEach(function(n){
+          var q=quinG1[T300_G1.indexOf(n)];
+          rows+='<tr><td style="padding:5px 12px;"><span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">G1</span></td>'
+            +'<td style="padding:5px 12px;font-weight:600;font-size:13px;">'+n+'</td>'
+            +'<td style="padding:5px 12px;color:var(--rojo);font-size:12px;">'+q+' / '+turnoActual+' quincenas</td></tr>';
+        });
+        pendG2.forEach(function(n){
+          var q=quinG2[T300_G2.indexOf(n)];
+          rows+='<tr><td style="padding:5px 12px;"><span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">G2</span></td>'
+            +'<td style="padding:5px 12px;font-weight:600;font-size:13px;">'+n+'</td>'
+            +'<td style="padding:5px 12px;color:var(--rojo);font-size:12px;">'+q+' / '+turnoActual+' quincenas</td></tr>';
+        });
+        pendBox.innerHTML='<div style="background:#fff3e0;border:1.5px solid #ff9800;border-radius:12px;padding:14px 20px;">'
+          +'<div style="font-weight:700;color:#e65100;font-size:14px;margin-bottom:10px;">⏳ Pendientes quincena '+turnoActual+' — '+total+' participante(s)</div>'
+          +'<table style="width:100%;border-collapse:collapse;">'+rows+'</table>'
+          +'</div>';
+      }
+    }
   };
 
   window.renderTanda1000 = function(){
