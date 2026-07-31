@@ -10528,8 +10528,18 @@ function normalizarVisibilidadSocios() {
       var qi=parseInt(q);
       if(freq[q]>maxF||(freq[q]===maxF&&qi>turnoActual)){maxF=freq[q];turnoActual=qi;}
     });
-    var pendG1 = T300_G1.filter(function(n,i){ return quinG1[i]<turnoActual; });
-    var pendG2 = T300_G2.filter(function(n,i){ return quinG2[i]<turnoActual; });
+    // Cuántos de cada grupo ya cobraron (no pagan su propio turno)
+    var cobradosG1 = (t.entregas||[]).filter(function(e){ return Number(e.grupo)===1; }).length;
+    var cobradosG2 = (t.entregas||[]).filter(function(e){ return Number(e.grupo)===2; }).length;
+    // Esperado: quien ya cobró = turnoActual-1; quien no = turnoActual
+    var pendG1 = T300_G1.filter(function(n,i){
+      var esperado = i < cobradosG1 ? turnoActual - 1 : turnoActual;
+      return quinG1[i] < esperado;
+    });
+    var pendG2 = T300_G2.filter(function(n,i){
+      var esperado = i < cobradosG2 ? turnoActual - 1 : turnoActual;
+      return quinG2[i] < esperado;
+    });
     var pendBox = document.getElementById('t300-pendientes-box');
     if(pendBox){
       var total = pendG1.length + pendG2.length;
