@@ -10959,20 +10959,28 @@ function normalizarVisibilidadSocios() {
       var html = T1000_P.map(function(n, i){
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.turno)===i+1; });
         var recaudado = sumaT1000Participante(t, i);
-        var bg = cobro ? 'rgba(150,150,150,0.08)' : recaudado > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
-        var txt = cobro
-          ? '\x3Cs style="color:var(--gris3);"\x3E'+esc(n)+'\x3C/s\x3E \x3Cspan style="font-size:10px;color:var(--gris3);"\x3E(ya entregado)\x3C/span\x3E'
-          : esc(n);
-        var bloqueado = cobro ? 'disabled' : '';
-        return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:'+(cobro?'default':'pointer')+';" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta1000ActualizarMonto();}"\x3E'
-          +'\x3Cinput type="checkbox" class="ta1000-turno-cb" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:'+(cobro?'default':'pointer')+';flex-shrink:0;"\x3E'
-          +'\x3Cspan style="font-size:12px;flex:1;color:'+(cobro?'var(--gris3)':'inherit')+'"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(recaudado>0?' $'+fmt(recaudado):'')+'\x3C/span\x3E\x3C/span\x3E'
+        // Bloquear solo si: el aportante ES el cobrador (su propio turno) O ya pagó este turno
+        var esCobrador = aportanteIdx >= 0 && i === aportanteIdx;
+        var yaEstePago = aportanteIdx >= 0
+          ? (t.movimientos||[]).filter(function(m){ return m.idx===i && m.aportante===T1000_P[aportanteIdx]; }).reduce(function(s,m){ return s+(Number(m.monto)||0); }, 0) >= monto1000
+          : false;
+        var bloqueado = (esCobrador || yaEstePago) ? 'disabled' : '';
+        var entregadoPendiente = cobro && !esCobrador && !yaEstePago;
+        var bg = (esCobrador || yaEstePago) ? 'rgba(10,74,42,0.1)'
+               : entregadoPendiente ? 'rgba(232,108,44,0.08)'
+               : recaudado > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+        var txt = (esCobrador || yaEstePago) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+        var etiqueta = esCobrador ? ' \x3Cspan style="color:var(--gris3);font-size:10px;"\x3E(tu turno)\x3C/span\x3E'
+                     : entregadoPendiente ? ' \x3Cspan style="color:var(--naranja);font-size:10px;font-weight:600;"\x3E⚠ Ya cobró\x3C/span\x3E' : '';
+        return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta1000ActualizarMonto();}"\x3E'
+          +'\x3Cinput type="checkbox" class="ta1000-turno-cb" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
+          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(recaudado>0?' $'+fmt(recaudado):'')+'\x3C/span\x3E'+etiqueta+'\x3C/span\x3E'
           +'\x3C/div\x3E';
       }).join('');
       lista.innerHTML = html;
-      // Auto-seleccionar el primer turno disponible (no entregado)
+      // Auto-seleccionar el primer turno disponible
       var primeroCb = lista.querySelector('.ta1000-turno-cb:not([disabled])');
-      if(primeroCb){ primeroCb.checked = true; }
+      if(primeroCb){ primeroCb.checked = true; window._ta1000ActualizarMonto(); }
     }
     window._ta1000ActualizarMonto();
   };
