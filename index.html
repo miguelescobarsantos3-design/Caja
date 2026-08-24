@@ -5562,6 +5562,95 @@ function abrirEstadoCuentaSocio(id) {
     (p.socioId === id || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'activo'
   );
   if(pr) abrirEstadoCuenta(pr.id);
+  else abrirEstadoCuentaAhorro(id);
+}
+
+function abrirEstadoCuentaAhorro(socioId) {
+  const s = DB.socios.find(x => x.id === socioId);
+  if(!s) return;
+
+  // Movimientos de ahorro del socio
+  const movs = (DB.movimientos || [])
+    .filter(m => !m.cancelado && (m.tipo === 'ahorro' || m.tipo === 'retiro') &&
+      (m.socio || '').toLowerCase() === s.nombre.toLowerCase())
+    .slice().reverse();
+
+  // KPIs
+  const totalDep  = movs.filter(m => m.tipo==='ahorro').reduce((s,m) => s + Math.abs(m.monto||0), 0);
+  const totalRet  = movs.filter(m => m.tipo==='retiro').reduce((s,m) => s + Math.abs(m.monto||0), 0);
+  const saldoActual = s.ahorro || 0;
+
+  document.getElementById('ec-titulo').textContent = 'Estado de cuenta — Ahorro';
+  document.getElementById('ec-subtitulo').textContent = s.nombre + ' · Socio #' + String(s.id).padStart(3,'0');
+
+  document.getElementById('ec-capital').textContent = '$' + fmt(totalDep);
+  document.getElementById('ec-capital').previousElementSibling.textContent = 'Total depositado';
+  document.getElementById('ec-pagado').textContent = '$' + fmt(totalRet);
+  document.getElementById('ec-pagado').previousElementSibling.textContent = 'Total retirado';
+  document.getElementById('ec-saldo').textContent = '$' + fmt(saldoActual);
+  document.getElementById('ec-saldo').previousElementSibling.textContent = 'Saldo actual';
+
+  // Barra: proporción retirado vs depositado
+  const pct = totalDep > 0 ? Math.min(100, Math.round((1 - totalRet/totalDep)*100)) : 100;
+  document.getElementById('ec-pct').textContent = pct + '%';
+  document.getElementById('ec-progress-bar').style.width = pct + '%';
+  document.getElementById('ec-progress-bar').style.background = 'var(--verde)';
+
+  // Sección créditos → renombrar como resumen
+  document.getElementById('ec-creditos-wrap').querySelector('div').textContent = '💰 Resumen de ahorro';
+  document.getElementById('ec-creditos-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--texto2);font-weight:600;margin-bottom:3px;">CUOTA</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:700;">$${fmt(s.cuota||0)}</div>
+        <div style="font-size:10px;color:var(--texto2);">${s.freq||'quincenal'}</div>
+      </div>
+      <div style="background:var(--verde-claro);border-radius:var(--radio-sm);padding:10px;text-align:center;border:1px solid var(--verde);">
+        <div style="font-size:10px;color:var(--verde);font-weight:600;margin-bottom:3px;">SALDO</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--verde);">$${fmt(saldoActual)}</div>
+      </div>
+      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--texto2);font-weight:600;margin-bottom:3px;">MOVIMIENTOS</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:700;">${movs.length}</div>
+      </div>
+    </div>`;
+
+  // Historial de movimientos
+  const tb = document.getElementById('ec-tbody');
+  if(movs.length === 0) {
+    tb.innerHTML = '<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--texto2);font-size:12px;">Sin movimientos registrados</td></tr>';
+  } else {
+    let saldoAcum = 0;
+    // Calcular saldo acumulado desde el más antiguo
+    const movsAsc = movs.slice().reverse();
+    const filas = movsAsc.map((m, i) => {
+      const monto = Math.abs(m.monto||0);
+      if(m.tipo==='ahorro') saldoAcum += monto;
+      else saldoAcum = Math.max(0, saldoAcum - monto);
+      return { n:i+1, fecha:m.fecha||'—', concepto:m.notas||m.tipo, monto, tipo:m.tipo, saldo:saldoAcum };
+    });
+    tb.innerHTML = filas.map((f,i) => {
+      const esRetiro = f.tipo==='retiro';
+      const bg = i%2===0?'':'background:var(--gris);';
+      return '<tr style="'+bg+'">'
+        +'<td style="padding:8px 12px;color:var(--texto2);font-size:11px;">'+f.n+'</td>'
+        +'<td style="padding:8px 12px;font-size:12px;color:var(--texto2);white-space:nowrap;">'+f.fecha+'</td>'
+        +'<td style="padding:8px 12px;font-size:12px;">'+f.concepto+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;font-size:13px;font-weight:700;color:'+(esRetiro?'var(--rojo)':'var(--verde)')+';">'+(esRetiro?'− $':'+ $')+fmt(f.monto)+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;font-size:13px;font-weight:600;color:var(--verde);">$'+fmt(f.saldo)+'</td>'
+        +'</tr>';
+    }).join('');
+    tb.innerHTML += '<tr style="background:var(--gris2);font-weight:700;">'
+      +'<td colspan="3" style="padding:8px 12px;font-size:12px;">Saldo actual</td>'
+      +'<td style="padding:8px 12px;text-align:right;"></td>'
+      +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;color:var(--verde);">$'+fmt(saldoActual)+'</td>'
+      +'</tr>';
+  }
+
+  document.getElementById('ec-ahorro-wrap').style.display = 'none';
+  // Ocultar botones de préstamo
+  document.querySelector('#modal-estado-cuenta .btn-primary').style.display = 'none'; // WhatsApp
+  document.getElementById('modal-estado-cuenta').classList.add('open');
 }
 
 function retiroDesdeFicha() {
@@ -8158,6 +8247,17 @@ function abrirEstadoCuenta(prestamoId) {
   document.getElementById('ec-titulo').textContent = 'Estado de cuenta';
   document.getElementById('ec-subtitulo').textContent = p.nombre +
     (multi ? ' · ' + todos.length + ' créditos activos' : ' · Crédito #' + String(p.id).padStart(3,'0'));
+  // Restaurar etiquetas KPI (pueden haber sido cambiadas por EC de ahorro)
+  const ecKpis = document.querySelectorAll('#modal-estado-cuenta .modal > div:nth-child(3) > div > div:first-child');
+  if(ecKpis[0]) ecKpis[0].textContent = 'Capital prestado';
+  if(ecKpis[1]) ecKpis[1].textContent = 'Total pagado';
+  if(ecKpis[2]) ecKpis[2].textContent = 'Saldo pendiente';
+  // Restaurar título sección créditos
+  const credTit = document.querySelector('#ec-creditos-wrap > div:first-child');
+  if(credTit) credTit.textContent = '📋 Créditos otorgados';
+  // Restaurar botón WhatsApp
+  const btnWA = document.querySelector('#modal-estado-cuenta .btn-primary');
+  if(btnWA) btnWA.style.display = '';
 
   // KPIs
   const socioEC = DB.socios.find(function(s){ return s.nombre.toLowerCase() === p.nombre.toLowerCase(); });
@@ -8469,6 +8569,7 @@ function abrirFichaSocio(socioId) {
 
     pContent.innerHTML = html;
     document.getElementById('ficha-btn-ec').style.display = 'inline-flex';
+    document.getElementById('ficha-btn-ec').textContent = '📄 Estado de cuenta';
     document.getElementById('ficha-btn-ec').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEstadoCuenta(prsActivos[0].id); };
   } else {
     const liquidados = DB.prestamos.filter(p => (p.socioId === socioId || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'liquidado');
@@ -8482,8 +8583,10 @@ function abrirFichaSocio(socioId) {
           <div style="font-size:28px;margin-bottom:8px;">◎</div>
           <div>Sin préstamos registrados</div>
         </div>`;
-    // Sin préstamo activo: ocultar EC
-    document.getElementById('ficha-btn-ec').style.display = 'none';
+    // Sin préstamo activo: mostrar EC de ahorro
+    document.getElementById('ficha-btn-ec').style.display = 'inline-flex';
+    document.getElementById('ficha-btn-ec').textContent = '📄 Estado de cuenta';
+    document.getElementById('ficha-btn-ec').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEstadoCuentaAhorro(socioId); };
   }
 
   // Tab historial
