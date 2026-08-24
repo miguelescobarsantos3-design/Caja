@@ -1610,6 +1610,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <button class="btn btn-primary" onclick="abrirPago()">+ Registrar pago</button>
         <button class="btn btn-secondary" onclick="abrirNuevoSocio()">+ Nuevo socio</button>
         <button class="btn btn-secondary" onclick="abrirNuevoPrestamo()">+ Nuevo préstamo</button>
+        <button class="btn btn-secondary" style="color:var(--rojo);border-color:var(--rojo);" onclick="abrirPago();setTimeout(function(){elegirTipo('retiro');},120);">💸 Retiro</button>
       </div>
     </div>
 
