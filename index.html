@@ -6598,7 +6598,7 @@ function cargarResumenAhorro() {
   const s  = DB.socios.find(x => x.id === id);
   if(!s) return;
   document.getElementById('ah-monto').value = s.cuota;
-  const pr  = DB.prestamos.find(p => p.socioId === s.id && p.estado === 'activo');
+  const pr  = DB.prestamos.find(p => (p.socioId === s.id || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'activo');
   const num = String(s.id).padStart(2,'0');
   const prHtml = pr
     ? '<div class="recibo-row"><span class="rk">Préstamo activo</span><span class="rv"><span class="badge badge-orange">$' + fmt(pr.pendiente) + '</span></span></div>'
@@ -7243,7 +7243,7 @@ function npPreviewSocio() {
   const prev = document.getElementById('np-socio-preview');
   const s = DB.socios.find(x => x.id === id);
   if(!s) { prev.style.display='none'; return; }
-  const pr = DB.prestamos.filter(p => p.socioId===s.id && p.estado==='activo');
+  const pr = DB.prestamos.filter(p => (p.socioId===s.id || (p.nombre||'').toUpperCase()===s.nombre.toUpperCase()) && p.estado==='activo');
   prev.style.display = 'block';
   prev.innerHTML = '<strong>#' + String(s.id).padStart(2,'0') + ' ' + s.nombre + '</strong>'
     + ' &nbsp;·&nbsp; Ahorro: $' + fmt(s.ahorro)
@@ -8310,9 +8310,9 @@ function abrirFichaSocio(socioId) {
   document.getElementById('ficha-nombre').textContent = s.nombre;
   document.getElementById('ficha-meta').textContent   = 'Socio #' + String(s.id).padStart(2,'0') + ' · ' + s.freq;
 
-  // Préstamo activo — buscar solo por socioId
+  // Préstamo activo — buscar por socioId O por nombre (para créditos sin socioId asignado)
   const prsActivos = DB.prestamos.filter(p =>
-    p.socioId === socioId && p.estado === 'activo'
+    (p.socioId === socioId || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'activo'
   );
   const pr = prsActivos.length ? prsActivos[0] : null;
   const prSaldoTotal = prsActivos.reduce((sum,p) => sum + p.pendiente, 0);
@@ -8377,7 +8377,7 @@ function abrirFichaSocio(socioId) {
     document.getElementById('ficha-btn-ec').style.display = 'inline-flex';
     document.getElementById('ficha-btn-ec').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEstadoCuenta(prsActivos[0].id); };
   } else {
-    const liquidados = DB.prestamos.filter(p => p.socioId === socioId && p.estado === 'liquidado');
+    const liquidados = DB.prestamos.filter(p => (p.socioId === socioId || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'liquidado');
     pContent.innerHTML = liquidados.length
       ? `<div style="text-align:center;padding:20px;color:var(--verde);">
           <div style="font-size:28px;margin-bottom:8px;">✓</div>
