@@ -8348,33 +8348,60 @@ function abrirFichaSocio(socioId) {
   // Tab préstamo
   const pContent = document.getElementById('ficha-prestamo-content');
   if(pr) {
-    const totalConInt = Math.round(pr.capital * (1 + pr.interes/100));
-    const pct = Math.min(100, Math.round(pr.pagado / pr.capital * 100));
-    pContent.innerHTML = `
+    const totalPendiente = prsActivos.reduce((s,p)=>s+(p.pendiente||0),0);
+    const totalPagado    = prsActivos.reduce((s,p)=>s+(p.pagado||0),0);
+    const totalCapital   = prsActivos.reduce((s,p)=>s+(p.capital||0),0);
+    const pctTotal = totalCapital > 0 ? Math.min(100, Math.round(totalPagado / totalCapital * 100)) : 0;
+
+    // Resumen global
+    let html = `
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;">
         <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;">
-          <div style="font-size:10px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Capital</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;">$${fmt(pr.capital)}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Capital total</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;">$${fmt(totalCapital)}</div>
         </div>
         <div style="background:var(--naranja-claro);border-radius:var(--radio-sm);padding:12px;border:1px solid var(--naranja);">
           <div style="font-size:10px;font-weight:600;color:var(--naranja);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Saldo pendiente</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--naranja);">$${fmt(pr.pendiente)}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--naranja);">$${fmt(totalPendiente)}</div>
         </div>
         <div style="background:var(--verde-claro);border-radius:var(--radio-sm);padding:12px;">
-          <div style="font-size:10px;font-weight:600;color:var(--verde);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Pagado</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--verde);">$${fmt(pr.pagado)}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--verde);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Total pagado</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--verde);">$${fmt(totalPagado)}</div>
         </div>
         <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;">
-          <div style="font-size:10px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Total a liquidar</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;">$${fmt(Math.round(pr.pendiente))}</div>
+          <div style="font-size:10px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Préstamos activos</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;">${prsActivos.length}</div>
         </div>
       </div>
-      <div style="margin-bottom:6px;display:flex;justify-content:space-between;font-size:12px;color:var(--texto2);">
-        <span>Avance de pago</span><span style="font-weight:600;">${pct}%</span>
+      <div style="margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px;color:var(--texto2);">
+        <span>Avance global</span><span style="font-weight:600;">${pctTotal}%</span>
       </div>
-      <div style="height:10px;background:var(--gris2);border-radius:5px;overflow:hidden;">
-        <div style="width:${pct}%;height:100%;background:${pct>=100?'var(--verde)':pct>50?'var(--amarillo)':'var(--naranja)'};border-radius:5px;"></div>
+      <div style="height:8px;background:var(--gris2);border-radius:5px;overflow:hidden;margin-bottom:14px;">
+        <div style="width:${pctTotal}%;height:100%;background:${pctTotal>=100?'var(--verde)':pctTotal>50?'var(--amarillo)':'var(--naranja)'};border-radius:5px;"></div>
       </div>`;
+
+    // Detalle por préstamo (si hay más de uno)
+    if(prsActivos.length > 1) {
+      html += `<div style="font-size:10px;font-weight:700;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Detalle por préstamo</div>`;
+      prsActivos.forEach(function(p, idx) {
+        var pct = p.capital > 0 ? Math.min(100, Math.round((p.pagado||0) / p.capital * 100)) : 0;
+        html += `<div style="background:var(--gris);border-radius:var(--radio-sm);padding:10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:11px;font-weight:600;color:var(--texto2);">Préstamo #${p.id}</span>
+            <span style="font-size:11px;font-family:'DM Mono',monospace;font-weight:700;color:var(--naranja);">$${fmt(p.pendiente)} pend.</span>
+          </div>
+          <div style="display:flex;gap:12px;font-size:11px;color:var(--texto2);margin-bottom:6px;">
+            <span>Capital: <strong style="color:var(--texto);">$${fmt(p.capital)}</strong></span>
+            <span>Pagado: <strong style="color:var(--verde);">$${fmt(p.pagado||0)}</strong></span>
+          </div>
+          <div style="height:5px;background:var(--gris2);border-radius:3px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:${pct>=100?'var(--verde)':pct>50?'var(--amarillo)':'var(--naranja)'};border-radius:3px;"></div>
+          </div>
+        </div>`;
+      });
+    }
+
+    pContent.innerHTML = html;
     document.getElementById('ficha-btn-ec').style.display = 'inline-flex';
     document.getElementById('ficha-btn-ec').onclick = () => { cerrarModal('modal-ficha-socio'); abrirEstadoCuenta(prsActivos[0].id); };
   } else {
