@@ -5546,6 +5546,7 @@ function renderSocios() {
       <td>
         <button class="btn btn-secondary btn-sm" onclick="verSocio(${s.id})">Ver</button>
         <button class="btn btn-secondary btn-sm" onclick="abrirEditarSocio(${s.id})">✏️ Editar</button>
+        ${pr ? `<button class="btn btn-secondary btn-sm" style="color:var(--azul);border-color:var(--azul);" onclick="abrirEstadoCuentaSocio(${s.id})">📋 EC</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="abrirPagoSocio(${s.id})">Pago</button>
       </td>
     </tr>`;
@@ -5553,6 +5554,15 @@ function renderSocios() {
 }
 
 function verSocio(id) { abrirFichaSocio(id); }
+
+function abrirEstadoCuentaSocio(id) {
+  const s = DB.socios.find(x => x.id === id);
+  if(!s) return;
+  const pr = DB.prestamos.find(p =>
+    (p.socioId === id || (p.nombre||'').toUpperCase() === s.nombre.toUpperCase()) && p.estado === 'activo'
+  );
+  if(pr) abrirEstadoCuenta(pr.id);
+}
 
 function retiroDesdeFicha() {
   var id = window._fichaId || _fichaId;
@@ -8472,6 +8482,7 @@ function abrirFichaSocio(socioId) {
           <div style="font-size:28px;margin-bottom:8px;">◎</div>
           <div>Sin préstamos registrados</div>
         </div>`;
+    // Sin préstamo activo: ocultar EC
     document.getElementById('ficha-btn-ec').style.display = 'none';
   }
 
