@@ -2721,6 +2721,7 @@ window.addEventListener('unhandledrejection', function(e) {
             <th>Cuota mensual</th>
             <th>Último pago</th>
             <th>%</th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="ahorros-tbody"><tr style="">
@@ -5719,6 +5720,7 @@ function renderAhorros() {
       <td class="mono">$${fmt(s.cuota)}</td>
       <td class="text-sm">${new Date().toLocaleDateString('es-MX',{month:'short',year:'numeric'})}</td>
       <td><span class="badge badge-green">${pct}%</span></td>
+      <td><button class="btn btn-secondary btn-sm" style="color:var(--azul);border-color:var(--azul);" onclick="abrirEstadoCuentaSocio(${s.id})">📄 EC</button></td>
     </tr>`;
   }).join('');
 }
