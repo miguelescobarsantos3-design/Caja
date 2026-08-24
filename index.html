@@ -4402,71 +4402,87 @@ window.addEventListener('unhandledrejection', function(e) {
 
 <!-- ─── MODAL ESTADO DE CUENTA ─── -->
 <div class="modal-overlay" id="modal-estado-cuenta">
-  <div class="modal" style="width:580px;max-width:96vw;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+  <div class="modal" style="width:620px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+    <!-- Encabezado -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-shrink:0;">
       <div>
-        <h2 id="ec-titulo">Estado de cuenta</h2>
-        <div style="font-size:12px;color:var(--texto2);margin-top:2px;" id="ec-subtitulo">HUGO ANTOLIN SANCHEZ · 2 préstamos consolidados</div>
+        <h2 id="ec-titulo" style="margin-bottom:2px;">Estado de cuenta</h2>
+        <div style="font-size:12px;color:var(--texto2);" id="ec-subtitulo"></div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="cerrarModal('modal-estado-cuenta')">Cerrar</button>
     </div>
 
-    <!-- Resumen superior -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0 10px;">
+    <!-- KPIs principales -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;flex-shrink:0;">
       <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Capital</div>
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;" id="ec-capital">$20,500</div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Capital prestado</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;" id="ec-capital">—</div>
       </div>
-      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Total pagado</div>
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--verde);" id="ec-pagado">$0</div>
+      <div style="background:var(--verde-claro);border-radius:var(--radio-sm);padding:12px;text-align:center;border:1px solid var(--verde);">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--verde);margin-bottom:4px;">Total pagado</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--verde);" id="ec-pagado">—</div>
       </div>
-      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;text-align:center;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--texto2);margin-bottom:4px;">Saldo préstamo</div>
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--naranja);" id="ec-saldo">$20,500</div>
+      <div style="background:var(--naranja-claro);border-radius:var(--radio-sm);padding:12px;text-align:center;border:1px solid var(--naranja);">
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--naranja);margin-bottom:4px;">Saldo pendiente</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--naranja);" id="ec-saldo">—</div>
       </div>
-      <div style="background:#e8f5e9;border-radius:var(--radio-sm);padding:12px;text-align:center;border:1px solid #a5d6a7;">
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#2e7d32;margin-bottom:4px;">💰 Ahorro</div>
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:#1b5e20;" id="ec-ahorro">$0</div>
-      </div>
-    </div>
-    <div id="ec-ahorro-wrap" style="display:none;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:var(--radio-sm);padding:8px 14px;margin-bottom:12px;font-size:12px;color:#1b5e20;">
-      <strong>Ahorro acumulado:</strong> <span id="ec-ahorro-detalle"></span>
-    </div>
-
-    <!-- Tabla movimientos -->
-    <div style="border:1px solid var(--gris2);border-radius:var(--radio-sm);overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-          <tr style="background:var(--azul);color:#fff;">
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.8px;">#</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.8px;">Fecha</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.8px;">Concepto</th>
-            <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:600;letter-spacing:0.8px;">Cargo</th>
-            <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:600;letter-spacing:0.8px;">Abono</th>
-            <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:600;letter-spacing:0.8px;">Saldo</th>
-          </tr>
-        </thead>
-        <tbody id="ec-tbody"><tr style="background:#e8eef8;"><td style="padding:9px 14px;color:var(--texto2);font-size:12px;">1</td><td style="padding:9px 14px;font-size:12px;color:var(--texto2);">—</td><td style="padding:9px 14px;font-size:13px;font-weight:600;">Préstamo otorgado #016</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--rojo);">$500</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--verde);font-weight:600;">—</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--naranja);">$20,500</td></tr><tr style="background:#e8eef8;"><td style="padding:9px 14px;color:var(--texto2);font-size:12px;">2</td><td style="padding:9px 14px;font-size:12px;color:var(--texto2);">—</td><td style="padding:9px 14px;font-size:13px;font-weight:600;">Préstamo otorgado #079</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--rojo);">$20,000</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--verde);font-weight:600;">—</td><td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--naranja);">$20,500</td></tr><tr style="background:var(--azul);color:#fff;font-weight:600;"><td colspan="3" style="padding:10px 14px;font-size:13px;">Totales</td><td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;">$20,500</td><td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;color:#4ecba8;">+$0</td><td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;">$20,500</td></tr></tbody>
-      </table>
     </div>
 
     <!-- Barra de progreso -->
-    <div style="margin-top:16px;">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--texto2);margin-bottom:6px;">
-        <span>Progreso de pago</span>
-        <span id="ec-pct">0%</span>
+    <div style="margin-bottom:14px;flex-shrink:0;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--texto2);margin-bottom:5px;">
+        <span>Avance de pago</span>
+        <span id="ec-pct" style="font-weight:700;">0%</span>
       </div>
       <div style="height:10px;background:var(--gris2);border-radius:5px;overflow:hidden;">
-        <div id="ec-progress-bar" style="height: 100%; background: var(--naranja); border-radius: 5px; transition: width 0.4s; width: 0%;"></div>
+        <div id="ec-progress-bar" style="height:100%;background:var(--naranja);border-radius:5px;transition:width 0.4s;width:0%;"></div>
       </div>
     </div>
 
-    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">
+    <!-- Contenido scrollable -->
+    <div style="overflow-y:auto;flex:1;min-height:0;">
+      <!-- Sección créditos otorgados -->
+      <div id="ec-creditos-wrap" style="margin-bottom:14px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--texto2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--gris2);">📋 Créditos otorgados</div>
+        <div id="ec-creditos-body"></div>
+      </div>
+
+      <!-- Sección historial de pagos -->
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--texto2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--gris2);">💰 Historial de pagos</div>
+        <div style="border:1px solid var(--gris2);border-radius:var(--radio-sm);overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:var(--gris2);">
+                <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--texto2);">#</th>
+                <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--texto2);">Fecha</th>
+                <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--texto2);">Concepto</th>
+                <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--texto2);">Abono</th>
+                <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--texto2);">Saldo restante</th>
+              </tr>
+            </thead>
+            <tbody id="ec-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Ahorro del socio -->
+      <div id="ec-ahorro-wrap" style="margin-top:12px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:var(--radio-sm);padding:10px 14px;font-size:12px;color:#1b5e20;display:none;">
+        💰 <strong>Ahorro acumulado:</strong> <span id="ec-ahorro-detalle"></span>
+      </div>
+    </div>
+
+    <!-- Botones -->
+    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;padding-top:12px;border-top:1px solid var(--gris2);">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-estado-cuenta')">Cerrar</button>
       <button class="btn btn-secondary" onclick="editarDesdeEC()">✏️ Editar</button>
       <button class="btn btn-secondary" onclick="pagarDesdeEC()" style="background:var(--verde);color:#fff;border-color:var(--verde);">💰 Registrar pago</button>
       <button class="btn btn-primary" onclick="compartirEstadoCuentaWA()">📲 WhatsApp</button>
+    </div>
+
+    <!-- campos ocultos compatibilidad -->
+    <div style="display:none;">
+      <span id="ec-ahorro"></span>
     </div>
   </div>
 </div>
@@ -8131,19 +8147,15 @@ function abrirEstadoCuenta(prestamoId) {
 
   document.getElementById('ec-titulo').textContent = 'Estado de cuenta';
   document.getElementById('ec-subtitulo').textContent = p.nombre +
-    (multi ? ' · ' + todos.length + ' préstamos consolidados' : ' · Préstamo #' + String(p.id).padStart(3,'0'));
+    (multi ? ' · ' + todos.length + ' créditos activos' : ' · Crédito #' + String(p.id).padStart(3,'0'));
 
-  // KPIs con totales consolidados
-  // Ahorro del socio
+  // KPIs
   const socioEC = DB.socios.find(function(s){ return s.nombre.toLowerCase() === p.nombre.toLowerCase(); });
   const ahorroEC = socioEC ? (socioEC.ahorro || 0) : 0;
 
-  document.getElementById('ec-capital').textContent      = '$' + fmt(capitalTotal);
-  document.getElementById('ec-pagado').textContent       = '$' + fmt(pagadoTotal);
-  document.getElementById('ec-saldo').textContent        = '$' + fmt(pendienteTotal);
-  document.getElementById('ec-ahorro').textContent       = '$' + fmt(ahorroEC);
-  if(document.getElementById('ec-ahorro-detalle'))
-    document.getElementById('ec-ahorro-detalle').textContent = '$' + fmt(ahorroEC) + (socioEC ? ' · cuota ' + fmt(socioEC.cuota||0) + ' ' + (socioEC.freq||'quincenal') : '');
+  document.getElementById('ec-capital').textContent = '$' + fmt(capitalTotal);
+  document.getElementById('ec-pagado').textContent  = '$' + fmt(pagadoTotal);
+  document.getElementById('ec-saldo').textContent   = '$' + fmt(pendienteTotal);
 
   // Progreso
   const pct = capitalTotal > 0 ? Math.min(100, Math.round(pagadoTotal / capitalTotal * 100)) : 0;
@@ -8152,80 +8164,124 @@ function abrirEstadoCuenta(prestamoId) {
   document.getElementById('ec-progress-bar').style.background =
     pct >= 100 ? 'var(--verde)' : pct > 50 ? 'var(--amarillo)' : 'var(--naranja)';
 
-  // ── Movimientos consolidados ──────────────────────────────────────
+  // ── Sección créditos otorgados ─────────────────────────────────────
+  const creditosWrap = document.getElementById('ec-creditos-wrap');
+  const creditosBody = document.getElementById('ec-creditos-body');
+  if(todos.length === 1) {
+    // Un solo préstamo: mostrar detalle simple
+    const pr0 = todos[0];
+    const cap0 = pr0.capital || pr0.monto || 0;
+    const pend0 = pr0.pendiente || 0;
+    const pag0  = pr0.pagado || 0;
+    const pct0  = cap0 > 0 ? Math.min(100, Math.round(pag0 / cap0 * 100)) : 0;
+    creditosBody.innerHTML = `
+      <div style="background:var(--gris);border-radius:var(--radio-sm);padding:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:11px;color:var(--texto2);margin-bottom:2px;">Crédito #${String(pr0.id).padStart(3,'0')} · ${pr0.fecha||'Sin fecha'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;">$${fmt(cap0)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:var(--verde);font-weight:600;">Pagado: $${fmt(pag0)}</div>
+          <div style="font-size:11px;color:var(--naranja);font-weight:600;">Pendiente: $${fmt(pend0)}</div>
+        </div>
+      </div>`;
+  } else {
+    // Varios préstamos: tabla compacta
+    creditosBody.innerHTML = `
+      <div style="border:1px solid var(--gris2);border-radius:var(--radio-sm);overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:var(--gris2);">
+            <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--texto2);">Crédito</th>
+            <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--texto2);">Fecha</th>
+            <th style="padding:7px 10px;text-align:right;font-size:10px;font-weight:700;color:var(--texto2);">Capital</th>
+            <th style="padding:7px 10px;text-align:right;font-size:10px;font-weight:700;color:var(--verde);">Pagado</th>
+            <th style="padding:7px 10px;text-align:right;font-size:10px;font-weight:700;color:var(--naranja);">Pendiente</th>
+          </tr></thead>
+          <tbody>
+            ${todos.map((pr,i) => {
+              const cap = pr.capital||pr.monto||0;
+              const liq = pr.estado==='liquidado';
+              return `<tr style="${i%2===0?'':'background:var(--gris);'}${liq?'opacity:0.5;':''}">
+                <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:600;">#${String(pr.id).padStart(3,'0')}</td>
+                <td style="padding:7px 10px;color:var(--texto2);">${pr.fecha||'—'}</td>
+                <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;">$${fmt(cap)}</td>
+                <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--verde);">$${fmt(pr.pagado||0)}</td>
+                <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:${pr.pendiente>0?'var(--naranja)':'var(--verde)'};">${pr.pendiente>0?'$'+fmt(pr.pendiente):'✓ $0'}</td>
+              </tr>`;
+            }).join('')}
+            <tr style="background:var(--azul);color:#fff;font-weight:700;">
+              <td colspan="2" style="padding:8px 10px;font-size:12px;">Total</td>
+              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;">$${fmt(capitalTotal)}</td>
+              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:#4ecba8;">$${fmt(pagadoTotal)}</td>
+              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;">${pendienteTotal===0?'✓ $0':'$'+fmt(pendienteTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // ── Sección historial de pagos ─────────────────────────────────────
   const abonos = DB.movimientos
     .filter(m => m.tipo === 'prestamo' && !m.cancelado &&
       m.socio.toLowerCase() === p.nombre.toLowerCase())
     .reverse();
 
-  const movimientos = [];
-
-  // Una línea por préstamo otorgado
-  todos.forEach(pr => {
-    const cap = pr.capital || pr.monto || 0;
-    movimientos.push({
-      n: movimientos.length + 1,
-      fecha: pr.fecha || '—',
-      concepto: multi ? 'Préstamo otorgado #' + String(pr.id).padStart(3,'0') : 'Préstamo otorgado',
-      cargo: cap, abono: 0, saldo: 0, tipo: 'otorgamiento'
-    });
-  });
-
-  // Saldo inicial = capital total
   let saldoAcum = capitalTotal;
-  movimientos.forEach(m => { if(m.tipo==='otorgamiento') m.saldo = saldoAcum; });
+  const filasPagos = [];
 
-  // Abonos registrados en historial
-  abonos.forEach(m => {
-    saldoAcum = Math.max(0, saldoAcum - Math.abs(m.monto));
-    movimientos.push({
-      n: movimientos.length + 1,
-      fecha: m.fecha,
-      concepto: m.notas || 'Abono a préstamo',
-      cargo: 0, abono: Math.abs(m.monto),
-      saldo: saldoAcum, tipo: 'abono', cancelado: m.cancelado
-    });
-  });
-
-  // Si hay pagos no registrados en historial
-  if(abonos.length === 0 && pagadoTotal > 0) {
-    movimientos.push({
-      n: movimientos.length + 1, fecha: '—',
-      concepto: 'Pagos anteriores al sistema',
-      cargo: 0, abono: pagadoTotal, saldo: pendienteTotal, tipo: 'abono'
-    });
-  } else if(abonos.length > 0 && Math.abs(saldoAcum - pendienteTotal) > 1) {
-    const diff = saldoAcum - pendienteTotal;
-    if(diff > 0) movimientos.push({
-      n: movimientos.length + 1, fecha: '—',
-      concepto: 'Pagos anteriores al sistema',
-      cargo: 0, abono: diff, saldo: pendienteTotal, tipo: 'abono'
-    });
+  // Ajuste por pagos anteriores al sistema
+  const abonosTotal = abonos.reduce((s,m) => s + Math.abs(m.monto||0), 0);
+  const pagosPrevios = pagadoTotal - abonosTotal;
+  if(pagosPrevios > 1) {
+    saldoAcum = Math.max(0, saldoAcum - pagosPrevios);
+    filasPagos.push({ n:0, fecha:'Antes del sistema', concepto:'Pagos previos registrados', abono:pagosPrevios, saldo:saldoAcum, prev:true });
   }
 
-  // Renderizar tabla
-  const tb = document.getElementById('ec-tbody');
-  tb.innerHTML = movimientos.map((m, i) => {
-    const bgRow = m.tipo==='otorgamiento' ? 'background:#e8eef8;' : i%2===0 ? '' : 'background:var(--gris);';
-    const saldoColor = m.saldo===0 ? 'color:var(--verde);font-weight:700;' :
-      m.saldo < capitalTotal*0.3 ? 'color:var(--amarillo);' : 'color:var(--naranja);';
-    return '<tr style="'+bgRow+(m.cancelado?'opacity:0.45;text-decoration:line-through;':'')+'">'
-      +'<td style="padding:9px 14px;color:var(--texto2);font-size:12px;">'+m.n+'</td>'
-      +'<td style="padding:9px 14px;font-size:12px;color:var(--texto2);">'+m.fecha+'</td>'
-      +'<td style="padding:9px 14px;font-size:13px;font-weight:'+(m.tipo==='otorgamiento'?'600':'400')+';">'+m.concepto+'</td>'
-      +'<td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--rojo);">'+(m.cargo>0?'$'+fmt(m.cargo):'—')+'</td>'
-      +'<td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--verde);font-weight:600;">'+(m.abono>0?'+$'+fmt(m.abono):'—')+'</td>'
-      +'<td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace;font-size:13px;'+saldoColor+'">'+(m.saldo===0?'$0 ✓':'$'+fmt(m.saldo))+'</td>'
-      +'</tr>';
-  }).join('');
+  abonos.forEach((m, idx) => {
+    saldoAcum = Math.max(0, saldoAcum - Math.abs(m.monto));
+    filasPagos.push({
+      n: idx + 1,
+      fecha: m.fecha || '—',
+      concepto: m.notas || 'Abono a préstamo',
+      abono: Math.abs(m.monto),
+      saldo: saldoAcum,
+      cancelado: m.cancelado
+    });
+  });
 
-  // Fila totales
-  tb.innerHTML += '<tr style="background:var(--azul);color:#fff;font-weight:600;">'
-    +'<td colspan="3" style="padding:10px 14px;font-size:13px;">Totales</td>'
-    +'<td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;">$'+fmt(capitalTotal)+'</td>'
-    +'<td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;color:#4ecba8;">+$'+fmt(pagadoTotal)+'</td>'
-    +'<td style="padding:10px 14px;text-align:right;font-family:DM Mono,monospace;">'+(pendienteTotal===0?'$0 ✓':'$'+fmt(pendienteTotal))+'</td>'
-    +'</tr>';
+  const tb = document.getElementById('ec-tbody');
+  if(filasPagos.length === 0) {
+    tb.innerHTML = '<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--texto2);font-size:12px;">Sin pagos registrados</td></tr>';
+  } else {
+    tb.innerHTML = filasPagos.map((m, i) => {
+      const saldoColor = m.saldo===0 ? 'color:var(--verde);font-weight:700;' :
+        m.saldo < capitalTotal*0.3 ? 'color:#e6a817;font-weight:600;' : 'color:var(--naranja);font-weight:600;';
+      const bg = m.prev ? 'background:#f0f4ff;' : i%2===0 ? '' : 'background:var(--gris);';
+      return '<tr style="'+bg+(m.cancelado?'opacity:0.4;text-decoration:line-through;':'')+'">'
+        +'<td style="padding:8px 12px;color:var(--texto2);font-size:11px;">'+(m.prev?'—':m.n)+'</td>'
+        +'<td style="padding:8px 12px;font-size:12px;color:var(--texto2);white-space:nowrap;">'+m.fecha+'</td>'
+        +'<td style="padding:8px 12px;font-size:12px;">'+m.concepto+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;font-size:13px;color:var(--verde);font-weight:700;">+$'+fmt(m.abono)+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;font-size:13px;'+saldoColor+'">'+(m.saldo===0?'✓ $0':'$'+fmt(m.saldo))+'</td>'
+        +'</tr>';
+    }).join('');
+    // Fila resumen
+    tb.innerHTML += '<tr style="background:var(--gris2);font-weight:700;border-top:2px solid var(--gris3);">'
+      +'<td colspan="3" style="padding:8px 12px;font-size:12px;">Total pagado</td>'
+      +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;color:var(--verde);">+$'+fmt(pagadoTotal)+'</td>'
+      +'<td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;color:'+(pendienteTotal===0?'var(--verde)':'var(--naranja)')+';">'+(pendienteTotal===0?'✓ $0':'$'+fmt(pendienteTotal))+'</td>'
+      +'</tr>';
+  }
+
+  // Ahorro
+  const ahorroWrap = document.getElementById('ec-ahorro-wrap');
+  if(ahorroEC > 0) {
+    document.getElementById('ec-ahorro-detalle').textContent = '$' + fmt(ahorroEC) +
+      (socioEC ? ' · cuota $' + fmt(socioEC.cuota||0) + ' ' + (socioEC.freq||'quincenal') : '');
+    ahorroWrap.style.display = 'block';
+  } else {
+    ahorroWrap.style.display = 'none';
+  }
 
   document.getElementById('modal-estado-cuenta').classList.add('open');
 }
