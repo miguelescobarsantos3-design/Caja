@@ -13543,6 +13543,8 @@ window.mostrarReciboTanda = function(tipo, socio, monto, fecha, concepto, pagado
 
   var metaEl = document.getElementById('recibo-socio-meta');
   if(metaEl) metaEl.textContent = 'Participante';
+  var movLabelEl = document.getElementById('recibo-mov-label');
+  if(movLabelEl) movLabelEl.textContent = tipo === 'tanda300' ? 'Aportación Tanda $300' : 'Aportación Tanda $1,000';
 
   document.getElementById('recibo-saldo-label').textContent = 'Total aportado';
   var saldoEl = document.getElementById('recibo-saldo');
