@@ -9470,15 +9470,16 @@ function compartirImagenWA() {
 
     ov.querySelector('#__wa_sh_btn').onclick = async function() {
       ov.remove();
-      if(navigator.share) {
+      var compartido = false;
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
         try {
           await navigator.share({files:[file]});
+          compartido = true;
         } catch(e) {
-          if(e.name !== 'AbortError') _waFallback(blob);
+          if(e.name === 'AbortError') return;
         }
-      } else {
-        _waFallback(blob);
       }
+      if(!compartido) _waFallback(blob);
     };
     ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
   }).catch(function() {
