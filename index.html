@@ -9471,12 +9471,17 @@ function compartirImagenWA() {
     ov.querySelector('#__wa_sh_btn').onclick = async function() {
       ov.remove();
       var compartido = false;
-      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+      var _hasShare = !!navigator.share;
+      var _hasCanShare = !!(navigator.canShare);
+      var _canResult = _hasCanShare ? navigator.canShare({files:[file]}) : false;
+      if(typeof toast==='function') toast('share:'+_hasShare+' canShare:'+_hasCanShare+' ok:'+_canResult);
+      if(_hasShare && _hasCanShare && _canResult) {
         try {
           await navigator.share({files:[file]});
           compartido = true;
         } catch(e) {
           if(e.name === 'AbortError') return;
+          if(typeof toast==='function') toast('Error: '+e.name);
         }
       }
       if(!compartido) _waFallback(blob);
