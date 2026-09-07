@@ -5171,7 +5171,7 @@ Diana"></textarea>
     <div class="recibo-footer" style="flex-wrap: wrap; gap: 8px; display: flex;">
       <button class="btn btn-secondary" onclick="cerrarRecibo()">Cerrar</button>
       <button class="btn btn-secondary" id="btn-imagen" onclick="descargarImagenRecibo()" style="flex:1;justify-content:center;">🖼 Guardar imagen</button>
-      <button class="btn btn-primary" onclick="compartirImagenWA()" style="flex: 1 1 0%; justify-content: center; opacity: 1;">📲 WhatsApp</button>
+      <button class="btn btn-primary" onclick="enviarReciboWA(reciboActual&&reciboActual.folio)" style="flex: 1 1 0%; justify-content: center; opacity: 1;">📲 WhatsApp</button>
     </div>
   </div>
 </div>
@@ -8981,10 +8981,8 @@ function verReciboAnterior(folio) {
 }
 
 function enviarReciboWA(folio) {
-  const r = DB.recibos.find(x => x.folio === folio);
-  if(!r) return;
-  reciboActual = {...r};
-  compartirWhatsApp();
+  verReciboAnterior(folio);   // renderiza el recibo en el overlay
+  compartirImagenWA();         // captura y comparte como imagen
 }
 
 
