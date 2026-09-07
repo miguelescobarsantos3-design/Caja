@@ -8981,8 +8981,10 @@ function verReciboAnterior(folio) {
 }
 
 function enviarReciboWA(folio) {
-  verReciboAnterior(folio);   // renderiza el recibo en el overlay
-  compartirImagenWA();         // captura y comparte como imagen
+  var r = DB.recibos.find(function(x){ return x.folio === folio; });
+  if(!r) return;
+  reciboActual = {...r};
+  compartirImagenWA();
 }
 
 
@@ -9445,39 +9447,40 @@ function descargarImagenRecibo() {
 }
 
 function compartirImagenWA() {
+  var folio = reciboActual && reciboActual.folio;
+  if(!folio) return;
   const btn = document.querySelector('.recibo-footer .btn-primary');
   const txtOrig = btn ? btn.textContent : '';
   if(btn) { btn.textContent = 'Generando...'; btn.disabled = true; }
 
-  capturarRecibo(function(canvas) {
+  // Usa generarReciboCanvas (mismo que masivo): espera 150ms para DOM pintado
+  generarReciboCanvas(folio).then(function(blob) {
     if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
-    canvas.toBlob(function(blob) {
-      const file = new File([blob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
+    const file = new File([blob], 'Recibo-' + folio + '.png', {type:'image/png'});
 
-      // Mismo patrón que enviarSeleccionadosWA: diálogo intermedio para
-      // que navigator.share se llame desde un onclick directo (gesto de usuario preservado)
-      var ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-        + '<div style="font-size:36px;margin-bottom:8px;">📎</div>'
-        + '<p style="margin:0 0 20px;font-size:15px;color:#333;">1 recibo listo</p>'
-        + '<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-        + '<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-        + '</div>';
-      document.body.appendChild(ov);
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+      + '<div style="font-size:36px;margin-bottom:8px;">📎</div>'
+      + '<p style="margin:0 0 20px;font-size:15px;color:#333;">1 recibo listo</p>'
+      + '<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+      + '<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+      + '</div>';
+    document.body.appendChild(ov);
 
-      ov.querySelector('#__wa_sh_btn').onclick = function() {
-        ov.remove();
-        if(navigator.share) {
-          navigator.share({files:[file]}).catch(function(e){
-            if(e.name !== 'AbortError') _waFallback(blob);
-          });
-        } else {
-          _waFallback(blob);
-        }
-      };
-      ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
-    }, 'image/png');
+    ov.querySelector('#__wa_sh_btn').onclick = function() {
+      ov.remove();
+      if(navigator.share) {
+        navigator.share({files:[file]}).catch(function(e){
+          if(e.name !== 'AbortError') _waFallback(blob);
+        });
+      } else {
+        _waFallback(blob);
+      }
+    };
+    ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
+  }).catch(function() {
+    if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
   });
 }
 
