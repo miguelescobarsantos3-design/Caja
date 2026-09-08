@@ -8439,7 +8439,7 @@ function compartirEstadoCuentaWA() {
 
         ov.querySelector('#__ec_share_btn').onclick = function() {
           ov.remove();
-          window.open('https://web.whatsapp.com/', '_blank');
+          var a = document.createElement('a'); a.href='whatsapp://'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
           if(navigator.clipboard && window.ClipboardItem) {
             navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
               if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp');
@@ -9471,7 +9471,7 @@ function compartirImagenWA() {
     document.body.appendChild(ov);
     ov.querySelector('#__wa_sh_btn').onclick = function() {
       ov.remove();
-      window.open('https://web.whatsapp.com/', '_blank'); // gesto activo → no bloqueado
+      var a = document.createElement('a'); a.href='whatsapp://'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
       if(navigator.clipboard && window.ClipboardItem) {
         navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
           if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp y envía.');
@@ -9499,8 +9499,7 @@ function compartirImagenWA() {
 }
 
 function _waEnviarPortapapeles(blob) {
-  // Fallback: solo se llama si ya hay gesto activo
-  window.open('https://web.whatsapp.com/', '_blank');
+  var a = document.createElement('a'); a.href='whatsapp://'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
   if(navigator.clipboard && window.ClipboardItem) {
     navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).catch(function(){});
   }
@@ -11823,7 +11822,7 @@ async function enviarSeleccionadosWA() {
       document.body.appendChild(ov);
 
       ov.querySelector('#__wq_copy').onclick = function() {
-        window.open('https://web.whatsapp.com/', '_blank'); // gesto activo → no bloqueado
+        var a = document.createElement('a'); a.href='whatsapp://'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
         enviados++;
         if(navigator.clipboard && window.ClipboardItem) {
           navigator.clipboard.write([new ClipboardItem({'image/png': capturedBlob})]).then(function() {
