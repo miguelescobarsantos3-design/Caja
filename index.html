@@ -9428,31 +9428,48 @@ function descargarImagenRecibo() {
 }
 
 function compartirImagenWA() {
-  const btn = document.querySelector('.recibo-footer .btn-primary');
-  const txtOrig = btn ? btn.textContent : '';
-  if(btn) { btn.textContent = 'Copiando...'; btn.disabled = true; }
+  var capturedBlob = null;
 
-  // ClipboardItem acepta Promise: se registra aquí (gesto activo), la imagen llega async
-  if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([
-      new ClipboardItem({
-        'image/png': new Promise(function(resolve, reject) {
-          capturarRecibo(function(canvas) {
-            canvas.toBlob(function(blob) { blob ? resolve(blob) : reject('toBlob vacío'); }, 'image/png');
-          });
-        })
-      })
-    ]).then(function() {
-      if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
-      if(typeof toast === 'function') toast('✅ Imagen copiada — pega en WhatsApp con Ctrl+V.');
-    }).catch(function(e) {
-      if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
-      if(typeof toast === 'function') toast('No se pudo copiar: ' + e);
-    });
-  } else {
-    if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
-    if(typeof toast === 'function') toast('Tu navegador no soporta copiar imágenes al portapapeles.');
-  }
+  // Mostrar diálogo INMEDIATAMENTE (gesto de usuario activo)
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+    +'<div id="__wa_ico" style="font-size:36px;margin-bottom:8px;">⏳</div>'
+    +'<p id="__wa_txt" style="margin:0 0 20px;font-size:15px;color:#333;">Preparando recibo...</p>'
+    +'<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;opacity:.45;" disabled>📲 Enviar por WhatsApp</button>'
+    +'<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  var shareBtn = ov.querySelector('#__wa_sh_btn');
+  var ico = ov.querySelector('#__wa_ico');
+  var txt = ov.querySelector('#__wa_txt');
+
+  // Capturar en background; cuando listo, activar botón
+  capturarRecibo(function(canvas) {
+    canvas.toBlob(function(blob) {
+      if(!blob) { txt.textContent = 'Error al generar imagen.'; return; }
+      capturedBlob = blob;
+      ico.textContent = '📎';
+      txt.textContent = 'Recibo listo';
+      shareBtn.disabled = false;
+      shareBtn.style.opacity = '1';
+    }, 'image/png');
+  });
+
+  // Click aquí = gesto de usuario fresco → navigator.share funciona
+  shareBtn.onclick = function() {
+    if(!capturedBlob) return;
+    ov.remove();
+    var file = new File([capturedBlob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+      navigator.share({files:[file]}).catch(function(e) {
+        if(e.name !== 'AbortError') _waFallback(capturedBlob);
+      });
+    } else {
+      _waFallback(capturedBlob);
+    }
+  };
+  ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
 }
 
 function _waFallback(blob) {
@@ -11745,91 +11762,59 @@ async function enviarSeleccionadosWA() {
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
   var btn = document.querySelector('#barra-seleccion button');
   var textoOrig = btn ? btn.innerHTML : '';
-  if(btn) { btn.innerHTML = '⏳ Copiando...'; btn.disabled = true; }
+  var LOTE = 5;
+  var totalLotes = Math.ceil(folios.length / LOTE);
+  var compartidos = 0;
 
-  // Copiar primer recibo inmediatamente (gesto de usuario activo)
-  // ClipboardItem+Promise permite iniciar la copia ahora aunque la imagen llegue async
-  if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([
-      new ClipboardItem({
-        'image/png': new Promise(function(resolve, reject) {
-          generarReciboCanvas(folios[0]).then(function(b){ b ? resolve(b) : reject('blob vacío'); }).catch(reject);
-        })
-      })
-    ]).catch(function(e){ console.warn('clipboard lote0:', e); });
-  }
-
-  // Generar imágenes restantes en background
-  var queue = []; // blobs para folios[1..n]
-  for(var i=1; i<folios.length; i++) {
-    if(btn) btn.innerHTML = '⏳ ' + i + '/' + (folios.length-1) + ' generando...';
-    try {
-      var b = await generarReciboCanvas(folios[i]);
-      if(b) queue.push({blob: b, folio: folios[i], n: i+1});
-    } catch(e) { console.error('Error folio ' + folios[i], e); }
-  }
-  if(typeof cerrarRecibo === 'function') cerrarRecibo();
-  if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-
-  if(folios.length === 1) {
-    if(typeof toast === 'function') toast('✅ Recibo copiado — pega en WhatsApp con Ctrl+V.');
-    return;
-  }
-
-  // Mostrar barra flotante para avanzar por la cola
-  var qIdx = 0;
-  function mostrarQueue() {
-    var prev = document.getElementById('__wa_qbar');
-    if(prev) prev.remove();
-    if(qIdx >= queue.length) {
-      if(typeof toast === 'function') toast('✅ Todos los recibos copiados.');
-      return;
+  for(var li=0; li<totalLotes; li++) {
+    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
+    var files = [];
+    for(var i=0; i<loteFolios.length; i++) {
+      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+loteFolios.length+' generando...'; btn.disabled = true; }
+      try {
+        var blob = await generarReciboCanvas(loteFolios[i]);
+        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
+      } catch(e) { console.error('Error folio '+loteFolios[i], e); }
     }
-    var item = queue[qIdx];
-    var bar = document.createElement('div');
-    bar.id = '__wa_qbar';
-    bar.style.cssText = 'position:fixed;bottom:24px;right:20px;background:#1a3a6b;color:#fff;padding:14px 18px;border-radius:12px;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.35);max-width:280px;';
-    bar.innerHTML = '<div style="font-size:13px;margin-bottom:10px;">📋 Recibo '+item.n+' de '+folios.length+' copiado<br><span style="opacity:.7;font-size:11px;">Pega en WhatsApp, luego haz clic:</span></div>'
-      +'<div style="display:flex;gap:8px;">'
-      +'<button id="__wq_next" style="flex:1;background:#25D366;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;">Copiar siguiente →</button>'
-      +'<button id="__wq_cancel" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer;">✕</button>'
-      +'</div>';
-    document.body.appendChild(bar);
-    bar.querySelector('#__wq_next').onclick = function() {
-      // Gesto de usuario activo — copiar siguiente imagen directamente
-      if(navigator.clipboard && window.ClipboardItem) {
-        var nextBlob = item.blob;
-        navigator.clipboard.write([new ClipboardItem({'image/png': nextBlob})]).catch(function(){});
-      }
-      qIdx++;
-      mostrarQueue();
-    };
-    bar.querySelector('#__wq_cancel').onclick = function() { bar.remove(); };
+    if(typeof cerrarRecibo === 'function') cerrarRecibo();
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    if(!files.length) continue;
+
+    var loteFiles = files;
+    var loteLi = li;
+    var shared = await new Promise(function(resolve) {
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      var titulo = totalLotes > 1
+        ? 'Lote '+(loteLi+1)+' de '+totalLotes+': '+loteFiles.length+' recibo(s) listos'
+        : loteFiles.length+' recibo(s) listos';
+      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
+        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+titulo+'</p>'
+        +'<button id="__wa_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+        +'<br><button id="__wa_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+        +'</div>';
+      document.body.appendChild(ov);
+
+      ov.querySelector('#__wa_share_btn').onclick = async function() {
+        ov.remove();
+        if(navigator.share) {
+          try {
+            await navigator.share({files: loteFiles});
+            compartidos += loteFiles.length;
+          } catch(e) {
+            if(e.name !== 'AbortError') console.warn('Share lote '+loteLi, e);
+          }
+        }
+        resolve(true);
+      };
+      ov.querySelector('#__wa_cancel_btn').onclick = function() { ov.remove(); resolve(false); };
+    });
+
+    if(!shared) break;
   }
 
-  // Mostrar primer elemento de la cola (el primero ya fue copiado arriba)
-  if(queue.length > 0) {
-    // Mostrar notificación del primero ya copiado, con "Siguiente" para el resto
-    var bar0 = document.createElement('div');
-    bar0.id = '__wa_qbar';
-    bar0.style.cssText = 'position:fixed;bottom:24px;right:20px;background:#1a3a6b;color:#fff;padding:14px 18px;border-radius:12px;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.35);max-width:280px;';
-    bar0.innerHTML = '<div style="font-size:13px;margin-bottom:10px;">📋 Recibo 1 de '+folios.length+' copiado<br><span style="opacity:.7;font-size:11px;">Pega en WhatsApp, luego haz clic:</span></div>'
-      +'<div style="display:flex;gap:8px;">'
-      +'<button id="__wq_next0" style="flex:1;background:#25D366;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;">Copiar siguiente →</button>'
-      +'<button id="__wq_cancel0" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer;">✕</button>'
-      +'</div>';
-    document.body.appendChild(bar0);
-    bar0.querySelector('#__wq_next0').onclick = function() {
-      if(navigator.clipboard && window.ClipboardItem && queue[0]) {
-        navigator.clipboard.write([new ClipboardItem({'image/png': queue[0].blob})]).catch(function(){});
-      }
-      qIdx = 1;
-      mostrarQueue();
-    };
-    bar0.querySelector('#__wq_cancel0').onclick = function() { bar0.remove(); };
-  } else {
-    if(typeof toast === 'function') toast('✅ Recibo copiado — pega en WhatsApp con Ctrl+V.');
-  }
+  if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) enviados');
 }
 
 function generarReciboCanvas(folio) {
