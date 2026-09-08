@@ -8408,32 +8408,52 @@ function compartirEstadoCuentaWA() {
   const el = document.getElementById('modal-estado-cuenta');
   const inner = el ? el.querySelector('.modal') : null;
   if(!inner) return;
+  const p = typeof _ecPrestamoActual !== 'undefined' ? _ecPrestamoActual : null;
+  var capturedBlob = null;
 
-  const btn = document.querySelector('#modal-estado-cuenta .btn-primary');
-  const textoOrig = btn ? btn.innerHTML : '';
-  if(btn) { btn.innerHTML = '⏳ Copiando...'; btn.disabled = true; }
+  // Mostrar diálogo INMEDIATAMENTE (gesto de usuario activo)
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+    +'<div id="__ec_ico" style="font-size:36px;margin-bottom:8px;">⏳</div>'
+    +'<p id="__ec_txt" style="margin:0 0 6px;font-size:15px;color:#333;">Preparando estado de cuenta...</p>'
+    +'<p style="margin:0 0 20px;font-size:13px;color:#888;">'+(p ? p.nombre : '')+'</p>'
+    +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;opacity:.45;" disabled>📲 Enviar por WhatsApp</button>'
+    +'<br><button id="__ec_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  var shareBtn = ov.querySelector('#__ec_share_btn');
+  var ico = ov.querySelector('#__ec_ico');
+  var txt = ov.querySelector('#__ec_txt');
 
-  if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([
-      new ClipboardItem({
-        'image/png': new Promise(function(resolve, reject) {
-          html2canvas(inner, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
-            .then(function(canvas) {
-              canvas.toBlob(function(blob) { blob ? resolve(blob) : reject('toBlob vacío'); }, 'image/png');
-            }).catch(reject);
-        })
-      })
-    ]).then(function() {
-      if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-      if(typeof toast === 'function') toast('✅ Imagen copiada — pega en WhatsApp con Ctrl+V.');
-    }).catch(function(e) {
-      if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-      if(typeof toast === 'function') toast('No se pudo copiar: ' + e);
-    });
-  } else {
-    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    if(typeof toast === 'function') toast('Tu navegador no soporta copiar imágenes al portapapeles.');
-  }
+  // Capturar en background
+  html2canvas(inner, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+    .then(function(canvas) {
+      canvas.toBlob(function(blob) {
+        if(!blob) { txt.textContent = 'Error al generar imagen.'; return; }
+        capturedBlob = blob;
+        ico.textContent = '📊';
+        txt.textContent = 'Estado de cuenta listo';
+        shareBtn.disabled = false;
+        shareBtn.style.opacity = '1';
+      }, 'image/png');
+    }).catch(function() { txt.textContent = 'Error al generar imagen.'; });
+
+  // Click = gesto fresco → navigator.share funciona
+  shareBtn.onclick = function() {
+    if(!capturedBlob) return;
+    ov.remove();
+    var nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
+    var file = new File([capturedBlob], 'EstadoCuenta-'+nombre+'.png', {type:'image/png'});
+    if(navigator.share) {
+      navigator.share({files:[file]}).catch(function(e) {
+        if(e.name !== 'AbortError') _waFallback(capturedBlob);
+      });
+    } else {
+      _waFallback(capturedBlob);
+    }
+  };
+  ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
 }
 
 function _descargarEC(blob, nombre) {
@@ -9461,7 +9481,7 @@ function compartirImagenWA() {
     if(!capturedBlob) return;
     ov.remove();
     var file = new File([capturedBlob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
-    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+    if(navigator.share) {
       navigator.share({files:[file]}).catch(function(e) {
         if(e.name !== 'AbortError') _waFallback(capturedBlob);
       });
