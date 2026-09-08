@@ -9470,21 +9470,15 @@ function compartirImagenWA() {
 
     ov.querySelector('#__wa_sh_btn').onclick = async function() {
       ov.remove();
-      var compartido = false;
-      var _hasShare = !!navigator.share;
-      var _hasCanShare = !!(navigator.canShare);
-      var _canResult = _hasCanShare ? navigator.canShare({files:[file]}) : false;
-      if(typeof toast==='function') toast('share:'+_hasShare+' canShare:'+_hasCanShare+' ok:'+_canResult);
-      if(_hasShare && _hasCanShare && _canResult) {
+      if(navigator.share) {
         try {
           await navigator.share({files:[file]});
-          compartido = true;
+          return;
         } catch(e) {
           if(e.name === 'AbortError') return;
-          if(typeof toast==='function') toast('Error: '+e.name);
         }
       }
-      if(!compartido) _waFallback(blob);
+      _waFallback(blob);
     };
     ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
   }).catch(function() {
@@ -9495,10 +9489,14 @@ function compartirImagenWA() {
 function _waFallback(blob) {
   if(navigator.clipboard && window.ClipboardItem && blob) {
     navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
-      if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
+      if(typeof toast === 'function') toast('📋 Imagen copiada. Pega en WhatsApp con Ctrl+V.');
     }).catch(function(){});
   }
-  window.open('https://web.whatsapp.com/', '_blank');
+  var a = document.createElement('a');
+  a.href = 'whatsapp://';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // [INIT movido al final]
