@@ -8432,18 +8432,20 @@ function compartirEstadoCuentaWA() {
         ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
           +'<div style="font-size:36px;margin-bottom:8px;">📊</div>'
           +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Estado de cuenta listo<br><strong>' + (p ? p.nombre : '') + '</strong></p>'
-          +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-          +'<br><button id="__ec_dl_btn" style="margin-top:10px;background:none;border:1px solid #ccc;color:#555;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;width:100%;">⬇️ Descargar imagen</button>'
-          +'<br><button id="__ec_cancel_btn" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;">Cancelar</button>'
+          +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Copiar y abrir WhatsApp Web</button>'
+          +'<br><button id="__ec_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;">Cancelar</button>'
           +'</div>';
         document.body.appendChild(ov);
 
-        ov.querySelector('#__ec_share_btn').onclick = async function() {
+        ov.querySelector('#__ec_share_btn').onclick = function() {
           ov.remove();
-          try { await navigator.share({files: [file]}); }
-          catch(e) { if(e.name !== 'AbortError') _descargarEC(blob, nombre); }
+          window.open('https://web.whatsapp.com/', '_blank');
+          if(navigator.clipboard && window.ClipboardItem) {
+            navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
+              if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp');
+            }).catch(function(){});
+          }
         };
-        ov.querySelector('#__ec_dl_btn').onclick = function() { ov.remove(); _descargarEC(blob, nombre); };
         ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
       } else {
         _descargarEC(blob, nombre);
@@ -9457,10 +9459,30 @@ function compartirImagenWA() {
   function onBlob(blob) {
     if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
     if(!blob) { if(typeof toast==='function') toast('Error al generar imagen'); return; }
-    _waEnviarPortapapeles(blob);
+    // Mostrar diálogo — window.open y clipboard van DENTRO del onclick (gesto activo)
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+      +'<div style="font-size:36px;margin-bottom:8px;">📋</div>'
+      +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Imagen lista para enviar</p>'
+      +'<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Copiar y abrir WhatsApp Web</button>'
+      +'<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+    ov.querySelector('#__wa_sh_btn').onclick = function() {
+      ov.remove();
+      window.open('https://web.whatsapp.com/', '_blank'); // gesto activo → no bloqueado
+      if(navigator.clipboard && window.ClipboardItem) {
+        navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
+          if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp y envía.');
+        }).catch(function(){});
+      }
+    };
+    ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
   }
 
-  if(card && card.offsetParent !== null) {
+  var rect = card ? card.getBoundingClientRect() : null;
+  if(rect && rect.width > 0 && rect.height > 0) {
     var footer = card.querySelector('.recibo-footer');
     if(footer) footer.style.display = 'none';
     html2canvas(card, {scale:3, useCORS:true, backgroundColor:'#fefefe', logging:false})
@@ -9477,15 +9499,10 @@ function compartirImagenWA() {
 }
 
 function _waEnviarPortapapeles(blob) {
+  // Fallback: solo se llama si ya hay gesto activo
+  window.open('https://web.whatsapp.com/', '_blank');
   if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
-      window.open('https://web.whatsapp.com/', '_blank');
-      if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp Web y envía.');
-    }).catch(function() {
-      window.open('https://web.whatsapp.com/', '_blank');
-    });
-  } else {
-    window.open('https://web.whatsapp.com/', '_blank');
+    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).catch(function(){});
   }
 }
 
@@ -11806,14 +11823,12 @@ async function enviarSeleccionadosWA() {
       document.body.appendChild(ov);
 
       ov.querySelector('#__wq_copy').onclick = function() {
+        window.open('https://web.whatsapp.com/', '_blank'); // gesto activo → no bloqueado
+        enviados++;
         if(navigator.clipboard && window.ClipboardItem) {
           navigator.clipboard.write([new ClipboardItem({'image/png': capturedBlob})]).then(function() {
-            window.open('https://web.whatsapp.com/', '_blank');
-            if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp Web');
-            enviados++;
-          }).catch(function() { window.open('https://web.whatsapp.com/', '_blank'); });
-        } else {
-          window.open('https://web.whatsapp.com/', '_blank');
+            if(typeof toast==='function') toast('📋 Imagen copiada — pega con Ctrl+V en WhatsApp');
+          }).catch(function(){});
         }
       };
       ov.querySelector('#__wq_next').onclick = function() { ov.remove(); resolve(true); };
