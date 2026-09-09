@@ -8420,50 +8420,38 @@ function compartirEstadoCuentaWA() {
   html2canvas(ecClone, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0 }).then(canvas => {
     if(ecClone.parentNode) ecClone.parentNode.removeChild(ecClone);
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    canvas.toBlob(function(blob) {
-      const p = _ecPrestamoActual;
-      const nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
-      const file = new File([blob], 'EstadoCuenta-' + nombre + '.png', {type:'image/png'});
 
-      if(navigator.share) {
-        var ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-        ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-          +'<div style="font-size:36px;margin-bottom:8px;">📊</div>'
-          +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Estado de cuenta listo<br><strong>' + (p ? p.nombre : '') + '</strong></p>'
-          +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-          +'<br><button id="__ec_dl_btn" style="margin-top:10px;background:none;border:1px solid #ccc;color:#555;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;width:100%;">⬇️ Descargar imagen</button>'
-          +'<br><button id="__ec_cancel_btn" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;">Cancelar</button>'
-          +'</div>';
-        document.body.appendChild(ov);
+    const p = _ecPrestamoActual;
+    const nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
+    let file;
+    try {
+      const blob = _canvasABlobSync(canvas);
+      file = new File([blob], 'EstadoCuenta-' + nombre + '.png', {type:'image/png'});
+    } catch(e) {
+      if(typeof toast === 'function') toast('No se pudo generar la imagen');
+      return;
+    }
 
-        ov.querySelector('#__ec_share_btn').onclick = async function() {
-          ov.remove();
-          var shareOk = false;
-          if(navigator.share) {
-            try { await navigator.share({files: [file]}); shareOk = true; }
-            catch(e) { if(e.name === 'AbortError') return; }
-          }
-          if(!shareOk) {
-            if(navigator.clipboard && window.ClipboardItem) {
-              try {
-                await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
-                if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
-              } catch(ce){}
-            }
-            window.open('https://wa.me/', '_blank');
-          }
-        };
-        ov.querySelector('#__ec_dl_btn').onclick = function() { ov.remove(); _descargarEC(blob, nombre); };
-        ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
-      } else {
-        _descargarEC(blob, nombre);
-      }
-    }, 'image/png');
+    // Diálogo con gesto fresco — nunca descarga automáticamente
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+      +'<div style="font-size:36px;margin-bottom:8px;">📊</div>'
+      +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Estado de cuenta listo<br><strong>' + (p ? p.nombre : '') + '</strong></p>'
+      +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+      +'<br><button id="__ec_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+
+    ov.querySelector('#__ec_share_btn').onclick = function() {
+      ov.remove();
+      _enviarArchivosWA([file]);
+    };
+    ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
   }).catch(function(err) {
     if(ecClone.parentNode) ecClone.parentNode.removeChild(ecClone);
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    alert('Error al generar imagen: ' + err.message);
+    if(typeof toast === 'function') toast('No se pudo generar la imagen del estado de cuenta');
   });
 }
 
@@ -9417,37 +9405,264 @@ function iniciarDesdesCero() {
 // ══════════════════════════════════════════════════
 // CAPTURA DE RECIBO COMO IMAGEN
 // ══════════════════════════════════════════════════
-function capturarRecibo(callback) {
-  const card = document.getElementById('recibo-card');
-  if(!card) { callback(null); return; }
+function _rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
 
-  // Clonar en body para evitar interferencia de CSS del modal padre
-  const clone = card.cloneNode(true);
-  const cloneFooter = clone.querySelector('.recibo-footer');
+function _dibujarReciboCanvas(r) {
+  if(!r) return null;
+  try {
+    var W=360, sc=2;
+    var colMap={ahorro:'#27AE60',prestamo:'#E67E22',tanda:'#F39C12',tanda300:'#1A3A6B',tanda1000:'#1A3A6B'};
+    var col = colMap[r.tipo]||'#E67E22';
+    var tipoNom={ahorro:'Recibo de Ahorro',prestamo:'Recibo de Préstamo',tanda:'Recibo de Tanda',tanda300:'Tanda $300',tanda1000:'Tanda $1,000'};
+    var movNom={ahorro:'Depósito de ahorro',prestamo:'Abono recibido',tanda:'Aportación recibida',tanda300:'Aportación',tanda1000:'Aportación'};
+    var sldNom={ahorro:'Total ahorrado',prestamo:'Saldo pendiente',tanda:'Total aportado',tanda300:'Total aportado',tanda1000:'Total aportado'};
+    var fmtN=function(n){return typeof fmt==='function'?fmt(n):Number(n).toLocaleString('es-MX');};
+    var nombre=(r.socio||'').toUpperCase();
+    var iniciales=nombre.split(' ').slice(0,2).map(function(p){return p[0]||'';}).join('');
+
+    // Altura estimada
+    var pad=20;
+    var H = 88+56+14+50+48+68+60+(r.notas||r.estado==='cancelado'?28:0)+24;
+
+    var c=document.createElement('canvas');
+    c.width=W*sc; c.height=H*sc;
+    var ctx=c.getContext('2d');
+    ctx.scale(sc,sc);
+
+    // Fondo blanco
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+
+    // Header redondeado arriba
+    ctx.fillStyle=col;
+    _rrect(ctx,0,0,W,88,18); ctx.fill();
+    ctx.fillRect(0,72,W,16); // cuadrar la parte inferior del header
+
+    // Texto header
+    ctx.fillStyle='rgba(255,255,255,0.8)';
+    ctx.font='9px Arial,sans-serif';
+    ctx.fillText('Caja de Ahorro y Préstamo · 2026',pad,22);
+    ctx.fillStyle='#fff';
+    ctx.font='bold 16px Arial,sans-serif';
+    var tit=(tipoNom[r.tipo]||'Recibo')+(r.estado==='cancelado'?' — CANCELADO':'');
+    ctx.fillText(tit,pad,46);
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.font='10px Arial,sans-serif';
+    ctx.fillText('Folio #'+(r.folio||'')+' · '+(r.fechaEmision||r.fecha||''),pad,68);
+
+    var y=104;
+
+    // Avatar
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(pad+19,y+19,19,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.font='bold 13px Arial,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(iniciales,pad+19,y+24);
+    ctx.textAlign='left';
+    ctx.fillStyle='#111';
+    ctx.font='bold 12px Arial,sans-serif';
+    ctx.fillText((nombre.length>30?nombre.substring(0,28)+'…':nombre),pad+46,y+15);
+    var socObj=typeof DB!=='undefined'&&DB.socios?DB.socios.find(function(s){return s.nombre.toUpperCase()===nombre;}):null;
+    ctx.fillStyle='#888';
+    ctx.font='10px Arial,sans-serif';
+    ctx.fillText((socObj?'Socio #'+String(socObj.id).padStart(2,'0'):(r.concepto||'')).substring(0,36),pad+46,y+32);
+
+    y+=54;
+    // Línea punteada
+    ctx.strokeStyle='#ddd'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+    ctx.setLineDash([]); y+=14;
+
+    // Movimiento
+    ctx.fillStyle='#999'; ctx.font='8px Arial,sans-serif';
+    ctx.fillText('MOVIMIENTO',pad,y); y+=12;
+    ctx.fillStyle='#555'; ctx.font='11px Arial,sans-serif';
+    ctx.fillText(movNom[r.tipo]||'Monto',pad,y); y+=6;
+    ctx.fillStyle=col; ctx.font='bold 26px Arial,sans-serif';
+    ctx.fillText('$'+fmtN(r.monto),pad,y+26); y+=38;
+
+    // Cajas Fecha + Concepto
+    var bW=(W-pad*2-8)/2;
+    ctx.fillStyle='#f5f5f0';
+    _rrect(ctx,pad,y,bW,46,6); ctx.fill();
+    _rrect(ctx,pad+bW+8,y,bW,46,6); ctx.fill();
+    ctx.fillStyle='#999'; ctx.font='9px Arial,sans-serif';
+    ctx.fillText('Fecha',pad+10,y+14);
+    ctx.fillText('Concepto',pad+bW+18,y+14);
+    ctx.fillStyle='#222'; ctx.font='11px Arial,sans-serif';
+    ctx.fillText((r.fecha||'').substring(0,18),pad+10,y+33);
+    ctx.fillText((r.concepto||'').substring(0,18),pad+bW+18,y+33);
+    y+=60;
+
+    // Separador
+    ctx.strokeStyle='#e0e0e0'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+    ctx.lineWidth=1; y+=14;
+
+    // Saldo
+    ctx.fillStyle='#111'; ctx.font='bold 12px Arial,sans-serif';
+    ctx.fillText(sldNom[r.tipo]||'Saldo',pad,y+18);
+    ctx.fillStyle=col; ctx.font='bold 22px Arial,sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText('$'+fmtN(r.saldo!==undefined?r.saldo:r.monto),W-pad,y+20);
+    ctx.textAlign='left'; y+=36;
+
+    // Notas
+    if(r.notas||r.estado==='cancelado'){
+      var ntxt=r.estado==='cancelado'?'CANCELADO: '+(r.motivoCancelacion||''):r.notas;
+      ctx.fillStyle=r.estado==='cancelado'?'#e74c3c':'#555';
+      ctx.font='10px Arial,sans-serif';
+      ctx.fillText('Notas: '+ntxt,pad,y); y+=20;
+    }
+
+    // Recortar al tamaño real
+    var fH=y+16, fc=document.createElement('canvas');
+    fc.width=W*sc; fc.height=fH*sc;
+    fc.getContext('2d').drawImage(c,0,0,W*sc,fH*sc,0,0,W*sc,fH*sc);
+    return fc;
+  } catch(e){ console.error('_dibujarReciboCanvas',e); return null; }
+}
+
+// ══════════════════════════════════════════════════
+// ENVÍO WHATSAPP — todo SÍNCRONO para no perder el gesto de usuario
+// ══════════════════════════════════════════════════
+
+// Canvas → Blob de forma síncrona (toBlob es async y rompe el gesto)
+function _canvasABlobSync(canvas) {
+  var du = canvas.toDataURL('image/png');
+  var arr = du.split(','), bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
+  for(var i=0;i<n;i++) u8[i] = bstr.charCodeAt(i);
+  return new Blob([u8], {type:'image/png'});
+}
+
+// Recibo (objeto de DB.recibos) → File PNG, todo síncrono
+function _reciboAFile(r) {
+  var cv = _dibujarReciboCanvas(r);
+  if(!cv) return null;
+  try {
+    var blob = _canvasABlobSync(cv);
+    return new File([blob], 'Recibo-'+(r.folio||'0000')+'.png', {type:'image/png'});
+  } catch(e) { console.error('_reciboAFile', e); return null; }
+}
+
+// Abre WhatsApp sin navegar fuera de la app
+function _abrirWhatsApp() {
+  var a = document.createElement('a');
+  a.href = 'https://web.whatsapp.com/';
+  a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// Respaldo para Windows: portapapeles + WhatsApp, uno por uno
+function _waPortapapeles(files) {
+  if(!files.length) return;
+  var idx = 0;
+
+  function copiar(i, cb) {
+    if(!(navigator.clipboard && window.ClipboardItem)) { if(cb) cb(); return; }
+    navigator.clipboard.write([new ClipboardItem({'image/png': files[i]})])
+      .then(function(){ if(cb) cb(); })
+      .catch(function(){ if(cb) cb(); });
+  }
+
+  if(files.length === 1) {
+    copiar(0, function(){
+      if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp');
+    });
+    _abrirWhatsApp();
+    return;
+  }
+
+  // Varias imágenes: barra compacta para avanzar
+  var prev = document.getElementById('__wa_bar'); if(prev) prev.remove();
+  var bar = document.createElement('div');
+  bar.id = '__wa_bar';
+  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#128C7E;color:#fff;z-index:99999;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,.3);';
+  document.body.appendChild(bar);
+
+  function pintar() {
+    bar.innerHTML =
+      '<div style="flex:1;min-width:150px;">'
+      +'<div style="font-size:11px;opacity:.8;">Recibo '+(idx+1)+' de '+files.length+'</div>'
+      +'<div style="font-size:13px;font-weight:600;">Copiado — pega con Ctrl+V en WhatsApp</div>'
+      +'</div>'
+      +(idx+1 < files.length
+        ? '<button id="__wa_next" style="background:#25D366;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Siguiente →</button>'
+        : '<button id="__wa_fin" style="background:#25D366;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✓ Terminar</button>')
+      +'<button id="__wa_x" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:10px 13px;border-radius:8px;cursor:pointer;">✕</button>';
+
+    var nx = bar.querySelector('#__wa_next');
+    if(nx) nx.onclick = function(){ idx++; copiar(idx, pintar); };
+    var fin = bar.querySelector('#__wa_fin');
+    if(fin) fin.onclick = function(){ bar.remove(); if(typeof toast==='function') toast('✅ '+files.length+' recibos enviados'); };
+    bar.querySelector('#__wa_x').onclick = function(){ bar.remove(); };
+  }
+
+  copiar(0, pintar);
+  _abrirWhatsApp();
+}
+
+// Punto único de envío. Se debe llamar DENTRO del clic del usuario.
+function _enviarArchivosWA(files) {
+  if(!files || !files.length) {
+    if(typeof toast === 'function') toast('No se pudo generar la imagen');
+    return;
+  }
+  // Ruta nativa: Android, iOS, Windows 11 con WhatsApp registrado
+  if(navigator.share && navigator.canShare && navigator.canShare({files: files})) {
+    navigator.share({files: files}).catch(function(e){
+      if(e.name !== 'AbortError') _waPortapapeles(files);
+    });
+    return;
+  }
+  // Ruta Windows/escritorio: portapapeles (nunca descarga archivo)
+  _waPortapapeles(files);
+}
+
+function capturarRecibo(callback) {
+  var card = document.getElementById('recibo-card');
+  if(!card) {
+    // Fallback directo con Canvas 2D
+    var fb = _dibujarReciboCanvas(reciboActual);
+    callback(fb); return;
+  }
+
+  // Clonar en viewport (no off-screen) para que html2canvas lo vea
+  var clone = card.cloneNode(true);
+  var cloneFooter = clone.querySelector('.recibo-footer');
   if(cloneFooter) cloneFooter.remove();
-  clone.style.cssText = 'position:fixed;top:-9999px;left:0;z-index:-9999;background:#fefefe;pointer-events:none;';
+  clone.style.cssText = 'position:fixed;top:0;left:0;z-index:-9999;pointer-events:none;width:360px;overflow:visible;';
   document.body.appendChild(clone);
 
   function cleanup() { if(clone.parentNode) clone.parentNode.removeChild(clone); }
+  function fallbackCanvas() {
+    cleanup();
+    var fb = _dibujarReciboCanvas(reciboActual);
+    callback(fb);
+  }
 
-  // Intento 1: scale 2 con CORS
+  // Intento html2canvas
   html2canvas(clone, {
     scale: 2, useCORS: true, allowTaint: true,
-    backgroundColor: '#fefefe', logging: false,
+    backgroundColor: '#ffffff', logging: false,
     scrollX: 0, scrollY: 0
-  }).then(canvas => {
+  }).then(function(canvas) {
     cleanup(); callback(canvas);
-  }).catch(() => {
-    // Intento 2: scale 1 sin CORS
+  }).catch(function() {
     html2canvas(clone, {
       scale: 1, allowTaint: true,
-      backgroundColor: '#fefefe', logging: false,
+      backgroundColor: '#ffffff', logging: false,
       scrollX: 0, scrollY: 0
-    }).then(canvas => {
+    }).then(function(canvas) {
       cleanup(); callback(canvas);
-    }).catch(() => {
-      cleanup(); callback(null);
-    });
+    }).catch(fallbackCanvas);
   });
 }
 
@@ -9467,53 +9682,16 @@ function descargarImagenRecibo() {
   });
 }
 
+// Envío individual — TODO síncrono dentro del clic, sin diálogos intermedios
 function compartirImagenWA() {
-  var capturedBlob = null;
-
-  // Mostrar diálogo de inmediato (gesto de usuario activo)
-  var ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-  ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-    +'<div id="__wa_ico" style="font-size:36px;margin-bottom:8px;">⏳</div>'
-    +'<p id="__wa_txt" style="margin:0 0 20px;font-size:15px;color:#333;">Preparando recibo...</p>'
-    +'<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;opacity:.45;" disabled>📲 Enviar por WhatsApp</button>'
-    +'<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-    +'</div>';
-  document.body.appendChild(ov);
-  var shareBtn = ov.querySelector('#__wa_sh_btn');
-
-  capturarRecibo(function(canvas) {
-    if(!canvas) { ov.querySelector('#__wa_ico').textContent='❌'; ov.querySelector('#__wa_txt').textContent='Error al generar imagen.'; return; }
-    canvas.toBlob(function(blob) {
-      if(!blob) { ov.querySelector('#__wa_ico').textContent='❌'; ov.querySelector('#__wa_txt').textContent='Error al generar imagen.'; return; }
-      capturedBlob = blob;
-      ov.querySelector('#__wa_ico').textContent = '📎';
-      ov.querySelector('#__wa_txt').textContent = 'Recibo listo';
-      shareBtn.disabled = false; shareBtn.style.opacity = '1';
-    }, 'image/png');
-  });
-
-  // El click aquí es gesto de usuario fresco — navigator.share funciona
-  shareBtn.onclick = function() {
-    if(!capturedBlob) return;
-    ov.remove();
-    var file = new File([capturedBlob], 'Recibo-' + (reciboActual&&reciboActual.folio||'0000') + '.png', {type:'image/png'});
-    if(navigator.share) {
-      navigator.share({files:[file]}).catch(function(e){ if(e.name !== 'AbortError') _waFallback(capturedBlob); });
-    } else {
-      _waFallback(capturedBlob);
-    }
-  };
-  ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
+  var r = reciboActual;
+  if(!r) { if(typeof toast==='function') toast('No hay recibo activo'); return; }
+  var file = _reciboAFile(r);
+  _enviarArchivosWA(file ? [file] : []);
 }
 
 function _waFallback(blob) {
-  if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(() => {
-      if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
-    }).catch(() => {});
-  }
-  window.open('https://wa.me/', '_blank');
+  _waPortapapeles([blob]);
 }
 
 // [INIT movido al final]
@@ -11792,83 +11970,27 @@ function limpiarSeleccion() {
   actualizarSeleccion();
 }
 
-async function enviarSeleccionadosWA() {
+// Envío masivo — genera TODOS los recibos al instante (Canvas 2D síncrono)
+// y comparte en el mismo gesto de usuario. Sin abrir el DOM, sin esperas.
+function enviarSeleccionadosWA() {
   var sels = Array.from(document.querySelectorAll('.cb-recibo:checked'));
   if(!sels.length) return;
-  var folios = sels.map(function(cb){ return cb.dataset.folio; });
-  var btn = document.querySelector('#barra-seleccion button');
-  var textoOrig = btn ? btn.innerHTML : '';
-  var LOTE = 5;
-  var totalLotes = Math.ceil(folios.length / LOTE);
-  var compartidos = 0;
 
-  for(var li=0; li<totalLotes; li++) {
-    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
-    var files = [];
-    for(var i=0; i<loteFolios.length; i++) {
-      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+loteFolios.length+' generando...'; btn.disabled = true; }
-      try {
-        var blob = await generarReciboCanvas(loteFolios[i]);
-        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
-      } catch(e) { console.error('Error folio ' + loteFolios[i], e); }
-    }
-    if(typeof cerrarRecibo === 'function') cerrarRecibo();
-    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    if(!files.length) continue;
+  var files = [];
+  sels.forEach(function(cb) {
+    var folio = cb.dataset.folio;
+    var r = DB.recibos.find(function(x){ return x.folio === folio; });
+    if(!r) return;
+    var f = _reciboAFile(r);
+    if(f) files.push(f);
+  });
 
-    var loteFiles = files;
-    var loteLi = li;
-    var shared = await new Promise(function(resolve) {
-      var ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-      var titulo = totalLotes > 1
-        ? 'Lote '+(loteLi+1)+' de '+totalLotes+': '+loteFiles.length+' recibo(s)'
-        : loteFiles.length+' recibo(s) listo(s)';
-      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
-        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+titulo+'</p>'
-        +'<button id="__wa_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-        +'<br><button id="__wa_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-        +'</div>';
-      document.body.appendChild(ov);
-
-      ov.querySelector('#__wa_share_btn').onclick = async function() {
-        ov.remove();
-        var shareOk = false;
-        if(navigator.share) {
-          try {
-            await navigator.share({files: loteFiles});
-            compartidos += loteFiles.length;
-            shareOk = true;
-          } catch(e) {
-            if(e.name === 'AbortError') { resolve(true); return; }
-            console.warn('Share lote '+loteLi, e);
-          }
-        }
-        // Fallback: copiar primera imagen al portapapeles + abrir WhatsApp
-        if(!shareOk && loteFiles.length > 0) {
-          if(navigator.clipboard && window.ClipboardItem) {
-            try {
-              var firstBlob = await loteFiles[0].arrayBuffer().then(function(ab){ return new Blob([ab],{type:'image/png'}); });
-              await navigator.clipboard.write([new ClipboardItem({'image/png': firstBlob})]);
-              if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
-            } catch(ce){}
-          }
-          window.open('https://wa.me/', '_blank');
-          compartidos += 1;
-        }
-        resolve(true);
-      };
-      ov.querySelector('#__wa_cancel_btn').onclick = function() {
-        ov.remove();
-        resolve(false);
-      };
-    });
-
-    if(!shared) break;
+  if(!files.length) {
+    if(typeof toast === 'function') toast('No se pudieron generar los recibos');
+    return;
   }
 
-  if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) compartidos');
+  _enviarArchivosWA(files);
 }
 
 // Igual que generarReciboCanvas pero devuelve el canvas directamente (no blob)
