@@ -8433,8 +8433,20 @@ function compartirEstadoCuentaWA() {
 
         ov.querySelector('#__ec_share_btn').onclick = async function() {
           ov.remove();
-          try { await navigator.share({files: [file]}); }
-          catch(e) { if(e.name !== 'AbortError') _descargarEC(blob, nombre); }
+          var shareOk = false;
+          if(navigator.share) {
+            try { await navigator.share({files: [file]}); shareOk = true; }
+            catch(e) { if(e.name === 'AbortError') return; }
+          }
+          if(!shareOk) {
+            if(navigator.clipboard && window.ClipboardItem) {
+              try {
+                await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+                if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
+              } catch(ce){}
+            }
+            window.open('https://wa.me/', '_blank');
+          }
         };
         ov.querySelector('#__ec_dl_btn').onclick = function() { ov.remove(); _descargarEC(blob, nombre); };
         ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
@@ -9405,22 +9417,27 @@ function capturarRecibo(callback) {
   const footer = card.querySelector('.recibo-footer');
   if(footer) footer.style.display = 'none';
 
+  // Intento 1: configuración completa
   html2canvas(card, {
-    scale: 2,
-    useCORS: true,
-    allowTaint: true,
-    backgroundColor: '#fefefe',
-    logging: false,
-    width: card.offsetWidth,
-    height: card.offsetHeight,
-    scrollX: 0,
-    scrollY: 0
+    scale: 2, useCORS: true, allowTaint: true,
+    backgroundColor: '#fefefe', logging: false,
+    scrollX: 0, scrollY: 0
   }).then(canvas => {
     if(footer) footer.style.display = 'flex';
     callback(canvas);
   }).catch(() => {
-    if(footer) footer.style.display = 'flex';
-    callback(null);
+    // Intento 2: sin CORS, scale reducido
+    html2canvas(card, {
+      scale: 1, allowTaint: true,
+      backgroundColor: '#fefefe', logging: false,
+      scrollX: 0, scrollY: 0
+    }).then(canvas => {
+      if(footer) footer.style.display = 'flex';
+      callback(canvas);
+    }).catch(() => {
+      if(footer) footer.style.display = 'flex';
+      callback(null);
+    });
   });
 }
 
