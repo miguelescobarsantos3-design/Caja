@@ -9552,61 +9552,66 @@ function _reciboAFile(r) {
   } catch(e) { console.error('_reciboAFile', e); return null; }
 }
 
-// Abre WhatsApp sin navegar fuera de la app
+// Abre WhatsApp Desktop instalado (protocolo whatsapp://), NO el navegador.
+// Solo se llama desde un botón, nunca automáticamente (abrir pestaña roba el
+// foco del documento y cancela la escritura al portapapeles).
 function _abrirWhatsApp() {
   var a = document.createElement('a');
-  a.href = 'https://web.whatsapp.com/';
-  a.target = '_blank'; a.rel = 'noopener';
+  a.href = 'whatsapp://send';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-// Respaldo para Windows: portapapeles + WhatsApp, uno por uno
+// Respaldo escritorio: portapapeles + barra de control. Nunca descarga ni
+// abre pestañas por su cuenta.
 function _waPortapapeles(files) {
   if(!files.length) return;
   var idx = 0;
 
-  function copiar(i, cb) {
-    if(!(navigator.clipboard && window.ClipboardItem)) { if(cb) cb(); return; }
-    navigator.clipboard.write([new ClipboardItem({'image/png': files[i]})])
-      .then(function(){ if(cb) cb(); })
-      .catch(function(){ if(cb) cb(); });
-  }
-
-  if(files.length === 1) {
-    copiar(0, function(){
-      if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp');
-    });
-    _abrirWhatsApp();
-    return;
-  }
-
-  // Varias imágenes: barra compacta para avanzar
   var prev = document.getElementById('__wa_bar'); if(prev) prev.remove();
   var bar = document.createElement('div');
   bar.id = '__wa_bar';
-  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#128C7E;color:#fff;z-index:99999;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,.3);';
+  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#128C7E;color:#fff;z-index:99999;padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,.3);';
   document.body.appendChild(bar);
 
-  function pintar() {
+  function copiar(i) {
+    if(!(navigator.clipboard && window.ClipboardItem)) { pintar('sin-api'); return; }
+    // La escritura se inicia dentro del gesto; el foco debe seguir en la app
+    navigator.clipboard.write([new ClipboardItem({'image/png': files[i]})])
+      .then(function(){ pintar('ok'); })
+      .catch(function(){ pintar('error'); });
+  }
+
+  function pintar(estado) {
+    var msg = estado === 'ok'
+      ? '✅ Copiado — pega con Ctrl+V en WhatsApp'
+      : estado === 'error'
+        ? '⚠️ Haz clic en esta barra y reintenta'
+        : '⚠️ Tu navegador no permite copiar imágenes';
+
     bar.innerHTML =
       '<div style="flex:1;min-width:150px;">'
       +'<div style="font-size:11px;opacity:.8;">Recibo '+(idx+1)+' de '+files.length+'</div>'
-      +'<div style="font-size:13px;font-weight:600;">Copiado — pega con Ctrl+V en WhatsApp</div>'
+      +'<div style="font-size:13px;font-weight:600;">'+msg+'</div>'
       +'</div>'
+      +'<button id="__wa_open" style="background:#25D366;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Abrir WhatsApp</button>'
+      +(estado !== 'ok' ? '<button id="__wa_retry" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Reintentar copia</button>' : '')
       +(idx+1 < files.length
-        ? '<button id="__wa_next" style="background:#25D366;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Siguiente →</button>'
-        : '<button id="__wa_fin" style="background:#25D366;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✓ Terminar</button>')
+        ? '<button id="__wa_next" style="background:#fff;color:#128C7E;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Siguiente →</button>'
+        : '<button id="__wa_fin" style="background:#fff;color:#128C7E;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">✓ Terminar</button>')
       +'<button id="__wa_x" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:10px 13px;border-radius:8px;cursor:pointer;">✕</button>';
 
+    bar.querySelector('#__wa_open').onclick = function(){ _abrirWhatsApp(); };
+    var rt = bar.querySelector('#__wa_retry');
+    if(rt) rt.onclick = function(){ copiar(idx); };
     var nx = bar.querySelector('#__wa_next');
-    if(nx) nx.onclick = function(){ idx++; copiar(idx, pintar); };
+    if(nx) nx.onclick = function(){ idx++; copiar(idx); };
     var fin = bar.querySelector('#__wa_fin');
-    if(fin) fin.onclick = function(){ bar.remove(); if(typeof toast==='function') toast('✅ '+files.length+' recibos enviados'); };
+    if(fin) fin.onclick = function(){ bar.remove(); if(typeof toast==='function') toast('✅ '+files.length+' recibo(s) listos'); };
     bar.querySelector('#__wa_x').onclick = function(){ bar.remove(); };
   }
 
-  copiar(0, pintar);
-  _abrirWhatsApp();
+  pintar('ok');
+  copiar(0);
 }
 
 // Punto único de envío. Se debe llamar DENTRO del clic del usuario.
