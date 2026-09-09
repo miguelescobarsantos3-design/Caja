@@ -8408,44 +8408,44 @@ function compartirEstadoCuentaWA() {
   const el = document.getElementById('modal-estado-cuenta');
   const inner = el ? el.querySelector('.modal') : null;
   if(!inner) return;
-  const p = typeof _ecPrestamoActual !== 'undefined' ? _ecPrestamoActual : null;
-  var capturedBlob = null;
+  const btn = document.querySelector('#modal-estado-cuenta .btn-primary');
+  const textoOrig = btn ? btn.innerHTML : '';
+  if(btn) { btn.innerHTML = '⏳ Generando...'; btn.disabled = true; }
 
-  // Mostrar diálogo INMEDIATAMENTE (gesto de usuario activo)
-  var ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-  ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-    +'<div id="__ec_ico" style="font-size:36px;margin-bottom:8px;">⏳</div>'
-    +'<p id="__ec_txt" style="margin:0 0 6px;font-size:15px;color:#333;">Preparando estado de cuenta...</p>'
-    +'<p style="margin:0 0 20px;font-size:13px;color:#888;">'+(p ? p.nombre : '')+'</p>'
-    +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;opacity:.45;" disabled>📲 Enviar por WhatsApp</button>'
-    +'<br><button id="__ec_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-    +'</div>';
-  document.body.appendChild(ov);
-  var shareBtn = ov.querySelector('#__ec_share_btn');
-  var ico = ov.querySelector('#__ec_ico');
-  var txt = ov.querySelector('#__ec_txt');
+  html2canvas(inner, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false }).then(canvas => {
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    canvas.toBlob(function(blob) {
+      const p = _ecPrestamoActual;
+      const nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
+      const file = new File([blob], 'EstadoCuenta-' + nombre + '.png', {type:'image/png'});
 
-  // Capturar en background
-  html2canvas(inner, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
-    .then(function(canvas) {
-      canvas.toBlob(function(blob) {
-        if(!blob) { txt.textContent = 'Error al generar imagen.'; return; }
-        capturedBlob = blob;
-        ico.textContent = '📊';
-        txt.textContent = 'Estado de cuenta listo';
-        shareBtn.disabled = false;
-        shareBtn.style.opacity = '1';
-      }, 'image/png');
-    }).catch(function() { txt.textContent = 'Error al generar imagen.'; });
+      if(navigator.share) {
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+          +'<div style="font-size:36px;margin-bottom:8px;">📊</div>'
+          +'<p style="margin:0 0 20px;font-size:15px;color:#333;">Estado de cuenta listo<br><strong>' + (p ? p.nombre : '') + '</strong></p>'
+          +'<button id="__ec_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+          +'<br><button id="__ec_dl_btn" style="margin-top:10px;background:none;border:1px solid #ccc;color:#555;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;width:100%;">⬇️ Descargar imagen</button>'
+          +'<br><button id="__ec_cancel_btn" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;">Cancelar</button>'
+          +'</div>';
+        document.body.appendChild(ov);
 
-  // Click = gesto fresco
-  shareBtn.onclick = function() {
-    if(!capturedBlob) return;
-    ov.remove();
-    _abrirWA(capturedBlob);
-  };
-  ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
+        ov.querySelector('#__ec_share_btn').onclick = async function() {
+          ov.remove();
+          try { await navigator.share({files: [file]}); }
+          catch(e) { if(e.name !== 'AbortError') _descargarEC(blob, nombre); }
+        };
+        ov.querySelector('#__ec_dl_btn').onclick = function() { ov.remove(); _descargarEC(blob, nombre); };
+        ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
+      } else {
+        _descargarEC(blob, nombre);
+      }
+    }, 'image/png');
+  }).catch(function(err) {
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    alert('Error al generar imagen: ' + err.message);
+  });
 }
 
 function _descargarEC(blob, nombre) {
@@ -9441,65 +9441,33 @@ function descargarImagenRecibo() {
 }
 
 function compartirImagenWA() {
-  var capturedBlob = null;
+  const btn = document.querySelector('.recibo-footer .btn-primary');
+  const txtOrig = btn ? btn.textContent : '';
+  if(btn) { btn.textContent = 'Generando...'; btn.disabled = true; }
 
-  // Mostrar diálogo INMEDIATAMENTE (gesto de usuario activo)
-  var ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-  ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-    +'<div id="__wa_ico" style="font-size:36px;margin-bottom:8px;">⏳</div>'
-    +'<p id="__wa_txt" style="margin:0 0 20px;font-size:15px;color:#333;">Preparando recibo...</p>'
-    +'<button id="__wa_sh_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;opacity:.45;" disabled>📲 Enviar por WhatsApp</button>'
-    +'<br><button id="__wa_sh_cancel" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-    +'</div>';
-  document.body.appendChild(ov);
-  var shareBtn = ov.querySelector('#__wa_sh_btn');
-  var ico = ov.querySelector('#__wa_ico');
-  var txt = ov.querySelector('#__wa_txt');
+  capturarRecibo(canvas => {
+    if(btn) { btn.textContent = txtOrig; btn.disabled = false; }
+    if(!canvas) return;
+    canvas.toBlob(blob => {
+      if(!blob) return;
+      const file = new File([blob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
 
-  // Capturar en background; cuando listo, activar botón
-  capturarRecibo(function(canvas) {
-    if(!canvas) { ico.textContent = '❌'; txt.textContent = 'Error al generar imagen.'; return; }
-    canvas.toBlob(function(blob) {
-      if(!blob) {
-        // Fallback: dataURL → Blob
-        try {
-          var du = canvas.toDataURL('image/png');
-          var arr = du.split(','), mime = arr[0].match(/:(.*?);/)[1];
-          var bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
-          for(var k=0;k<n;k++) u8[k]=bstr.charCodeAt(k);
-          blob = new Blob([u8], {type: mime});
-        } catch(e) { ico.textContent = '❌'; txt.textContent = 'Error al generar imagen.'; return; }
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+        navigator.share({files: [file]}).catch(e => { if(e.name !== 'AbortError') _waFallback(blob); });
+        return;
       }
-      capturedBlob = blob;
-      ico.textContent = '📎';
-      txt.textContent = 'Recibo listo';
-      shareBtn.disabled = false;
-      shareBtn.style.opacity = '1';
+      _waFallback(blob);
     }, 'image/png');
   });
-
-  // Click aquí = gesto de usuario fresco
-  shareBtn.onclick = function() {
-    if(!capturedBlob) return;
-    ov.remove();
-    _abrirWA(capturedBlob);
-  };
-  ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
-}
-
-function _abrirWA(blob) {
-  // 1. Copiar imagen al portapapeles
-  if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).catch(function(){});
-  }
-  // 2. Abrir WhatsApp Desktop (location.href no es bloqueado por Chrome, window.open sí)
-  window.location.href = 'whatsapp://';
-  if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp.');
 }
 
 function _waFallback(blob) {
-  _abrirWA(blob);
+  if(navigator.clipboard && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(() => {
+      if(typeof toast === 'function') toast('✅ Imagen copiada. Pega en WhatsApp con Ctrl+V.');
+    }).catch(() => {});
+  }
+  window.open('https://wa.me/', '_blank');
 }
 
 // [INIT movido al final]
@@ -11782,65 +11750,93 @@ async function enviarSeleccionadosWA() {
   var sels = Array.from(document.querySelectorAll('.cb-recibo:checked'));
   if(!sels.length) return;
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
-  var barraBtn = document.querySelector('#barra-seleccion button');
-  var textoOrig = barraBtn ? barraBtn.innerHTML : '';
+  var btn = document.querySelector('#barra-seleccion button');
+  var textoOrig = btn ? btn.innerHTML : '';
+  var LOTE = 5;
+  var totalLotes = Math.ceil(folios.length / LOTE);
+  var compartidos = 0;
 
-  // Generar todas las imágenes
-  var blobs = [];
-  for(var i=0; i<folios.length; i++) {
-    if(barraBtn) { barraBtn.innerHTML = '⏳ '+(i+1)+'/'+folios.length+'...'; barraBtn.disabled = true; }
-    try {
-      var b = await generarReciboCanvas(folios[i]);
-      if(b) blobs.push({blob: b, folio: folios[i]});
-    } catch(e) { console.error('Error folio '+folios[i], e); }
-  }
-  if(typeof cerrarRecibo === 'function') cerrarRecibo();
-  if(barraBtn) { barraBtn.innerHTML = textoOrig; barraBtn.disabled = false; }
-  if(!blobs.length) return;
-
-  // Panel fijo — no bloquea la app, el usuario alt-tabea libremente
-  var panel = document.createElement('div');
-  panel.id = '__wa_bulk_panel';
-  panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a3a6b;color:#fff;z-index:99999;padding:12px 16px;box-shadow:0 -4px 20px rgba(0,0,0,.3);';
-  document.body.appendChild(panel);
-
-  var idx = 0;
-  function renderPanel() {
-    if(idx >= blobs.length) {
-      panel.remove();
-      if(typeof toast === 'function') toast('✅ '+blobs.length+' recibo(s) listos en portapapeles.');
-      return;
+  for(var li=0; li<totalLotes; li++) {
+    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
+    var files = [];
+    for(var i=0; i<loteFolios.length; i++) {
+      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+loteFolios.length+' generando...'; btn.disabled = true; }
+      try {
+        var blob = await generarReciboCanvas(loteFolios[i]);
+        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
+      } catch(e) { console.error('Error folio ' + loteFolios[i], e); }
     }
-    var item = blobs[idx];
-    var restantes = blobs.length - idx;
-    panel.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-      +'<div style="flex:1;min-width:140px;">'
-      +'<div style="font-size:11px;opacity:.7;">'+( idx+1)+' de '+blobs.length+' — Folio '+item.folio+'</div>'
-      +'<div style="font-size:13px;font-weight:600;">📋 Copia imagen → pega en WhatsApp</div>'
-      +'</div>'
-      +'<button id="__wa_p_send" style="background:#25D366;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;">📲 '+(restantes > 1 ? 'Enviar ('+restantes+' restantes)' : 'Enviar último')+'</button>'
-      +(idx+1 < blobs.length ? '<button id="__wa_p_skip" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;cursor:pointer;">Saltar</button>' : '')
-      +'<button id="__wa_p_cancel" style="background:rgba(255,255,255,.1);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;cursor:pointer;">✕</button>'
-      +'</div>';
+    if(typeof cerrarRecibo === 'function') cerrarRecibo();
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    if(!files.length) continue;
 
-    panel.querySelector('#__wa_p_send').onclick = function() {
-      // Copiar imagen (gesto activo) + abrir WA sin salir de la app
-      if(navigator.clipboard && window.ClipboardItem) {
-        navigator.clipboard.write([new ClipboardItem({'image/png': item.blob})]).catch(function(){});
-      }
-      var a = document.createElement('a');
-      a.href = 'whatsapp://'; a.target = '_blank'; a.rel = 'noopener';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      idx++;
-      renderPanel();
-    };
-    var skip = panel.querySelector('#__wa_p_skip');
-    if(skip) skip.onclick = function() { idx++; renderPanel(); };
-    panel.querySelector('#__wa_p_cancel').onclick = function() { panel.remove(); };
+    var loteFiles = files;
+    var loteLi = li;
+    var shared = await new Promise(function(resolve) {
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      var titulo = totalLotes > 1
+        ? 'Lote '+(loteLi+1)+' de '+totalLotes+': '+loteFiles.length+' recibo(s)'
+        : loteFiles.length+' recibo(s) listo(s)';
+      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
+        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+titulo+'</p>'
+        +'<button id="__wa_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
+        +'<br><button id="__wa_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+        +'</div>';
+      document.body.appendChild(ov);
+
+      ov.querySelector('#__wa_share_btn').onclick = async function() {
+        ov.remove();
+        if(navigator.share) {
+          try {
+            await navigator.share({files: loteFiles});
+            compartidos += loteFiles.length;
+          } catch(e) {
+            if(e.name !== 'AbortError') console.warn('Share lote '+loteLi, e);
+          }
+        }
+        resolve(true);
+      };
+      ov.querySelector('#__wa_cancel_btn').onclick = function() {
+        ov.remove();
+        resolve(false);
+      };
+    });
+
+    if(!shared) break;
   }
 
-  renderPanel();
+  if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) compartidos');
+}
+
+// Igual que generarReciboCanvas pero devuelve el canvas directamente (no blob)
+function generarReciboCanvasRaw(folio) {
+  return new Promise(function(resolve, reject) {
+    try {
+      var r = DB.recibos.find(function(x){ return x.folio === folio; });
+      if(!r) { reject('No encontrado: '+folio); return; }
+      if(typeof verReciboAnterior === 'function') verReciboAnterior(folio);
+      setTimeout(function() {
+        var card = document.getElementById('recibo-card');
+        if(!card) { reject('recibo-card no encontrado'); return; }
+        var footer = card.querySelector('.recibo-footer');
+        if(footer) footer.style.display = 'none';
+        html2canvas(card, {
+          scale: 2, useCORS: true, allowTaint: true,
+          backgroundColor: '#fefefe', logging: false,
+          width: card.offsetWidth, height: card.offsetHeight,
+          scrollX: 0, scrollY: 0
+        }).then(function(canvas) {
+          if(footer) footer.style.display = 'flex';
+          resolve(canvas);
+        }).catch(function(e) {
+          if(footer) footer.style.display = 'flex';
+          reject(e);
+        });
+      }, 200);
+    } catch(e) { reject(e); }
+  });
 }
 
 function generarReciboCanvas(folio) {
