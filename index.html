@@ -8439,19 +8439,11 @@ function compartirEstadoCuentaWA() {
       }, 'image/png');
     }).catch(function() { txt.textContent = 'Error al generar imagen.'; });
 
-  // Click = gesto fresco → navigator.share funciona
+  // Click = gesto fresco
   shareBtn.onclick = function() {
     if(!capturedBlob) return;
     ov.remove();
-    var nombre = p ? p.nombre.split(' ')[0] : 'EstadoCuenta';
-    var file = new File([capturedBlob], 'EstadoCuenta-'+nombre+'.png', {type:'image/png'});
-    if(navigator.share) {
-      navigator.share({files:[file]}).catch(function(e) {
-        if(e.name !== 'AbortError') _waFallback(capturedBlob);
-      });
-    } else {
-      _waFallback(capturedBlob);
-    }
+    _abrirWA(capturedBlob);
   };
   ov.querySelector('#__ec_cancel_btn').onclick = function() { ov.remove(); };
 }
@@ -9476,28 +9468,28 @@ function compartirImagenWA() {
     }, 'image/png');
   });
 
-  // Click aquí = gesto de usuario fresco → navigator.share funciona
+  // Click aquí = gesto de usuario fresco
   shareBtn.onclick = function() {
     if(!capturedBlob) return;
     ov.remove();
-    var file = new File([capturedBlob], 'Recibo-' + (reciboActual.folio||'0000') + '.png', {type:'image/png'});
-    if(navigator.share) {
-      navigator.share({files:[file]}).catch(function(e) {
-        if(e.name !== 'AbortError') _waFallback(capturedBlob);
-      });
-    } else {
-      _waFallback(capturedBlob);
-    }
+    _abrirWA(capturedBlob);
   };
   ov.querySelector('#__wa_sh_cancel').onclick = function() { ov.remove(); };
 }
 
-function _waFallback(blob) {
+function _abrirWA(blob) {
+  // 1. Copiar imagen al portapapeles
   if(navigator.clipboard && window.ClipboardItem) {
-    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(() => {
-      if(typeof toast === 'function') toast('✅ Imagen copiada — ve a WhatsApp Desktop y pega con Ctrl+V.');
-    }).catch(() => {});
+    navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).catch(function(){});
   }
+  // 2. Abrir WhatsApp Desktop (location.href no es bloqueado por Chrome, window.open sí)
+  window.location.href = 'whatsapp://';
+  if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp.');
+}
+
+function _waFallback(blob) {
+  _abrirWA(blob);
+}
 }
 
 // [INIT movido al final]
@@ -11816,15 +11808,16 @@ async function enviarSeleccionadosWA() {
         +'</div>';
       document.body.appendChild(ov);
 
-      ov.querySelector('#__wa_share_btn').onclick = async function() {
+      ov.querySelector('#__wa_share_btn').onclick = function() {
         ov.remove();
-        if(navigator.share) {
-          try {
-            await navigator.share({files: loteFiles});
-            compartidos += loteFiles.length;
-          } catch(e) {
-            if(e.name !== 'AbortError') console.warn('Share lote '+loteLi, e);
+        if(loteFiles.length > 0) {
+          // File extiende Blob — pasar directo, sin async
+          if(navigator.clipboard && window.ClipboardItem) {
+            navigator.clipboard.write([new ClipboardItem({'image/png': loteFiles[0]})]).catch(function(){});
           }
+          window.location.href = 'whatsapp://';
+          if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp.');
+          compartidos += loteFiles.length;
         }
         resolve(true);
       };
