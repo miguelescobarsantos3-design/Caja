@@ -8412,7 +8412,13 @@ function compartirEstadoCuentaWA() {
   const textoOrig = btn ? btn.innerHTML : '';
   if(btn) { btn.innerHTML = '⏳ Generando...'; btn.disabled = true; }
 
-  html2canvas(inner, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false }).then(canvas => {
+  // Clonar en body para evitar interferencia del modal padre
+  const ecClone = inner.cloneNode(true);
+  ecClone.style.cssText = 'position:fixed;top:-9999px;left:0;z-index:-9999;background:#ffffff;pointer-events:none;';
+  document.body.appendChild(ecClone);
+
+  html2canvas(ecClone, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0 }).then(canvas => {
+    if(ecClone.parentNode) ecClone.parentNode.removeChild(ecClone);
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
     canvas.toBlob(function(blob) {
       const p = _ecPrestamoActual;
@@ -8455,6 +8461,7 @@ function compartirEstadoCuentaWA() {
       }
     }, 'image/png');
   }).catch(function(err) {
+    if(ecClone.parentNode) ecClone.parentNode.removeChild(ecClone);
     if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
     alert('Error al generar imagen: ' + err.message);
   });
@@ -9414,29 +9421,32 @@ function capturarRecibo(callback) {
   const card = document.getElementById('recibo-card');
   if(!card) { callback(null); return; }
 
-  const footer = card.querySelector('.recibo-footer');
-  if(footer) footer.style.display = 'none';
+  // Clonar en body para evitar interferencia de CSS del modal padre
+  const clone = card.cloneNode(true);
+  const cloneFooter = clone.querySelector('.recibo-footer');
+  if(cloneFooter) cloneFooter.remove();
+  clone.style.cssText = 'position:fixed;top:-9999px;left:0;z-index:-9999;background:#fefefe;pointer-events:none;';
+  document.body.appendChild(clone);
 
-  // Intento 1: configuración completa
-  html2canvas(card, {
+  function cleanup() { if(clone.parentNode) clone.parentNode.removeChild(clone); }
+
+  // Intento 1: scale 2 con CORS
+  html2canvas(clone, {
     scale: 2, useCORS: true, allowTaint: true,
     backgroundColor: '#fefefe', logging: false,
     scrollX: 0, scrollY: 0
   }).then(canvas => {
-    if(footer) footer.style.display = 'flex';
-    callback(canvas);
+    cleanup(); callback(canvas);
   }).catch(() => {
-    // Intento 2: sin CORS, scale reducido
-    html2canvas(card, {
+    // Intento 2: scale 1 sin CORS
+    html2canvas(clone, {
       scale: 1, allowTaint: true,
       backgroundColor: '#fefefe', logging: false,
       scrollX: 0, scrollY: 0
     }).then(canvas => {
-      if(footer) footer.style.display = 'flex';
-      callback(canvas);
+      cleanup(); callback(canvas);
     }).catch(() => {
-      if(footer) footer.style.display = 'flex';
-      callback(null);
+      cleanup(); callback(null);
     });
   });
 }
