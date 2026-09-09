@@ -9400,15 +9400,15 @@ function iniciarDesdesCero() {
 // ══════════════════════════════════════════════════
 function capturarRecibo(callback) {
   const card = document.getElementById('recibo-card');
-  if(!card) return;
+  if(!card) { callback(null); return; }
 
-  // Ocultar footer durante la captura
   const footer = card.querySelector('.recibo-footer');
   if(footer) footer.style.display = 'none';
 
   html2canvas(card, {
-    scale: 3,
+    scale: 2,
     useCORS: true,
+    allowTaint: true,
     backgroundColor: '#fefefe',
     logging: false,
     width: card.offsetWidth,
@@ -9420,6 +9420,7 @@ function capturarRecibo(callback) {
     callback(canvas);
   }).catch(() => {
     if(footer) footer.style.display = 'flex';
+    callback(null);
   });
 }
 
@@ -9458,8 +9459,18 @@ function compartirImagenWA() {
 
   // Capturar en background; cuando listo, activar botón
   capturarRecibo(function(canvas) {
+    if(!canvas) { ico.textContent = '❌'; txt.textContent = 'Error al generar imagen.'; return; }
     canvas.toBlob(function(blob) {
-      if(!blob) { txt.textContent = 'Error al generar imagen.'; return; }
+      if(!blob) {
+        // Fallback: dataURL → Blob
+        try {
+          var du = canvas.toDataURL('image/png');
+          var arr = du.split(','), mime = arr[0].match(/:(.*?);/)[1];
+          var bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
+          for(var k=0;k<n;k++) u8[k]=bstr.charCodeAt(k);
+          blob = new Blob([u8], {type: mime});
+        } catch(e) { ico.textContent = '❌'; txt.textContent = 'Error al generar imagen.'; return; }
+      }
       capturedBlob = blob;
       ico.textContent = '📎';
       txt.textContent = 'Recibo listo';
@@ -11771,62 +11782,65 @@ async function enviarSeleccionadosWA() {
   var sels = Array.from(document.querySelectorAll('.cb-recibo:checked'));
   if(!sels.length) return;
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
-  var btn = document.querySelector('#barra-seleccion button');
-  var textoOrig = btn ? btn.innerHTML : '';
-  var LOTE = 5;
-  var totalLotes = Math.ceil(folios.length / LOTE);
-  var compartidos = 0;
+  var barraBtn = document.querySelector('#barra-seleccion button');
+  var textoOrig = barraBtn ? barraBtn.innerHTML : '';
 
-  for(var li=0; li<totalLotes; li++) {
-    var loteFolios = folios.slice(li*LOTE, (li+1)*LOTE);
-    var files = [];
-    for(var i=0; i<loteFolios.length; i++) {
-      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+loteFolios.length+' generando...'; btn.disabled = true; }
-      try {
-        var blob = await generarReciboCanvas(loteFolios[i]);
-        if(blob) files.push(new File([blob], 'Recibo-'+loteFolios[i]+'.png', {type:'image/png'}));
-      } catch(e) { console.error('Error folio '+loteFolios[i], e); }
+  // Generar todas las imágenes
+  var blobs = [];
+  for(var i=0; i<folios.length; i++) {
+    if(barraBtn) { barraBtn.innerHTML = '⏳ '+(i+1)+'/'+folios.length+'...'; barraBtn.disabled = true; }
+    try {
+      var b = await generarReciboCanvas(folios[i]);
+      if(b) blobs.push({blob: b, folio: folios[i]});
+    } catch(e) { console.error('Error folio '+folios[i], e); }
+  }
+  if(typeof cerrarRecibo === 'function') cerrarRecibo();
+  if(barraBtn) { barraBtn.innerHTML = textoOrig; barraBtn.disabled = false; }
+  if(!blobs.length) return;
+
+  // Panel fijo — no bloquea la app, el usuario alt-tabea libremente
+  var panel = document.createElement('div');
+  panel.id = '__wa_bulk_panel';
+  panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a3a6b;color:#fff;z-index:99999;padding:12px 16px;box-shadow:0 -4px 20px rgba(0,0,0,.3);';
+  document.body.appendChild(panel);
+
+  var idx = 0;
+  function renderPanel() {
+    if(idx >= blobs.length) {
+      panel.remove();
+      if(typeof toast === 'function') toast('✅ '+blobs.length+' recibo(s) listos en portapapeles.');
+      return;
     }
-    if(typeof cerrarRecibo === 'function') cerrarRecibo();
-    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-    if(!files.length) continue;
+    var item = blobs[idx];
+    var restantes = blobs.length - idx;
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      +'<div style="flex:1;min-width:140px;">'
+      +'<div style="font-size:11px;opacity:.7;">'+( idx+1)+' de '+blobs.length+' — Folio '+item.folio+'</div>'
+      +'<div style="font-size:13px;font-weight:600;">📋 Copia imagen → pega en WhatsApp</div>'
+      +'</div>'
+      +'<button id="__wa_p_send" style="background:#25D366;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;">📲 '+(restantes > 1 ? 'Enviar ('+restantes+' restantes)' : 'Enviar último')+'</button>'
+      +(idx+1 < blobs.length ? '<button id="__wa_p_skip" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;cursor:pointer;">Saltar</button>' : '')
+      +'<button id="__wa_p_cancel" style="background:rgba(255,255,255,.1);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;cursor:pointer;">✕</button>'
+      +'</div>';
 
-    var loteFiles = files;
-    var loteLi = li;
-    var shared = await new Promise(function(resolve) {
-      var ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-      var titulo = totalLotes > 1
-        ? 'Lote '+(loteLi+1)+' de '+totalLotes+': '+loteFiles.length+' recibo(s) listos'
-        : loteFiles.length+' recibo(s) listos';
-      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
-        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+titulo+'</p>'
-        +'<button id="__wa_share_btn" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-        +'<br><button id="__wa_cancel_btn" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-        +'</div>';
-      document.body.appendChild(ov);
-
-      ov.querySelector('#__wa_share_btn').onclick = function() {
-        ov.remove();
-        if(loteFiles.length > 0) {
-          // File extiende Blob — pasar directo, sin async
-          if(navigator.clipboard && window.ClipboardItem) {
-            navigator.clipboard.write([new ClipboardItem({'image/png': loteFiles[0]})]).catch(function(){});
-          }
-          window.location.href = 'whatsapp://';
-          if(typeof toast === 'function') toast('✅ Imagen copiada — pega con Ctrl+V en WhatsApp.');
-          compartidos += loteFiles.length;
-        }
-        resolve(true);
-      };
-      ov.querySelector('#__wa_cancel_btn').onclick = function() { ov.remove(); resolve(false); };
-    });
-
-    if(!shared) break;
+    panel.querySelector('#__wa_p_send').onclick = function() {
+      // Copiar imagen (gesto activo) + abrir WA sin salir de la app
+      if(navigator.clipboard && window.ClipboardItem) {
+        navigator.clipboard.write([new ClipboardItem({'image/png': item.blob})]).catch(function(){});
+      }
+      var a = document.createElement('a');
+      a.href = 'whatsapp://'; a.target = '_blank'; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      idx++;
+      renderPanel();
+    };
+    var skip = panel.querySelector('#__wa_p_skip');
+    if(skip) skip.onclick = function() { idx++; renderPanel(); };
+    panel.querySelector('#__wa_p_cancel').onclick = function() { panel.remove(); };
   }
 
-  if(compartidos > 0 && typeof toast === 'function') toast('✅ '+compartidos+' recibo(s) enviados');
+  renderPanel();
 }
 
 function generarReciboCanvas(folio) {
