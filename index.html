@@ -9640,6 +9640,97 @@ function _soportaCompartirArchivos() {
   } catch(e) { return false; }
 }
 
+// Diagnóstico: qué soporta realmente este navegador
+function diagnosticoWA() {
+  var t = null, canShare1 = false, canShareN = false;
+  try {
+    t = new File([new Blob(['x'],{type:'image/png'})],'t.png',{type:'image/png'});
+    canShare1 = navigator.canShare ? navigator.canShare({files:[t]}) : false;
+    canShareN = navigator.canShare ? navigator.canShare({files:[t,t]}) : false;
+  } catch(e) {}
+
+  var filas = [
+    ['navigator.share', !!navigator.share],
+    ['navigator.canShare', !!navigator.canShare],
+    ['Compartir 1 archivo', canShare1],
+    ['Compartir varios archivos', canShareN],
+    ['Portapapeles (write)', !!(navigator.clipboard && navigator.clipboard.write)],
+    ['ClipboardItem', !!window.ClipboardItem],
+    ['Arrastrar archivos', typeof DataTransfer !== 'undefined'],
+    ['Contexto seguro (HTTPS)', !!window.isSecureContext]
+  ];
+
+  var html = filas.map(function(f){
+    return '<div style="display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid #eee;">'
+      +'<span style="font-size:13px;color:#444;">'+f[0]+'</span>'
+      +'<strong style="font-size:13px;color:'+(f[1]?'#1a8f4c':'#c0392b')+';">'+(f[1]?'Sí':'No')+'</strong></div>';
+  }).join('');
+
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  ov.innerHTML = '<div style="background:#fff;padding:24px;border-radius:14px;max-width:420px;width:90%;">'
+    +'<h3 style="margin:0 0 4px;font-size:17px;">Diagnóstico de envío</h3>'
+    +'<p style="margin:0 0 14px;font-size:12px;color:#888;">'+navigator.userAgent.substring(0,90)+'</p>'
+    +html
+    +'<div style="margin-top:16px;padding:12px;background:'+(canShareN?'#eafaf1':'#fdf3e7')+';border-radius:8px;font-size:13px;color:#333;">'
+    +(canShareN
+      ? '<strong>Envío masivo directo disponible.</strong> Todos los recibos se mandan juntos con el selector del sistema.'
+      : '<strong>Sin compartir nativo.</strong> Se usará arrastrar y soltar para mandar todos juntos.')
+    +'</div>'
+    +'<button id="__diag_x" style="margin-top:14px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Cerrar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#__diag_x').onclick = function(){ ov.remove(); };
+}
+
+// Panel para enviar VARIOS recibos de una sola vez, arrastrando
+function _panelArrastre(files) {
+  var prev = document.getElementById('__wa_drag'); if(prev) prev.remove();
+
+  var panel = document.createElement('div');
+  panel.id = '__wa_drag';
+  panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:3px solid #128C7E;z-index:99999;padding:14px 16px;box-shadow:0 -6px 24px rgba(0,0,0,.25);';
+
+  var minis = files.map(function(f, i){
+    return '<img src="'+URL.createObjectURL(f)+'" style="height:56px;border-radius:5px;border:1px solid #ddd;flex-shrink:0;" alt="Recibo '+(i+1)+'">';
+  }).join('');
+
+  panel.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'
+    +'<div id="__drag_zone" draggable="true" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#e8f6f1;border:2px dashed #128C7E;border-radius:10px;cursor:grab;flex:1;min-width:240px;">'
+      +'<span style="font-size:26px;">📎</span>'
+      +'<div>'
+        +'<div style="font-size:14px;font-weight:700;color:#0d5c4d;">Arrastra los '+files.length+' recibos a WhatsApp</div>'
+        +'<div style="font-size:12px;color:#3d7a6c;">Mantén presionado aquí y suelta en la conversación</div>'
+      +'</div>'
+    +'</div>'
+    +'<button id="__drag_uno" style="background:#f0f0f0;color:#444;border:none;padding:11px 15px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Copiar uno por uno</button>'
+    +'<button id="__drag_wa" style="background:#25D366;color:#fff;border:none;padding:11px 15px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Abrir WhatsApp</button>'
+    +'<button id="__drag_x" style="background:#eee;color:#666;border:none;padding:11px 13px;border-radius:8px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">'+minis+'</div>';
+
+  document.body.appendChild(panel);
+
+  var zona = panel.querySelector('#__drag_zone');
+  zona.addEventListener('dragstart', function(e){
+    try {
+      e.dataTransfer.effectAllowed = 'copy';
+      files.forEach(function(f){ e.dataTransfer.items.add(f); });
+      zona.style.opacity = '0.5';
+    } catch(err) { console.error('dragstart', err); }
+  });
+  zona.addEventListener('dragend', function(){ zona.style.opacity = '1'; });
+
+  panel.querySelector('#__drag_wa').onclick = function(){ _abrirWhatsApp(); };
+  panel.querySelector('#__drag_x').onclick = function(){ panel.remove(); };
+  panel.querySelector('#__drag_uno').onclick = function(){
+    panel.remove();
+    var ctrl = _barraWA(files.length, function(i){ return Promise.resolve(files[i]); });
+    ctrl.ir(0);
+  };
+}
+
 // Captura el recibo REAL que está en pantalla → Promise<Blob>
 function _blobReciboEnPantalla() {
   return new Promise(function(resolve, reject) {
@@ -11158,8 +11249,16 @@ function normalizarVisibilidadSocios() {
     return '\x3Cdiv class="form-group"\x3E\x3Clabel\x3E'+label+'\x3C/label\x3E\x3Cinput type="'+tipo+'" id="'+id+'" value="'+esc(valor)+'"\x3E\x3C/div\x3E';
   }
   function cuentaOptionsHtmlTandas(){
-    if(typeof opcionesCuentasCajaHTML === 'function') return opcionesCuentasCajaHTML();
-    return '<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>';
+    var base = (typeof opcionesCuentasCajaHTML === 'function')
+      ? opcionesCuentasCajaHTML()
+      : '<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>';
+    // "Sin cuenta": registra la entrega sin descontar de ninguna cuenta
+    return base + '<option value="ninguna">— Sin cuenta —</option>';
+  }
+  // Descuenta solo si se eligió una cuenta real
+  function aplicarSaldoTanda(cuenta, delta){
+    if(!cuenta || cuenta === 'ninguna') return;
+    if(typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(cuenta, delta);
   }
   function guardarYRefrescar(vista){
     try { if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos(); } catch(e) {}
@@ -11386,8 +11485,8 @@ function normalizarVisibilidadSocios() {
     t.entregas = (t.entregas||[]).filter(function(e){ return !(Number(e.grupo)===g.grupo && Number(e.turno)===g.turno); });
     t.entregas.push({grupo:g.grupo,turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre,cuenta:cuenta});
     if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
-    DB.movimientos.unshift({tipo:'tanda300',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+g.grupo+' T'+g.turno});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    DB.movimientos.unshift({tipo:'tanda300',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+g.grupo+' T'+g.turno+(cuenta==='ninguna'?' · sin cuenta':'')});
+    aplicarSaldoTanda(cuenta, -monto);
     DB.tanda300 = t; cerrarModal('modal-t300e2'); guardarYRefrescar('t300');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -11422,8 +11521,8 @@ function normalizarVisibilidadSocios() {
     t.entregas = (t.entregas||[]).filter(function(e){ return Number(e.turno)!==g.turno; });
     t.entregas.push({turno:g.turno,monto:monto,fecha:fecha,nombre:g.nombre,cuenta:cuenta});
     if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
-    DB.movimientos.unshift({tipo:'tanda1000',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+g.turno});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    DB.movimientos.unshift({tipo:'tanda1000',socio:g.nombre,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+g.turno+(cuenta==='ninguna'?' · sin cuenta':'')});
+    aplicarSaldoTanda(cuenta, -monto);
     DB.tanda1000 = t; cerrarModal('modal-t1000e2'); guardarYRefrescar('t1000');
     if(typeof guardarEnLocal==='function') guardarEnLocal();
     if(typeof guardarEnFirebase==='function') guardarEnFirebase();
@@ -11457,8 +11556,8 @@ function normalizarVisibilidadSocios() {
     var nombreEntrega = grupo===1 ? T300_G1[turno-1] : T300_G2[turno-1];
     t.entregas.push({grupo:grupo, turno:turno, monto:monto, fecha:fecha, nombre:nombreEntrega, cuenta:cuenta});
     if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
-    DB.movimientos.unshift({tipo:'tanda300',socio:nombreEntrega,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+grupo+' T'+turno});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    DB.movimientos.unshift({tipo:'tanda300',socio:nombreEntrega,monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $300 · G'+grupo+' T'+turno+(cuenta==='ninguna'?' · sin cuenta':'')});
+    aplicarSaldoTanda(cuenta, -monto);
     cerrarModal('modal-t300e');
     guardarYRefrescar('t300');
   };
@@ -11602,8 +11701,8 @@ function normalizarVisibilidadSocios() {
     var t = window.getTanda1000();
     t.entregas.push({turno:idx+1, monto:monto, fecha:fecha, nombre:T1000_P[idx], cuenta:cuenta});
     if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
-    DB.movimientos.unshift({tipo:'tanda1000',socio:T1000_P[idx],monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+(idx+1)});
-    if(typeof actualizarSaldoCuenta==='function') actualizarSaldoCuenta(cuenta, -monto);
+    DB.movimientos.unshift({tipo:'tanda1000',socio:T1000_P[idx],monto:-monto,fecha:fecha,cuenta:cuenta,notas:'Entrega Tanda $1,000 · T'+(idx+1)+(cuenta==='ninguna'?' · sin cuenta':'')});
+    aplicarSaldoTanda(cuenta, -monto);
     cerrarModal('modal-t1000e');
     guardarYRefrescar('t1000');
   };
@@ -12088,56 +12187,54 @@ function limpiarSeleccion() {
   actualizarSeleccion();
 }
 
-// Envío masivo — usa el recibo real de cada folio, formato intacto
+// Envío masivo — genera TODOS los recibos (formato original) y los manda juntos:
+// compartir nativo si existe, si no arrastrar y soltar en un solo movimiento.
 function enviarSeleccionadosWA() {
   var sels = Array.from(document.querySelectorAll('.cb-recibo:checked'));
   if(!sels.length) return;
   var folios = sels.map(function(cb){ return cb.dataset.folio; });
   var btn = document.querySelector('#barra-seleccion button');
   var textoOrig = btn ? btn.innerHTML : '';
+  var nativo = _soportaCompartirArchivos();
+  var files = [];
+  var i = 0;
 
-  // Móvil / share nativo: generar todos y compartir juntos
-  if(_soportaCompartirArchivos()) {
-    var files = [];
-    var i = 0;
-    var siguiente = function() {
-      if(i >= folios.length) {
-        if(typeof cerrarRecibo === 'function') cerrarRecibo();
-        if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
-        if(!files.length) { if(typeof toast==='function') toast('No se pudieron generar los recibos'); return; }
-        var ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-        ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
-          +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
-          +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+files.length+' recibo(s) listos</p>'
-          +'<button id="__wa_s" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar por WhatsApp</button>'
-          +'<br><button id="__wa_c" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
-          +'</div>';
-        document.body.appendChild(ov);
-        ov.querySelector('#__wa_s').onclick = function(){ ov.remove(); _enviarArchivosWA(files); };
-        ov.querySelector('#__wa_c').onclick = function(){ ov.remove(); };
-        return;
-      }
-      if(btn) { btn.innerHTML = '⏳ '+(i+1)+'/'+folios.length+'...'; btn.disabled = true; }
-      var f = folios[i];
-      _blobReciboPorFolio(f).then(function(blob){
-        files.push(new File([blob], 'Recibo-'+f+'.png', {type:'image/png'}));
-      }).catch(function(e){ console.warn('folio '+f, e); })
-        .then(function(){ i++; siguiente(); });
-    };
-    siguiente();
-    return;
+  function terminar() {
+    if(typeof cerrarRecibo === 'function') cerrarRecibo();
+    if(btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    if(!files.length) { if(typeof toast === 'function') toast('No se pudieron generar los recibos'); return; }
+
+    if(nativo) {
+      // El clic del diálogo es gesto fresco → share con todos los archivos
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      ov.innerHTML = '<div style="background:#fff;padding:28px 24px;border-radius:14px;text-align:center;max-width:290px;width:85%;">'
+        +'<div style="font-size:36px;margin-bottom:8px;">📎</div>'
+        +'<p style="margin:0 0 20px;font-size:15px;color:#333;">'+files.length+' recibos listos</p>'
+        +'<button id="__wa_s" style="background:#25D366;color:#fff;border:none;padding:14px 0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">📲 Enviar todos por WhatsApp</button>'
+        +'<br><button id="__wa_c" style="margin-top:12px;background:none;border:none;color:#999;font-size:13px;cursor:pointer;">Cancelar</button>'
+        +'</div>';
+      document.body.appendChild(ov);
+      ov.querySelector('#__wa_s').onclick = function(){ ov.remove(); _enviarArchivosWA(files); };
+      ov.querySelector('#__wa_c').onclick = function(){ ov.remove(); };
+    } else {
+      // Escritorio: panel de arrastre — todos los archivos en un solo gesto
+      _panelArrastre(files);
+    }
   }
 
-  // Escritorio: barra con portapapeles, un recibo a la vez.
-  // Cada clic en "Siguiente" es gesto fresco y pasa la promesa a ClipboardItem.
-  var ctrl = _barraWA(folios.length, function(i){
-    return _blobReciboPorFolio(folios[i]).then(function(blob){
-      if(typeof cerrarRecibo === 'function') cerrarRecibo();
-      return blob;
-    });
-  });
-  ctrl.ir(0);
+  function siguiente() {
+    if(i >= folios.length) { terminar(); return; }
+    if(btn) { btn.innerHTML = '⏳ Generando '+(i+1)+' de '+folios.length+'...'; btn.disabled = true; }
+    var f = folios[i];
+    _blobReciboPorFolio(f).then(function(blob){
+      files.push(new File([blob], 'Recibo-'+f+'.png', {type:'image/png'}));
+    }).catch(function(e){
+      console.warn('folio '+f, e);
+    }).then(function(){ i++; siguiente(); });
+  }
+
+  siguiente();
 }
 
 // Igual que generarReciboCanvas pero devuelve el canvas directamente (no blob)
@@ -13044,6 +13141,201 @@ function prActualizarInteres() {
     </div>
   </div>
 </div>
+
+<script>
+// ══════════════════════════════════════════════════
+// EXPORTAR A EXCEL
+// ══════════════════════════════════════════════════
+function abrirExportarExcel() {
+  var m = document.getElementById('modal-exportar-excel');
+  if(m) m.classList.add('open');
+}
+
+function _numEx(v) {
+  var n = Number(v);
+  return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+}
+
+// Construye las filas de cada tipo de reporte
+function _filasExcel(tipo) {
+  var D = window.DB || {};
+
+  if(tipo === 'socios') {
+    return (D.socios||[]).map(function(s){
+      return {
+        '#': s.id,
+        'Nombre': s.nombre || '',
+        'Teléfono': s.tel || '',
+        'Frecuencia': s.freq || '',
+        'Cuota': _numEx(s.cuota),
+        'Ahorro': _numEx(s.ahorro),
+        'Categoría': s.categoria || '',
+        'Activo': s.activo === false ? 'No' : 'Sí'
+      };
+    });
+  }
+
+  if(tipo === 'ahorros') {
+    return (D.socios||[])
+      .filter(function(s){ return !s.ocultarAhorros; })
+      .map(function(s){
+        return {
+          '#': s.id,
+          'Socio': s.nombre || '',
+          'Frecuencia': s.freq || '',
+          'Cuota': _numEx(s.cuota),
+          'Ahorro acumulado': _numEx(s.ahorro),
+          'Activo': s.activo === false ? 'No' : 'Sí'
+        };
+      });
+  }
+
+  if(tipo === 'prestamos') {
+    return (D.prestamos||[]).map(function(p){
+      var capital = _numEx(p.capital !== undefined ? p.capital : p.monto);
+      var pagado = _numEx(p.pagado);
+      var pendiente = _numEx(p.pendiente);
+      var total = _numEx(p.total !== undefined ? p.total : capital);
+      return {
+        '#': p.id,
+        'Deudor': p.nombre || '',
+        'Socio ID': p.socioId != null ? p.socioId : '',
+        'Capital': capital,
+        'Interés': _numEx(p.interes),
+        'Total': total,
+        'Pagado': pagado,
+        'Pendiente': pendiente,
+        '% Avance': total > 0 ? Math.round((pagado/total)*1000)/10 : 0,
+        'Pagos': p.pagos != null ? p.pagos : '',
+        'Estado': p.estado || ''
+      };
+    });
+  }
+
+  if(tipo === 'historial') {
+    return (D.movimientos||[]).map(function(m){
+      return {
+        'Fecha': m.fecha || '',
+        'Tipo': m.tipo || '',
+        'Socio': m.socio || '',
+        'Monto': _numEx(m.monto),
+        'Cuenta': m.cuenta || '',
+        'Notas': m.notas || ''
+      };
+    });
+  }
+
+  if(tipo === 'recibos') {
+    return (D.recibos||[]).map(function(r){
+      return {
+        'Folio': r.folio || '',
+        'Emisión': r.fechaEmision || '',
+        'Fecha': r.fecha || '',
+        'Tipo': r.tipo || '',
+        'Socio': r.socio || '',
+        'Concepto': r.concepto || '',
+        'Monto': _numEx(r.monto),
+        'Saldo': _numEx(r.saldo),
+        'Estado': r.estado || 'vigente',
+        'Notas': r.notas || ''
+      };
+    });
+  }
+
+  if(tipo === 'utilidades') {
+    return (D.utilidades||[]).map(function(u){
+      var total = _numEx(u.total);
+      var cobrado = typeof cobradoUtilidad === 'function' ? _numEx(cobradoUtilidad(u)) : _numEx(u.cobrado);
+      return {
+        'Deudor': u.nombre || '',
+        'Total': total,
+        'Cobrado': cobrado,
+        'Pendiente': _numEx(Math.max(0, total - cobrado)),
+        'Estado': (total - cobrado) <= 0.009 ? 'Liquidado' : 'Pendiente'
+      };
+    });
+  }
+
+  if(tipo === 'cuentas') {
+    if(typeof CUENTAS === 'undefined') return [];
+    return Object.keys(CUENTAS).map(function(k){
+      var c = CUENTAS[k];
+      var saldo = c.saldo;
+      if(typeof saldoCuenta === 'function') {
+        try { var s = saldoCuenta(k); if(typeof s === 'number') saldo = s; } catch(e){}
+      }
+      return { 'Clave': k, 'Cuenta': c.nombre || c.label || k, 'Saldo': _numEx(saldo) };
+    });
+  }
+
+  return [];
+}
+
+function exportarExcel(tipo) {
+  if(!window.XLSX) {
+    alert('La librería de Excel no está cargada. Revisa tu conexión a internet y recarga la página.');
+    return;
+  }
+
+  try {
+    var fecha = new Date().toISOString().slice(0,10);
+    var wb = XLSX.utils.book_new();
+    var hojas = [];
+
+    if(tipo === 'todo') {
+      hojas = [
+        ['Socios','socios'], ['Ahorros','ahorros'], ['Prestamos','prestamos'],
+        ['Historial','historial'], ['Recibos','recibos'],
+        ['Utilidades','utilidades'], ['Cuentas','cuentas']
+      ];
+    } else {
+      var nombres = {
+        socios:'Socios', ahorros:'Ahorros', prestamos:'Prestamos',
+        historial:'Historial', recibos:'Recibos',
+        utilidades:'Utilidades', cuentas:'Cuentas'
+      };
+      hojas = [[nombres[tipo] || 'Datos', tipo]];
+    }
+
+    var totalFilas = 0;
+    hojas.forEach(function(h){
+      var filas = _filasExcel(h[1]);
+      totalFilas += filas.length;
+      if(!filas.length) filas = [{ 'Sin datos': '' }];
+      var ws = XLSX.utils.json_to_sheet(filas);
+
+      // Ancho de columnas según el contenido
+      var cols = Object.keys(filas[0]);
+      ws['!cols'] = cols.map(function(c){
+        var max = c.length;
+        filas.forEach(function(f){
+          var v = f[c] == null ? '' : String(f[c]);
+          if(v.length > max) max = v.length;
+        });
+        return { wch: Math.min(Math.max(max + 2, 9), 42) };
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, h[0].substring(0,31));
+    });
+
+    if(totalFilas === 0) {
+      alert('No hay datos para exportar en esta sección.');
+      return;
+    }
+
+    var nombreArch = 'Caja_' + (tipo === 'todo' ? 'Completo' : tipo) + '_' + fecha + '.xlsx';
+    XLSX.writeFile(wb, nombreArch);
+
+    var m = document.getElementById('modal-exportar-excel');
+    if(m) m.classList.remove('open');
+    if(typeof toast === 'function') toast('✅ ' + nombreArch + ' descargado');
+
+  } catch(e) {
+    console.error('exportarExcel', e);
+    alert('No se pudo generar el archivo: ' + (e.message || e));
+  }
+}
+</script>
 
 <!-- ─── MODAL EXPORTAR EXCEL ─── -->
 <div class="modal-overlay" id="modal-exportar-excel" onclick="if(event.target===this)this.classList.remove('open')">
