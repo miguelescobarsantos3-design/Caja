@@ -6462,6 +6462,7 @@ function renderUtilidades() {
   const src = [...DB.utilidades].sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
   const cobradoMov = {};
   (DB.movimientos||[]).forEach(m => {
+    if(m.cancelado) return; // los abonos cancelados no cuentan
     if(m.tipo==='prestamo' && m.interesAbonado>0) {
       const n = (m.socio||'').toUpperCase().trim();
       cobradoMov[n] = (cobradoMov[n]||0) + m.interesAbonado;
@@ -8088,6 +8089,15 @@ function abrirCancelar(folio) {
     efectos.push(`Se revertirá el abono de <strong>$${fmt(r.monto)}</strong>`);
     efectos.push(`El saldo pendiente del préstamo de <strong>${r.socio}</strong> volverá a aumentar`);
     efectos.push(`Si estaba liquidado, volverá a estado <strong>activo</strong>`);
+    // Avisar si parte del abono había ido a Utilidades
+    var _movPrev = DB.movimientos.find(m =>
+      m.socio === r.socio && Math.abs(m.monto) === r.monto &&
+      m.fecha === r.fecha && m.tipo === r.tipo && !m.cancelado
+    );
+    var _intPrev = _movPrev ? (Number(_movPrev.interesAbonado) || 0) : 0;
+    if(_intPrev > 0) {
+      efectos.push(`Se devolverán <strong>$${fmt(_intPrev)}</strong> a <strong>Utilidades</strong> (interés cobrado)`);
+    }
   } else if(r.tipo === 'tanda') {
     efectos.push(`La aportación de <strong>${r.socio}</strong> por <strong>$${fmt(r.monto)}</strong> se marcará como no cobrada`);
   }
@@ -8149,6 +8159,20 @@ function confirmarCancelacion() {
         aRevertir   -= revert;
         if(p.pendiente > 0) p.estado = 'activo';
       });
+
+      // Revertir también el interés que se abonó a Utilidades con este pago.
+      // El monto exacto quedó guardado en el movimiento del historial.
+      const movInt = DB.movimientos.find(m =>
+        m.socio === r.socio && Math.abs(m.monto) === r.monto &&
+        m.fecha === r.fecha && m.tipo === r.tipo && !m.cancelado
+      );
+      const interesPrevio = movInt ? (Number(movInt.interesAbonado) || 0) : 0;
+      if(interesPrevio > 0 && typeof window.revertirAbonoUtilidad === 'function') {
+        const devuelto = window.revertirAbonoUtilidad(r.socio, interesPrevio);
+        if(movInt) movInt.interesRevertido = devuelto;
+        if(typeof window.actualizarTotalesUtilidadesUI === 'function') window.actualizarTotalesUtilidadesUI(false);
+        if(typeof window.renderUtilidades === 'function') window.renderUtilidades();
+      }
     }
     if(r.tipo === 'tanda') {
       for(const t of DB.tandas) {
@@ -10453,6 +10477,8 @@ function exportarRespaldo() {
     socios:      DB.socios,
     prestamos:   DB.prestamos,
     tandas:      DB.tandas,
+    tanda300:    DB.tanda300  || null,
+    tanda1000:   DB.tanda1000 || null,
     movimientos: DB.movimientos,
     cumple:      DB.cumple,
     fondoCumple: DB.fondoCumple,
@@ -12064,6 +12090,9 @@ function procesarRespaldoJSON(input) {
       if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
       fixSocioIds();
       DB.tandas       = datos.tandas       || [];
+      // Respaldos viejos no traían las tandas fijas: conservar las actuales
+      if(datos.tanda300  !== undefined && datos.tanda300  !== null) DB.tanda300  = datos.tanda300;
+      if(datos.tanda1000 !== undefined && datos.tanda1000 !== null) DB.tanda1000 = datos.tanda1000;
       DB.movimientos  = datos.movimientos  || [];
       DB.cumple       = datos.cumple       || [];
       DB.fondoCumple  = datos.fondoCumple  || [];
@@ -13417,6 +13446,8 @@ function exportarExcel(tipo) {
   function movInteresPorNombre() {
     var out = {};
     ((window.DB && DB.movimientos) || []).forEach(function(m){
+      // Los abonos cancelados no cuentan como interés cobrado
+      if (m && m.cancelado) return;
       if (m && m.tipo === 'prestamo' && n(m.interesAbonado) > 0) {
         var k = norm(m.socio || m.nombre || m.deudor || '');
         if (!k) return;
@@ -13645,6 +13676,29 @@ function exportarExcel(tipo) {
     });
     window.sincronizarAhorradorUtilidades();
     return { interesAbonado: abonado, capitalAbonado: Math.max(0, r2(n(monto) - abonado)) };
+  };
+
+  // Deshace un abono de interés (al cancelar un recibo de préstamo).
+  // Recorre los registros en orden inverso al que se aplicaron.
+  window.revertirAbonoUtilidad = function(nombre, monto) {
+    window.normalizarUtilidades();
+    var restante = r2(n(monto));
+    if (restante <= 0) return 0;
+    var revertido = 0;
+    var key = norm(nombre);
+    var lista = (DB.utilidades || []).filter(function(u){ return norm(u.nombre) === key; });
+    for (var i = lista.length - 1; i >= 0 && restante > 0; i--) {
+      var u = lista[i];
+      var cobrado = r2(n(u.cobrado));
+      var quitar = Math.min(restante, cobrado);
+      if (quitar > 0) {
+        u.cobrado = r2(cobrado - quitar);
+        restante = r2(restante - quitar);
+        revertido = r2(revertido + quitar);
+      }
+    }
+    window.sincronizarAhorradorUtilidades();
+    return revertido;
   };
 
   window.prCalcularDesglose = function() {
