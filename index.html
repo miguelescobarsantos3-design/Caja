@@ -13701,6 +13701,59 @@ function exportarExcel(tipo) {
     return revertido;
   };
 
+  // Repara recibos que se cancelaron ANTES de que existiera la reversión
+  // automática. Es idempotente: marca cada movimiento con interesRevertido
+  // para no descontar dos veces. Devuelve la lista de ajustes aplicados.
+  window.repararUtilidadesCanceladas = function(silencioso) {
+    if (!window.DB || !Array.isArray(DB.movimientos)) return [];
+    var cambios = [];
+
+    // Paso 1: si un recibo está cancelado, su movimiento también debe estarlo.
+    // Repara casos donde la cancelación no alcanzó a marcar el movimiento.
+    (DB.recibos || []).forEach(function(r){
+      if (!r || r.estado !== 'cancelado' || r.tipo !== 'prestamo') return;
+      var mv = DB.movimientos.find(function(m){
+        return m && m.tipo === 'prestamo' && !m.cancelado &&
+               norm(m.socio || '') === norm(r.socio || '') &&
+               Math.abs(n(m.monto)) === Math.abs(n(r.monto)) &&
+               m.fecha === r.fecha;
+      });
+      if (mv) mv.cancelado = true;
+    });
+
+    // Paso 2: revertir el interés de cada movimiento cancelado, una sola vez
+    DB.movimientos.forEach(function(m){
+      if (!m || m.tipo !== 'prestamo' || !m.cancelado) return;
+      if (m.interesRevertido !== undefined && m.interesRevertido !== null) return;
+      var interes = n(m.interesAbonado);
+      if (interes <= 0) { m.interesRevertido = 0; return; }
+
+      var nombre = m.socio || m.nombre || m.deudor || '';
+      var devuelto = window.revertirAbonoUtilidad(nombre, interes);
+      m.interesRevertido = devuelto;
+      if (devuelto > 0) {
+        cambios.push({ nombre: nombre, monto: devuelto, fecha: m.fecha || '' });
+      }
+    });
+
+    if (cambios.length) {
+      window.sincronizarAhorradorUtilidades();
+      if (typeof window.actualizarTotalesUtilidadesUI === 'function') window.actualizarTotalesUtilidadesUI(false);
+      if (typeof guardarEnLocal === 'function') guardarEnLocal();
+
+      if (!silencioso) {
+        var det = cambios.map(function(c){
+          return '• ' + c.nombre + ': $' + (typeof fmt==='function' ? fmt(c.monto) : c.monto);
+        }).join('\n');
+        alert('Se corrigieron ' + cambios.length + ' abono(s) de interés que seguían contando pese a estar cancelados:\n\n' + det);
+      }
+    } else if (!silencioso) {
+      alert('No hay nada que corregir. Las utilidades ya coinciden con los recibos vigentes.');
+    }
+
+    return cambios;
+  };
+
   window.prCalcularDesglose = function() {
     var monto = n(document.getElementById('pr-monto') && document.getElementById('pr-monto').value);
     var key = document.getElementById('pr-select') ? document.getElementById('pr-select').value : '';
@@ -14012,6 +14065,10 @@ function exportarExcel(tipo) {
   window.actualizarKpiUtilidades = function(){ return window.actualizarTotalesUtilidadesUI(false); };
 
   window.renderUtilidades = function(){
+    // Corrige en silencio abonos de recibos ya cancelados (una sola vez c/u)
+    if(typeof window.repararUtilidadesCanceladas === 'function') {
+      try { window.repararUtilidadesCanceladas(true); } catch(e) { console.warn('reparar utilidades', e); }
+    }
     if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
     var tb = document.getElementById('util-tbody');
     if(!tb) return;
