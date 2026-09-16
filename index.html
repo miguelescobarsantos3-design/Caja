@@ -11075,6 +11075,23 @@ function normalizarVisibilidadSocios() {
       return s + (m.aportante === nombre ? (Number(m.monto)||0) : 0);
     }, 0);
   }
+  // Cuánto APORTÓ el participante de la posición i.
+  // Identifica por índice porque la lista admite nombres repetidos
+  // (NANCY / NANCY B). Los movimientos viejos sin índice caen por nombre,
+  // y solo cuentan para la primera posición que lo tenga, para no duplicar.
+  function aportadoT1000(t, i){
+    var nombre = T1000_P[i];
+    var esPrimera = T1000_P.indexOf(nombre) === i;
+    return (t.movimientos || []).reduce(function(s,m){
+      var mi = m.aportanteIdx;
+      if(mi !== undefined && mi !== null){
+        return s + (Number(mi) === i ? (Number(m.monto)||0) : 0);
+      }
+      if(esPrimera && m.aportante === nombre) return s + (Number(m.monto)||0);
+      return s;
+    }, 0);
+  }
+  window._aportadoT1000 = aportadoT1000;
   function sumaAportesT1000(t){
     return (t.movimientos || []).reduce(function(s,m){ return s + (Number(m.monto)||0); }, 0);
   }
@@ -11247,10 +11264,9 @@ function normalizarVisibilidadSocios() {
     if(km) km.textContent = dinero(porTanda) + ' (×' + (T1000_P.length - 1) + ')';
     var nE = (t.entregas || []).length;
     if(kp) kp.textContent = nE < T1000_P.length ? T1000_P[nE] : '—';
-    var pagos = T1000_P.map(function(n,i){
-      // Calcular por idx para manejar nombres duplicados como NANCY
-      return (t.movimientos||[]).filter(function(m){ return m.idx===i; }).reduce(function(s,m){ return s+m.monto; },0);
-    });
+    // APORTADO = lo que puso cada participante. Antes se usaba m.idx, que es
+    // el índice del COBRADOR (el turno pagado), no el del aportante.
+    var pagos = T1000_P.map(function(n,i){ return aportadoT1000(t, i); });
     var tb = document.getElementById('t1000-tabla');
     if(tb) tb.innerHTML = tablaTanda(T1000_P, pagos, monto1000, T1000_P.length, t.entregas, null, 't1000');
   };
@@ -11592,7 +11608,7 @@ function normalizarVisibilidadSocios() {
     var t = window.getTanda1000();
     var monto1000 = t.montoAporte || 1000;
     var selOpts = T1000_P.map(function(n, i){
-      var pagado = sumaT1000Aportante(t, n);
+      var pagado = aportadoT1000(t, i);
       return '<option value="'+i+'">'+esc(n)+' ($'+fmt(pagado)+' pagado)</option>';
     }).join('');
     var modal = document.getElementById('modal-t1000-aporte');
@@ -11616,7 +11632,7 @@ function normalizarVisibilidadSocios() {
     var infoEl = document.getElementById('ta1000-info');
     if(infoEl){
       if(aportanteIdx >= 0){
-        var pagado = sumaT1000Aportante(t, T1000_P[aportanteIdx]);
+        var pagado = aportadoT1000(t, aportanteIdx);
         var totalPosible = T1000_P.length * monto1000;
         var pendiente = Math.max(0, totalPosible - pagado);
         infoEl.style.display = 'block';
@@ -11635,7 +11651,12 @@ function normalizarVisibilidadSocios() {
         // Bloquear solo si: el aportante ES el cobrador (su propio turno) O ya pagó este turno
         var esCobrador = aportanteIdx >= 0 && i === aportanteIdx;
         var yaEstePago = aportanteIdx >= 0
-          ? (t.movimientos||[]).filter(function(m){ return m.idx===i && m.aportante===T1000_P[aportanteIdx]; }).reduce(function(s,m){ return s+(Number(m.monto)||0); }, 0) >= monto1000
+          ? (t.movimientos||[]).filter(function(m){
+              if(m.idx !== i) return false;
+              // Identificar al aportante por índice; por nombre solo si es antiguo
+              if(m.aportanteIdx !== undefined && m.aportanteIdx !== null) return Number(m.aportanteIdx) === aportanteIdx;
+              return m.aportante === T1000_P[aportanteIdx];
+            }).reduce(function(s,m){ return s+(Number(m.monto)||0); }, 0) >= monto1000
           : false;
         var bloqueado = (esCobrador || yaEstePago) ? 'disabled' : '';
         var entregadoPendiente = cobro && !esCobrador && !yaEstePago;
@@ -11651,9 +11672,7 @@ function normalizarVisibilidadSocios() {
           +'\x3C/div\x3E';
       }).join('');
       lista.innerHTML = html;
-      // Auto-seleccionar el primer turno disponible
-      var primeroCb = lista.querySelector('.ta1000-turno-cb:not([disabled])');
-      if(primeroCb){ primeroCb.checked = true; window._ta1000ActualizarMonto(); }
+      // Sin preselección: el usuario elige explícitamente los turnos a cubrir
     }
     window._ta1000ActualizarMonto();
   };
@@ -11686,11 +11705,12 @@ function normalizarVisibilidadSocios() {
     cbs.forEach(function(cb){
       var idx = parseInt(cb.dataset.idx, 10);
       var cobrador = T1000_P[idx];
-      t.movimientos.push({ aportante:aportante, cobrador:cobrador, idx:idx, monto:monto1000, fecha:fecha, notas:notas||'' });
+      // aportanteIdx identifica QUIÉN pagó; idx es el turno que se cubrió
+      t.movimientos.push({ aportante:aportante, aportanteIdx:aportanteIdx, cobrador:cobrador, idx:idx, monto:monto1000, fecha:fecha, notas:notas||'' });
       turnosCubiertos1000.push('Turno '+(idx+1)+' ('+cobrador+')');
       total += monto1000;
     });
-    var pagadoTotalT1000 = sumaT1000Aportante(t, aportante);
+    var pagadoTotalT1000 = aportadoT1000(t, aportanteIdx);
     var conceptoT1000 = 'Aporte Tanda $1,000 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasReciboT1000 = notas || turnosCubiertos1000.join(', ');
     var folioT1000 = String(folioCounter++).padStart(4,'0');
