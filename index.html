@@ -891,17 +891,41 @@ function cajaPuedeGuardarFirebase() {
   return cajaModoMaestro();
 }
 
+// Muestra siempre si este equipo puede escribir en la nube o no.
+// Crítico en el celular: permite confirmar de un vistazo que está en lectura.
+function actualizarIndicadorModo() {
+  var el = document.getElementById('caja-modo-indicador');
+  if(!el) return;
+  var modo = localStorage.getItem('caja_modo_maestro');
+  if(modo === 'SI') {
+    el.textContent = '🟢 MAESTRO · escribe en la nube';
+    el.style.color = 'rgba(100,220,140,0.95)';
+  } else if(modo === 'NO') {
+    el.textContent = '🔒 Solo lectura · no sube datos';
+    el.style.color = 'rgba(255,190,90,0.95)';
+  } else {
+    el.textContent = '🔒 Solo lectura (sin configurar)';
+    el.style.color = 'rgba(255,190,90,0.75)';
+  }
+}
+
 function activarMaestroCaja() {
+  if(!confirm('Este equipo va a PODER SOBRESCRIBIR los datos de la nube.\n\nSolo debe haber un equipo maestro, y debe ser el que tenga la información más actual.\n\n¿Continuar?')) return;
   localStorage.setItem('caja_modo_maestro', 'SI');
+  actualizarIndicadorModo();
   console.log('✅ Este dispositivo quedó como MAESTRO. Puede guardar en Firestore.');
   alert('✅ Este equipo quedó como MAESTRO. Puede guardar en la nube.');
 }
 
 function desactivarMaestroCaja() {
   localStorage.setItem('caja_modo_maestro', 'NO');
+  actualizarIndicadorModo();
   console.log('🔒 Este dispositivo quedó en modo lectura. No subirá datos a Firestore.');
   alert('🔒 Este equipo quedó en modo lectura. Podrá ver datos, pero no subirlos a la nube.');
 }
+
+document.addEventListener('DOMContentLoaded', actualizarIndicadorModo);
+setTimeout(actualizarIndicadorModo, 800);
 
 function cajaTsLocal() {
   return parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
@@ -1338,6 +1362,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <h1>Caja de Ahorro</h1>
     <span>Control 2026</span>
     <div id="fb-sync-indicator" style="font-size: 11px; color: rgba(100, 220, 140, 0.9); margin-top: 4px; transition: 0.4s;">☁ Nube activa</div>
+    <div id="caja-modo-indicador" style="font-size: 10px; margin-top: 2px; font-weight: 700;"></div>
     <div id="ls-indicator" style="font-size: 10px; color: rgba(255, 255, 255, 0.3); margin-top: 1px; transition: 0.4s;">🕐 07:07 p.m.</div>
   </div>
   <nav class="sidebar-nav">
