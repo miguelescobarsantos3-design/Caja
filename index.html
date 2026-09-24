@@ -12029,8 +12029,11 @@ function normalizarVisibilidadSocios() {
   iniciarFirebase();
   // Al arrancar: bajar Firestore solo si es más reciente que el local.
   // NO se pone caja_ts='0' para no pisar datos locales más nuevos.
-  var _forzarFirestoreAlArrancar = false;
-  console.log('Arranque: verificando Firestore vs local.');
+  // Instalación nueva (sin datos locales): la copia incrustada en el HTML es vieja
+  // y no hay nada local que proteger, así que se baja la nube a la fuerza.
+  // Con datos locales presentes se respeta la comparación de fechas de siempre.
+  var _forzarFirestoreAlArrancar = !cargado;
+  console.log('Arranque: verificando Firestore vs local.', {sinDatosLocales: !cargado, forzar: _forzarFirestoreAlArrancar});
   setTimeout(function() {
     if(_fbDb) {
       cargarDesdFirebase(_forzarFirestoreAlArrancar).then(function(cargadoDesdeFirebase) {
