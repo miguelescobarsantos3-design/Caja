@@ -1761,9 +1761,13 @@ window.addEventListener('unhandledrejection', function(e) {
   <!-- ─── REGISTRAR PAGO ─── -->
   <!-- TANDA 300 -->
   <div class="content view" id="view-tanda300">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <h2 style="margin:0;font-size:20px;">Tanda $300</h2>
-      <button onclick="editarConfigT300()" style="background:var(--verde);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✏️ Editar participantes</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="abrirAporteT300()" style="background:var(--verde);color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">+ Aporte</button>
+        <button onclick="abrirEntregaT300()" style="background:var(--azul);color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🏆 Entregar</button>
+        <button onclick="editarConfigT300()" style="background:var(--gris);color:var(--texto);border:1px solid var(--gris2);padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✏️ Editar participantes</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
       <div class="kpi kpi-blue"><div class="kpi-accent"></div><div class="kpi-label">Fondo Acumulado</div><div class="kpi-value" id="t300-kpi-fondo">$0</div><div class="kpi-sub">en caja</div></div>
@@ -1775,10 +1779,6 @@ window.addEventListener('unhandledrejection', function(e) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <div class="card"><div class="card-header"><div class="card-title">Grupo 1</div></div><div id="t300-tabla-g1"></div></div>
       <div class="card"><div class="card-header"><div class="card-title">Grupo 2</div></div><div id="t300-tabla-g2"></div></div>
-    </div>
-    <div style="margin-top:20px;text-align:right;">
-      <button onclick="abrirAporteT300()" style="background:var(--verde);color:#fff;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-weight:700;font-size:14px;margin-right:10px;">+ Aporte</button>
-      <button onclick="abrirEntregaT300()" style="background:var(--azul);color:#fff;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-weight:700;font-size:14px;">🏆 Entregar</button>
     </div>
   </div>
   <!-- TANDA 1000 -->
@@ -11310,23 +11310,61 @@ function normalizarVisibilidadSocios() {
     else if(typeof guardarEnLocal === 'function') guardarEnLocal();
   }
 
+  // Grupo del aportante actualmente elegido (0 = ninguno)
+  window._ta300Grupo = 0;
+
+  // Al elegir en una lista, se limpia la otra: un aporte pertenece a un solo grupo
+  window._ta300SeleccionarAportante = function(grupo){
+    var otro = grupo === 1 ? 2 : 1;
+    var selOtro = document.getElementById('ta300-aportante-g'+otro);
+    var selEste = document.getElementById('ta300-aportante-g'+grupo);
+    if(selEste && selEste.value){
+      if(selOtro) selOtro.value = '';
+      window._ta300Grupo = grupo;
+    } else {
+      window._ta300Grupo = (selOtro && selOtro.value) ? otro : 0;
+    }
+    var aviso = document.getElementById('ta300-grupo-aviso');
+    if(aviso){
+      if(window._ta300Grupo){
+        aviso.style.display = 'block';
+        aviso.textContent = 'Aportando al Grupo ' + window._ta300Grupo + '. Solo puedes cubrir turnos de ese grupo.';
+      } else {
+        aviso.style.display = 'none';
+      }
+    }
+    window._ta300RefrescarTurnos();
+  };
+
+  // Nombre del aportante elegido, sin importar en qué lista esté
+  window._ta300Aportante = function(){
+    var g = window._ta300Grupo;
+    if(!g) return '';
+    var sel = document.getElementById('ta300-aportante-g'+g);
+    return sel ? sel.value : '';
+  };
+
   window.abrirAporteT300 = function(){
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
-    // Construir lista combinada G1+G2 sin duplicados para selector de quien aporta
-    var todosMap = {};
-    T300_G1.forEach(function(n){ todosMap[n] = true; });
-    T300_G2.forEach(function(n){ todosMap[n] = true; });
-    var todos = Object.keys(todosMap);
-    var selOpts = todos.map(function(n){
-      var pagado = sumaT300Aportante(t, n);
-      return '<option value="'+esc(n)+'">'+esc(n)+' ($'+fmt(pagado)+' pagado)</option>';
-    }).join('');
-    var el = document.getElementById('ta300-aportante');
     var modal = document.getElementById('modal-t300-aporte');
     if(!modal) return;
-    var sel = modal.querySelector('#ta300-aportante');
-    if(sel){ sel.innerHTML = '<option value="">— Seleccionar participante —</option>' + selOpts; }
+
+    // Cada grupo tiene su propia lista, sin mezclar
+    function opciones(lista){
+      return lista.map(function(n){
+        var pagado = sumaT300Aportante(t, n);
+        return '<option value="'+esc(n)+'">'+esc(n)+' ($'+fmt(pagado)+' pagado)</option>';
+      }).join('');
+    }
+    var selG1 = modal.querySelector('#ta300-aportante-g1');
+    var selG2 = modal.querySelector('#ta300-aportante-g2');
+    if(selG1){ selG1.innerHTML = '<option value="">— Seleccionar —</option>' + opciones(T300_G1); selG1.value = ''; }
+    if(selG2){ selG2.innerHTML = '<option value="">— Seleccionar —</option>' + opciones(T300_G2); selG2.value = ''; }
+    window._ta300Grupo = 0;
+    var aviso = modal.querySelector('#ta300-grupo-aviso');
+    if(aviso) aviso.style.display = 'none';
+
     var fechaEl = modal.querySelector('#ta300-fecha');
     if(fechaEl) fechaEl.value = hoy();
     var notasEl = modal.querySelector('#ta300-notas');
@@ -11341,7 +11379,8 @@ function normalizarVisibilidadSocios() {
   window._ta300RefrescarTurnos = function(){
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
-    var aportante = (document.getElementById('ta300-aportante')||{}).value || '';
+    var aportante = window._ta300Aportante();
+    var grupoSel = window._ta300Grupo || 0;
     // Info del aportante
     var infoEl = document.getElementById('ta300-info');
     if(infoEl){
@@ -11372,9 +11411,13 @@ function normalizarVisibilidadSocios() {
         var pagadoTurno = sumaT300Turno(t,1,n);
         // Solo bloquear si: ya fue entregado Y este aportante ya pagó su parte de ese turno
         var yaEstePago = aportante ? pagoAportanteEnTurno(t,1,n,aportante) >= monto300 : false;
-        var bloqueado = (cobro && yaEstePago) ? 'checked disabled' : '';
+        // Solo se puede aportar al grupo del participante elegido
+        var otroGrupo = grupoSel !== 0 && grupoSel !== 1;
+        var bloqueado = (otroGrupo || (cobro && yaEstePago)) ? 'disabled' : '';
+        if(cobro && yaEstePago) bloqueado = 'checked disabled';
         var entregadoPendiente = cobro && !yaEstePago; // entregado pero aún debe
-        var bg = (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
+        var bg = otroGrupo ? 'var(--gris)'
+               : (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
                : entregadoPendiente ? 'rgba(232,108,44,0.08)'  // naranja suave = entregado pero sin pagar
                : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = (cobro && yaEstePago) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
@@ -11393,9 +11436,13 @@ function normalizarVisibilidadSocios() {
         var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===2 && Number(e.turno)===i+1; });
         var pagadoTurno = sumaT300Turno(t,2,n);
         var yaEstePago = aportante ? pagoAportanteEnTurno(t,2,n,aportante) >= monto300 : false;
-        var bloqueado = (cobro && yaEstePago) ? 'checked disabled' : '';
+        // Solo se puede aportar al grupo del participante elegido
+        var otroGrupo = grupoSel !== 0 && grupoSel !== 2;
+        var bloqueado = (otroGrupo || (cobro && yaEstePago)) ? 'disabled' : '';
+        if(cobro && yaEstePago) bloqueado = 'checked disabled';
         var entregadoPendiente = cobro && !yaEstePago;
-        var bg = (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
+        var bg = otroGrupo ? 'var(--gris)'
+               : (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
                : entregadoPendiente ? 'rgba(232,108,44,0.08)'
                : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
         var txt = (cobro && yaEstePago) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
@@ -11423,16 +11470,25 @@ function normalizarVisibilidadSocios() {
   };
 
   window.guardarAporteT300 = function(){
-    var aportante = (document.getElementById('ta300-aportante')||{}).value;
+    var aportante = window._ta300Aportante();
+    var grupoAportante = window._ta300Grupo || 0;
     var fecha = (document.getElementById('ta300-fecha')||{}).value || hoy();
     var cuenta = (document.getElementById('ta300-cuenta')||{}).value || 'efectivo';
     var notas = ((document.getElementById('ta300-notas')||{}).value||'').trim();
-    if(!aportante){ alert('Selecciona un participante.'); return; }
+    if(!aportante || !grupoAportante){ alert('Selecciona un participante en el Grupo 1 o en el Grupo 2.'); return; }
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
     var montoPorTurno = parseInt((document.getElementById('ta300-monto-turno')||{}).value||monto300, 10) || monto300;
     var cbs = document.querySelectorAll('.ta300-turno-cb:not([disabled]):checked');
     if(!cbs.length){ alert('Selecciona al menos un turno.'); return; }
+    // Red de seguridad: ningún turno puede ser de un grupo distinto al del aportante
+    var cruzados = Array.prototype.filter.call(cbs, function(cb){
+      return parseInt(cb.dataset.grupo, 10) !== grupoAportante;
+    });
+    if(cruzados.length){
+      alert(aportante + ' pertenece al Grupo ' + grupoAportante + '. No puede aportar a turnos del otro grupo.');
+      return;
+    }
     var esParcial = montoPorTurno < monto300;
     var turnosCubiertos = [];
     var total = 0;
@@ -14220,12 +14276,21 @@ function exportarExcel(tipo) {
 <div class="modal-overlay" id="modal-t300-aporte" onclick="if(event.target===this)cerrarModal('modal-t300-aporte')">
   <div class="modal" style="max-width:540px;">
     <h2>◈ Registrar aporte — Tanda $300</h2>
-    <div class="form-group">
-      <label>Quien aporta</label>
-      <select id="ta300-aportante" onchange="window._ta300RefrescarTurnos()" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);">
-        <option value="">— Seleccionar participante —</option>
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-group" style="margin:0;">
+        <label>Quien aporta — Grupo 1</label>
+        <select id="ta300-aportante-g1" onchange="window._ta300SeleccionarAportante(1)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);">
+          <option value="">— Seleccionar —</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Quien aporta — Grupo 2</label>
+        <select id="ta300-aportante-g2" onchange="window._ta300SeleccionarAportante(2)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);">
+          <option value="">— Seleccionar —</option>
+        </select>
+      </div>
     </div>
+    <div id="ta300-grupo-aviso" style="display:none;font-size:12px;color:var(--azul);background:rgba(26,90,160,0.08);border-radius:6px;padding:8px 12px;margin-bottom:10px;"></div>
     <div id="ta300-info" style="display:none;background:var(--gris);border-radius:var(--radio-sm);padding:12px 14px;font-size:13px;margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
         <span>Pagado hasta hoy:</span><strong id="ta300-pagado" style="color:var(--verde);">$0</strong>
