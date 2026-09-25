@@ -924,8 +924,109 @@ function desactivarMaestroCaja() {
   alert('🔒 Este equipo quedó en modo lectura. Podrá ver datos, pero no subirlos a la nube.');
 }
 
-document.addEventListener('DOMContentLoaded', actualizarIndicadorModo);
-setTimeout(actualizarIndicadorModo, 800);
+// ═══════════════════════════════════════════════════════
+// MODO RUTA — escritura temporal para cobrar fuera de la oficina
+// Secuencia segura: baja la nube → habilita escritura → registras →
+// sube y regresa a solo lectura. Si la bajada falla, NO habilita nada.
+// ═══════════════════════════════════════════════════════
+function modoRutaActivo() {
+  return localStorage.getItem('caja_modo_ruta') === 'SI';
+}
+
+function pintarEstadoRuta() {
+  var activo = modoRutaActivo();
+  var banner = document.getElementById('banner-modo-ruta');
+  var btnAbrir = document.getElementById('btn-modo-ruta');
+  var btnCerrar = document.getElementById('btn-cerrar-ruta');
+
+  if(banner) {
+    banner.style.display = activo ? 'flex' : 'none';
+    var txt = document.getElementById('banner-ruta-texto');
+    if(txt) {
+      var desde = localStorage.getItem('caja_modo_ruta_desde') || '';
+      txt.textContent = 'MODO RUTA activo' + (desde ? ' desde ' + desde : '') + ' — no registres nada en la PC';
+    }
+  }
+  if(btnAbrir)  btnAbrir.style.display  = activo ? 'none' : 'block';
+  if(btnCerrar) btnCerrar.style.display = activo ? 'block' : 'none';
+}
+
+async function abrirModoRuta() {
+  if(modoRutaActivo()) { alert('El modo ruta ya está activo.'); return; }
+  if(!_fbDb) {
+    alert('Sin conexión a la nube.\n\nEl modo ruta necesita internet para partir de los datos más recientes. Conéctate e inténtalo de nuevo.');
+    return;
+  }
+  if(!confirm(
+    '🛵 MODO RUTA\n\n'
+    + 'Este equipo va a poder registrar cobros y subirlos a la nube.\n\n'
+    + 'Primero se descargará la información más reciente.\n\n'
+    + 'IMPORTANTE: mientras esté activo, nadie debe registrar nada en la PC — se perdería.\n\n'
+    + '¿Continuar?'
+  )) return;
+
+  // Paso 1: bajar la nube a la fuerza. Si falla, no se habilita escritura.
+  var ok = false;
+  try { ok = await cargarDesdFirebase(true); } catch(e) { console.error('modoRuta sync', e); ok = false; }
+  if(!ok) {
+    alert('❌ No se pudo descargar la información de la nube.\n\nEl modo ruta NO se activó, para evitar que subas datos viejos.\n\nRevisa tu conexión e inténtalo otra vez.');
+    return;
+  }
+
+  if(typeof cajaRenderTodo === 'function') cajaRenderTodo();
+  if(typeof iniciarFolioCounter === 'function') iniciarFolioCounter();
+
+  // La nube recién bajada es la referencia buena: realinea los máximos
+  // históricos para que un conteo inflado de antes no bloquee el guardado.
+  if(typeof cajaReiniciarHWM === 'function') {
+    cajaReiniciarHWM({
+      movimientos: DB.movimientos, recibos: DB.recibos,
+      tanda300: DB.tanda300, tanda1000: DB.tanda1000
+    });
+  }
+
+  // Paso 2: habilitar escritura y dejar rastro visible
+  localStorage.setItem('caja_modo_maestro', 'SI');
+  localStorage.setItem('caja_modo_ruta', 'SI');
+  localStorage.setItem('caja_modo_ruta_desde', new Date().toLocaleString('es-MX', {hour:'2-digit', minute:'2-digit'}));
+  actualizarIndicadorModo();
+  pintarEstadoRuta();
+
+  alert('✅ Modo ruta activo.\n\n'
+    + 'Datos al día: ' + (DB.socios||[]).length + ' socios, ' + (DB.prestamos||[]).length + ' préstamos.\n\n'
+    + 'Ya puedes registrar cobros y entregar recibos.\n\n'
+    + 'Al terminar presiona "Cerrar modo ruta y subir".');
+}
+
+async function cerrarModoRuta() {
+  if(!modoRutaActivo()) { alert('El modo ruta no está activo.'); return; }
+  if(!confirm('Se subirán a la nube los cobros registrados y este equipo volverá a solo lectura.\n\n¿Continuar?')) return;
+
+  var subido = false;
+  try {
+    if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    subido = await guardarEnFirebase();
+  } catch(e) { console.error('cerrarModoRuta', e); subido = false; }
+
+  // Si no subió, se queda activo: perder los cobros sería peor que seguir en modo ruta.
+  if(!subido) {
+    alert('⚠️ No se pudieron subir los cambios a la nube.\n\n'
+      + 'El modo ruta SIGUE ACTIVO para que no pierdas lo registrado.\n\n'
+      + 'Busca señal y vuelve a presionar "Cerrar modo ruta y subir".');
+    return;
+  }
+
+  localStorage.setItem('caja_modo_maestro', 'NO');
+  localStorage.removeItem('caja_modo_ruta');
+  localStorage.removeItem('caja_modo_ruta_desde');
+  actualizarIndicadorModo();
+  pintarEstadoRuta();
+
+  alert('✅ Cobros subidos a la nube.\n\nEste equipo volvió a solo lectura. Ya puedes usar la PC con normalidad.');
+}
+
+document.addEventListener('DOMContentLoaded', function(){ actualizarIndicadorModo(); pintarEstadoRuta(); });
+setTimeout(function(){ actualizarIndicadorModo(); pintarEstadoRuta(); }, 800);
 
 function cajaTsLocal() {
   return parseInt(localStorage.getItem('caja_ts') || '0', 10) || 0;
@@ -948,6 +1049,20 @@ function cajaActualizarHWM(datos) {
 }
 function cajaObtenerHWM(campo) {
   return parseInt(localStorage.getItem('caja_hwm_'+campo)||'0', 10) || 0;
+}
+// Reajusta los máximos (incluso hacia abajo). Solo debe usarse justo después
+// de bajar la nube a la fuerza: en ese momento la nube ES la verdad, y un
+// máximo inflado de una sesión vieja bloquearía guardados legítimos.
+function cajaReiniciarHWM(datos) {
+  var campos = [
+    ['movimientos', (datos.movimientos||[]).length],
+    ['recibos',     (datos.recibos||[]).length],
+    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0)],
+    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0)]
+  ];
+  campos.forEach(function(c){
+    try { localStorage.setItem('caja_hwm_'+c[0], String(c[1])); } catch(e) {}
+  });
 }
 function cajaVerificarHWM(datos) {
   var checks = [
@@ -1353,6 +1468,13 @@ window.addEventListener('unhandledrejection', function(e) {
 });
 </script>
 
+<!-- ─── BANNER MODO RUTA ─── -->
+<div id="banner-modo-ruta" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#b45309;color:#fff;padding:9px 14px;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(0,0,0,.3);font-size:13px;">
+  <span style="font-size:17px;">🛵</span>
+  <strong id="banner-ruta-texto" style="flex:1;min-width:180px;font-weight:700;">MODO RUTA activo</strong>
+  <button onclick="cerrarModoRuta()" style="background:#fff;color:#b45309;border:none;padding:7px 15px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Cerrar y subir</button>
+</div>
+
 <div id="sidebar-overlay" onclick="cerrarSidebar()"></div>
 <div class="app">
 
@@ -1420,6 +1542,12 @@ window.addEventListener('unhandledrejection', function(e) {
     </button>
     <button onclick="forzarSyncDesdeFirebase()" style="width:100%;background:rgba(100,180,255,0.15);border:1px solid rgba(100,180,255,0.3);color:rgba(150,210,255,0.9);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:6px;">
       🔄 Sync desde nube
+    </button>
+    <button id="btn-modo-ruta" onclick="abrirModoRuta()" style="width:100%;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.45);color:rgba(253,200,110,0.95);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;margin-bottom:6px;" title="Habilita registrar cobros desde este equipo">
+      🛵 Iniciar modo ruta
+    </button>
+    <button id="btn-cerrar-ruta" onclick="cerrarModoRuta()" style="display:none;width:100%;background:#b45309;border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;margin-bottom:6px;">
+      ✓ Cerrar modo ruta y subir
     </button>
     <button onclick="abrirConfiguracion()" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:6px;">
       ⚙ Configuración
