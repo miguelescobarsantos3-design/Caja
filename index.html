@@ -1010,9 +1010,12 @@ async function cerrarModoRuta() {
 
   // Si no subió, se queda activo: perder los cobros sería peor que seguir en modo ruta.
   if(!subido) {
+    var f = window.__ultimoFalloFirebase || {};
     alert('⚠️ No se pudieron subir los cambios a la nube.\n\n'
+      + 'MOTIVO: ' + (f.codigo || 'desconocido') + '\n'
+      + (f.detalle || '') + '\n\n'
       + 'El modo ruta SIGUE ACTIVO para que no pierdas lo registrado.\n\n'
-      + 'Busca señal y vuelve a presionar "Cerrar modo ruta y subir".');
+      + 'Abre "🩺 Diagnóstico de sincronización" en el menú para ver el detalle y reintentar.');
     return;
   }
 
@@ -1023,6 +1026,106 @@ async function cerrarModoRuta() {
   pintarEstadoRuta();
 
   alert('✅ Cobros subidos a la nube.\n\nEste equipo volvió a solo lectura. Ya puedes usar la PC con normalidad.');
+}
+
+// ═══════════════════════════════════════════════════════
+// DIAGNÓSTICO DE SINCRONIZACIÓN
+// Muestra por qué no sube y permite reintentar, sin usar la consola.
+// ═══════════════════════════════════════════════════════
+async function diagnosticoSync() {
+  var f = window.__ultimoFalloFirebase;
+  var tsLocal = cajaTsLocal();
+  var modo = localStorage.getItem('caja_modo_maestro') || 'sin configurar';
+
+  // Conteos en la nube, para comparar contra lo local
+  var nube = null;
+  try {
+    if(_fbDb) {
+      var snap = await _fbDb.collection('caja').doc('datos').get({source:'server'});
+      if(snap.exists) nube = snap.data();
+    }
+  } catch(e) { console.warn('diagnostico nube', e); }
+
+  function fila(k, v, alerta) {
+    return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #eee;">'
+      +'<span style="font-size:12px;color:#555;">'+k+'</span>'
+      +'<strong style="font-size:12px;color:'+(alerta?'#c0392b':'#111')+';text-align:right;">'+v+'</strong></div>';
+  }
+
+  var locMovs = (DB.movimientos||[]).length, locRecs = (DB.recibos||[]).length;
+  var nubMovs = nube ? (nube.movimientos||[]).length : '—';
+  var nubRecs = nube ? (nube.recibos||[]).length : '—';
+  var hayPendientes = nube && (locMovs > nubMovs || locRecs > nubRecs);
+
+  var html = ''
+    + fila('Modo del equipo', modo === 'SI' ? 'MAESTRO (puede subir)' : modo === 'NO' ? 'Solo lectura' : 'Sin configurar', modo !== 'SI')
+    + fila('Modo ruta', modoRutaActivo() ? 'Activo' : 'Apagado')
+    + fila('Conexión Firebase', _fbConectado ? 'Conectado' : 'Sin conexión', !_fbConectado)
+    + fila('Movimientos aquí', locMovs)
+    + fila('Movimientos en la nube', nubMovs, hayPendientes)
+    + fila('Recibos aquí', locRecs)
+    + fila('Recibos en la nube', nubRecs, hayPendientes)
+    + fila('Máx. histórico movs', cajaObtenerHWM('movimientos'), cajaObtenerHWM('movimientos') > locMovs)
+    + fila('Máx. histórico recibos', cajaObtenerHWM('recibos'), cajaObtenerHWM('recibos') > locRecs)
+    + fila('Última grabación local', tsLocal ? new Date(tsLocal).toLocaleString('es-MX') : 'nunca')
+    + fila('Fecha en la nube', nube && nube.ts ? new Date(nube.ts).toLocaleString('es-MX') : '—')
+    + fila('Subió por última vez', nube && nube._dispositivo ? nube._dispositivo : '—');
+
+  var bloqueHWM = cajaObtenerHWM('movimientos') > locMovs || cajaObtenerHWM('recibos') > locRecs;
+
+  var aviso = '';
+  if(f) {
+    aviso += '<div style="margin-top:12px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
+      +'<strong>Último fallo: '+f.codigo+'</strong><br>'+f.detalle+'<br><span style="color:#999;">'+f.cuando+'</span></div>';
+  }
+  if(hayPendientes) {
+    aviso += '<div style="margin-top:10px;padding:10px;background:#fff4e5;border-radius:8px;font-size:12px;color:#7a4a00;">'
+      +'<strong>Hay cobros sin subir.</strong> Este equipo tiene más registros que la nube. Usa "Reintentar subida".</div>';
+  }
+  if(bloqueHWM) {
+    aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
+      +'<strong>Bloqueo por máximo histórico.</strong> El equipo recuerda haber tenido más registros de los que tiene ahora, y por eso se niega a subir. Si estás seguro de que lo actual es lo correcto, usa "Desbloquear y subir".</div>';
+  }
+
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div style="background:#fff;padding:20px;border-radius:14px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;">'
+    +'<h3 style="margin:0 0 12px;font-size:17px;">Diagnóstico de sincronización</h3>'
+    + html + aviso
+    +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
+    + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
+    +'<button id="__ds_close" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cerrar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+
+  ov.querySelector('#__ds_close').onclick = function(){ ov.remove(); };
+
+  ov.querySelector('#__ds_retry').onclick = async function(){
+    this.textContent = 'Subiendo...'; this.disabled = true;
+    window.__hwmBloqueadoHasta = 0; window.__fbCuotaHasta = 0;
+    var ok = await guardarEnFirebase();
+    ov.remove();
+    if(ok) alert('✅ Subido correctamente a la nube.');
+    else {
+      var ff = window.__ultimoFalloFirebase || {};
+      alert('❌ No subió.\n\nMotivo: ' + (ff.codigo||'desconocido') + '\n' + (ff.detalle||''));
+    }
+  };
+
+  var bf = ov.querySelector('#__ds_force');
+  if(bf) bf.onclick = async function(){
+    if(!confirm('Se va a ignorar la protección de máximo histórico y subir lo que hay en este equipo.\n\nSolo hazlo si estás seguro de que los datos de este equipo son los correctos.\n\n¿Continuar?')) return;
+    this.textContent = 'Subiendo...'; this.disabled = true;
+    cajaReiniciarHWM({movimientos:DB.movimientos, recibos:DB.recibos, tanda300:DB.tanda300, tanda1000:DB.tanda1000});
+    window.__hwmBloqueadoHasta = 0; window.__fbCuotaHasta = 0;
+    var ok2 = await guardarEnFirebase();
+    ov.remove();
+    if(ok2) alert('✅ Subido correctamente a la nube.');
+    else {
+      var ff2 = window.__ultimoFalloFirebase || {};
+      alert('❌ Aún no sube.\n\nMotivo: ' + (ff2.codigo||'desconocido') + '\n' + (ff2.detalle||''));
+    }
+  };
 }
 
 document.addEventListener('DOMContentLoaded', function(){ actualizarIndicadorModo(); pintarEstadoRuta(); });
@@ -1220,35 +1323,45 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
   }
 }
 
+// Guarda la razón exacta del último fallo para poder diagnosticarlo sin consola
+function _falloFB(codigo, detalle) {
+  window.__ultimoFalloFirebase = {
+    codigo: codigo, detalle: detalle || '', cuando: new Date().toLocaleString('es-MX')
+  };
+  console.warn('⛔ guardarEnFirebase falló:', codigo, detalle || '');
+  return false;
+}
+
 async function guardarEnFirebase() {
   if(!_fbConectado || !_fbDb) {
-    console.warn('Firestore no disponible: no se pudo subir a nube');
-    return false;
+    return _falloFB('SIN_CONEXION', 'Firestore no inicializado o sin internet');
   }
 
   // Cooldown: cuota Firebase agotada — no reintentar hasta que pase el tiempo
-  if(window.__fbCuotaHasta && Date.now() < window.__fbCuotaHasta) return false;
+  if(window.__fbCuotaHasta && Date.now() < window.__fbCuotaHasta) {
+    var segC = Math.ceil((window.__fbCuotaHasta - Date.now())/1000);
+    return _falloFB('CUOTA_AGOTADA', 'Se agotó la cuota de Firebase. Faltan '+segC+' s de espera.');
+  }
 
   // Cooldown: bloqueo HWM activo — no repetir el intento ni el log
-  if(window.__hwmBloqueadoHasta && Date.now() < window.__hwmBloqueadoHasta) return false;
+  if(window.__hwmBloqueadoHasta && Date.now() < window.__hwmBloqueadoHasta) {
+    var segH = Math.ceil((window.__hwmBloqueadoHasta - Date.now())/1000);
+    return _falloFB('BLOQUEO_HWM_ESPERA', 'Bloqueo por posible pérdida de datos. Faltan '+segH+' s.');
+  }
 
   // Candado principal: celular/PWA queda lectura por defecto.
   if(!cajaPuedeGuardarFirebase()) {
-    console.warn('⛔ Este dispositivo está en modo lectura. No sube a Firestore para evitar datos viejos.', {
-      dispositivo: window._dispositivoId || 'desconocido',
-      movilOPWA: cajaEsMovilOPWA(),
-      modo: localStorage.getItem('caja_modo_maestro') || 'AUTO'
-    });
     if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
-    return false;
+    return _falloFB('SOLO_LECTURA', 'Este equipo no es maestro. Modo: ' + (localStorage.getItem('caja_modo_maestro') || 'sin configurar'));
   }
 
   if(window.__aplicandoDatosFirebase) {
-    console.warn('⏳ No se guarda mientras se están aplicando datos de Firestore.');
-    return false;
+    return _falloFB('APLICANDO_NUBE', 'Se estaban bajando datos de la nube en ese momento');
   }
 
-  if(window.__guardandoFirebaseAhora) return false;
+  if(window.__guardandoFirebaseAhora) {
+    return _falloFB('GUARDADO_EN_CURSO', 'Ya había otro guardado corriendo');
+  }
 
   try {
     window.__guardandoFirebaseAhora = true;
@@ -1296,7 +1409,7 @@ async function guardarEnFirebase() {
       if(typeof toast === 'function') toast('⚠️ Guardado cancelado: pérdida de datos detectada. ' + _hwmProblemas.join('; '));
       window.__hwmBloqueadoHasta = Date.now() + 5 * 60 * 1000; // silencio 5 min
       if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('conectado');
-      return false;
+      return _falloFB('BLOQUEO_HWM', _hwmProblemas.join(' · '));
     }
 
     // Escritura completa y limpia: sin merge de tanda vieja.
@@ -1325,7 +1438,7 @@ async function guardarEnFirebase() {
       console.warn('Error guardando en Firestore:', e.code || '', e.message);
     }
     if(typeof actualizarIndicadorSync === 'function') actualizarIndicadorSync('sin_conexion');
-    return false;
+    return _falloFB('ERROR_FIRESTORE', (e.code || '') + ' ' + (e.message || ''));
 
   } finally {
     window.__guardandoFirebaseAhora = false;
@@ -1548,6 +1661,9 @@ window.addEventListener('unhandledrejection', function(e) {
     </button>
     <button id="btn-cerrar-ruta" onclick="cerrarModoRuta()" style="display:none;width:100%;background:#b45309;border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;margin-bottom:6px;">
       ✓ Cerrar modo ruta y subir
+    </button>
+    <button onclick="diagnosticoSync()" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:6px;">
+      🩺 Diagnóstico de sincronización
     </button>
     <button onclick="abrirConfiguracion()" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:6px;">
       ⚙ Configuración
