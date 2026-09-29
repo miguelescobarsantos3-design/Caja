@@ -1082,7 +1082,15 @@ async function diagnosticoSync() {
   });
   html += fila('Folios repetidos', dupes, dupes > 0);
 
+  var huerfanos = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento() : [];
+  html += fila('Recibos sin movimiento', huerfanos.length, huerfanos.length > 0);
+
   var aviso = '';
+  if(huerfanos.length > 0) {
+    aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
+      +'<strong>Hay '+huerfanos.length+' recibo(s) sin su movimiento.</strong> Aparecen en Recibos pero no en Historial. '
+      +'Usa "Recuperar movimientos faltantes" para reconstruir el historial sin tocar saldos.</div>';
+  }
   if(dupes > 0) {
     aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
       +'<strong>Hay '+dupes+' folio(s) repetido(s).</strong> Por eso al dar "Ver" se abre un recibo distinto al esperado. Usa "Reparar folios".</div>';
@@ -1106,6 +1114,7 @@ async function diagnosticoSync() {
     +'<h3 style="margin:0 0 12px;font-size:17px;">Diagnóstico de sincronización</h3>'
     + html + aviso
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
+    + (huerfanos.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar movimientos faltantes</button>' : '')
     + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
     +'<button id="__ds_close" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cerrar</button>'
@@ -1124,6 +1133,13 @@ async function diagnosticoSync() {
       var ff = window.__ultimoFalloFirebase || {};
       alert('❌ No subió.\n\nMotivo: ' + (ff.codigo||'desconocido') + '\n' + (ff.detalle||''));
     }
+  };
+
+  var bhu = ov.querySelector('#__ds_huerf');
+  if(bhu) bhu.onclick = function(){
+    ov.remove();
+    repararRecibosSinMovimiento();
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   };
 
   var bfol = ov.querySelector('#__ds_folios');
@@ -5589,6 +5605,67 @@ function nuevoFolio() {
   return f;
 }
 
+// Detecta recibos vigentes que no tienen su movimiento en el historial.
+// Pasa cuando un snapshot de la nube llegó incompleto: el recibo entró pero
+// el movimiento no. El saldo suele estar bien (viene de socios/prestamos),
+// lo que falta es el renglón del historial.
+function recibosSinMovimiento() {
+  var huerfanos = [];
+  (DB.recibos||[]).forEach(function(r){
+    if(!r || r.estado === 'cancelado') return;
+    var tipo = r.tipo;
+    if(['ahorro','retiro','prestamo','tanda300','tanda1000','cumple'].indexOf(tipo) === -1) return;
+    var nom = (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+    var existe = (DB.movimientos||[]).some(function(m){
+      return m.tipo === tipo
+        && (m.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase() === nom
+        && Math.abs(Number(m.monto)||0) === Math.abs(Number(r.monto)||0)
+        && m.fecha === r.fecha;
+    });
+    if(!existe) huerfanos.push(r);
+  });
+  return huerfanos;
+}
+
+// Reconstruye SOLO el renglón del historial. No toca saldos ni utilidades,
+// porque esos ya vinieron aplicados con el snapshot de socios/prestamos.
+function repararRecibosSinMovimiento() {
+  var huerfanos = recibosSinMovimiento();
+  if(!huerfanos.length) { alert('No hay recibos sin movimiento.'); return []; }
+
+  var detalle = huerfanos.map(function(r){
+    return '• #' + r.folio + ' · ' + r.tipo + ' · ' + (r.socio||'') + ' · $' + fmt(r.monto) + ' · ' + r.fecha;
+  }).join('\n');
+
+  if(!confirm('Se encontraron ' + huerfanos.length + ' recibo(s) sin movimiento en el historial:\n\n'
+    + detalle + '\n\n'
+    + 'Se va a recrear ÚNICAMENTE el renglón del historial.\n'
+    + 'NO se modifican saldos de socios ni de préstamos.\n\n'
+    + '¿Continuar?')) return [];
+
+  huerfanos.forEach(function(r){
+    var nom = (r.socio||'').replace(/^#\d+\s+/, '').trim();
+    var monto = Number(r.monto)||0;
+    DB.movimientos.unshift({
+      tipo: r.tipo,
+      socio: nom,
+      monto: (r.tipo === 'retiro') ? -Math.abs(monto) : Math.abs(monto),
+      fecha: r.fecha,
+      cuenta: r.cuenta || null,
+      notas: (r.concepto || '') + ' · recuperado del recibo #' + r.folio,
+      _recuperado: true,
+      _folioOrigen: r.folio
+    });
+  });
+
+  if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof renderDashboard === 'function') renderDashboard();
+  alert('✅ Se recrearon ' + huerfanos.length + ' movimiento(s) en el historial.\n\n'
+    + 'Quedaron marcados con "recuperado del recibo #…" en las notas.\n\n'
+    + 'Verifica que los saldos sigan correctos.');
+  return huerfanos;
+}
+
 // Renumera recibos con folio repetido. Conserva el más antiguo y reasigna
 // los demás, para que "Ver" deje de abrir el recibo equivocado.
 function repararFoliosDuplicados(silencioso) {
@@ -8519,6 +8596,22 @@ function confirmarCancelacion() {
       }
     }
     if(r.tipo === 'prestamo') {
+      // Misma guarda que en ahorro: si el recibo llegó sin su movimiento,
+      // el abono nunca se aplicó y revertirlo inflaría la deuda.
+      var _movAbono = (DB.movimientos||[]).some(function(m){
+        return m.tipo === 'prestamo'
+          && (m.socio||'').trim().toUpperCase() === (r.socio||'').trim().toUpperCase()
+          && Math.abs(Number(m.monto)||0) === Math.abs(Number(r.monto)||0)
+          && m.fecha === r.fecha
+          && !m.cancelado;
+      });
+
+      if(!_movAbono) {
+        alert('⚠️ Este recibo no tiene movimiento registrado en el historial.\n\n'
+          + 'El abono de $' + fmt(r.monto) + ' nunca se aplicó al préstamo de ' + r.socio + '.\n\n'
+          + 'El recibo se marcó como cancelado, pero NO se tocó el saldo del préstamo — '
+          + 'revertirlo aumentaría la deuda indebidamente.');
+      } else {
       // Revertir abono en todos los préstamos del deudor (proporcional)
       const prsActivos = DB.prestamos.filter(p =>
         p.nombre.toUpperCase() === r.socio.toUpperCase() && (p.estado === 'activo' || p.estado === 'liquidado')
@@ -8531,6 +8624,7 @@ function confirmarCancelacion() {
         aRevertir   -= revert;
         if(p.pendiente > 0) p.estado = 'activo';
       });
+      }
 
       // Revertir también el interés que se abonó a Utilidades con este pago.
       // El monto exacto quedó guardado en el movimiento del historial.
@@ -11700,8 +11794,11 @@ function normalizarVisibilidadSocios() {
     var aviso = document.getElementById('ta300-grupo-aviso');
     if(aviso){
       if(window._ta300Grupo){
+        var quien = window._ta300Aportante();
         aviso.style.display = 'block';
-        aviso.textContent = 'Aportando al Grupo ' + window._ta300Grupo + '. Solo puedes cubrir turnos de ese grupo.';
+        aviso.innerHTML = 'Registrando el aporte de <strong>' + esc(quien) + '</strong> (Grupo '
+          + window._ta300Grupo + '). En cada turno se indica cuánto <strong>'
+          + esc(quien) + '</strong> pagó o debe a ese turno.';
       } else {
         aviso.style.display = 'none';
       }
@@ -11782,12 +11879,12 @@ function normalizarVisibilidadSocios() {
     var detalle = 'T'+(i+1) + (recaudado>0 ? ' · rec $'+fmt(recaudado) : '');
     if(aportante && !otroGrupo){
       detalle += esSuTurno
-        ? ' · \x3Cspan style="color:var(--azul);font-weight:700;"\x3Etu turno, no aportas\x3C/span\x3E'
+        ? ' · \x3Cspan style="color:var(--azul);font-weight:700;"\x3Esu propio turno, no aporta\x3C/span\x3E'
         : cubierto
-          ? ' · \x3Cspan style="color:var(--verde);font-weight:700;"\x3Etú pagaste $'+fmt(miPago)+'\x3C/span\x3E'
+          ? ' · \x3Cspan style="color:var(--verde);font-weight:700;"\x3Eya pagó $'+fmt(miPago)+'\x3C/span\x3E'
           : (miPago > 0
-              ? ' · \x3Cspan style="color:var(--naranja);font-weight:700;"\x3Etú $'+fmt(miPago)+', faltan $'+fmt(miFalta)+'\x3C/span\x3E'
-              : ' · \x3Cspan style="color:var(--rojo);font-weight:700;"\x3Etú debes $'+fmt(monto300)+'\x3C/span\x3E');
+              ? ' · \x3Cspan style="color:var(--naranja);font-weight:700;"\x3Epagó $'+fmt(miPago)+' · faltan $'+fmt(miFalta)+'\x3C/span\x3E'
+              : ' · \x3Cspan style="color:var(--rojo);font-weight:700;"\x3Edebe $'+fmt(monto300)+'\x3C/span\x3E');
     }
     var etiquetaCobro = cobro ? ' \x3Cspan style="color:var(--texto2);font-size:10px;"\x3E(ya cobró)\x3C/span\x3E' : '';
 
