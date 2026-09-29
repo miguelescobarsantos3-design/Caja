@@ -1082,24 +1082,18 @@ async function diagnosticoSync() {
   });
   html += fila('Folios repetidos', dupes, dupes > 0);
 
-  var huerfanos  = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento() : [];
-  var desde7     = (typeof _fechaHaceDias === 'function') ? _fechaHaceDias(7) : '';
-  var recientes  = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento(desde7) : [];
-  var historicos = huerfanos.length - recientes.length;
+  // Solo interesan los recientes. Los recibos antiguos sin movimiento vienen de
+  // la importación inicial y son normales, así que no se reportan.
+  var desde7    = (typeof _fechaHaceDias === 'function') ? _fechaHaceDias(7) : '';
+  var recientes = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento(desde7) : [];
 
   html += fila('Sin movimiento · últimos 7 días', recientes.length, recientes.length > 0);
-  html += fila('Sin movimiento · anteriores', historicos);
 
   var aviso = '';
   if(recientes.length > 0) {
     aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
       +'<strong>'+recientes.length+' recibo(s) recientes sin movimiento.</strong> Estos vienen del fallo de sincronización. '
       +'Usa "Recuperar recientes" para reconstruir su renglón en Historial sin tocar saldos.</div>';
-  }
-  if(historicos > 0) {
-    aviso += '<div style="margin-top:10px;padding:10px;background:#f4f4f2;border-radius:8px;font-size:12px;color:#555;">'
-      +'<strong>'+historicos+' recibo(s) anteriores</strong> tampoco tienen movimiento, pero casi seguro vienen de la '
-      +'importación inicial y no son un error. Revísalos con "Ver lista" antes de tocarlos.</div>';
   }
   if(dupes > 0) {
     aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
@@ -1125,7 +1119,6 @@ async function diagnosticoSync() {
     + html + aviso
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
     + (recientes.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar recientes ('+recientes.length+')</button>' : '')
-    + (huerfanos.length > 0 ? '<button id="__ds_verhu" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Ver lista de huérfanos</button>' : '')
     + '<button id="__ds_unif" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Unificar nombre de socio</button>'
     + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
@@ -1153,9 +1146,6 @@ async function diagnosticoSync() {
     repararRecibosSinMovimiento(desde7);
     if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   };
-
-  var bvh = ov.querySelector('#__ds_verhu');
-  if(bvh) bvh.onclick = function(){ verRecibosSinMovimiento(); };
 
   var bun = ov.querySelector('#__ds_unif');
   if(bun) bun.onclick = function(){ ov.remove(); abrirUnificarNombre(); };
