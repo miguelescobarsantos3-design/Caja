@@ -8493,11 +8493,29 @@ function confirmarCancelacion() {
         var nomLimpio = (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
         s = DB.socios.find(x => (x.nombre||'').toUpperCase() === nomLimpio);
       }
-      if(s) {
+
+      // GUARDA: si el recibo llegó sin su movimiento (por ejemplo, un snapshot
+      // incompleto de la nube), el monto nunca se aplicó al saldo. Revertirlo
+      // restaría dinero que jamás se sumó, así que solo se marca cancelado.
+      var _nomRec = (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+      var _movExiste = (DB.movimientos||[]).some(function(m){
+        return m.tipo === r.tipo
+          && (m.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase() === _nomRec
+          && Math.abs(Number(m.monto)||0) === Math.abs(Number(r.monto)||0)
+          && m.fecha === r.fecha
+          && !m.cancelado;
+      });
+
+      if(s && _movExiste) {
         var antes = r._snapshot && r._snapshot.ahorro_antes != null
           ? r._snapshot.ahorro_antes
           : (s.ahorro - (r.tipo === 'retiro' ? -r.monto : r.monto));
         s.ahorro = antes;
+      } else if(s && !_movExiste) {
+        console.warn('⚠️ Recibo sin movimiento asociado: no se toca el saldo.', r.folio, r.socio);
+        alert('⚠️ Este recibo no tiene movimiento registrado en el historial.\n\n'
+          + 'Significa que el monto NUNCA se sumó al saldo de ' + (s.nombre||r.socio) + '.\n\n'
+          + 'El recibo se marcó como cancelado, pero NO se tocó el saldo — restarlo lo dejaría mal.');
       }
     }
     if(r.tipo === 'prestamo') {
