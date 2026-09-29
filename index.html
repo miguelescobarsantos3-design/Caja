@@ -11567,8 +11567,9 @@ function normalizarVisibilidadSocios() {
     if(kf) kf.textContent = dinero(t.fondo);
     var e1 = document.getElementById('t300-tabla-g1');
     var e2 = document.getElementById('t300-tabla-g2');
-    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, T300_G1.length, t.entregas, 1, 't300');
-    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, T300_G2.length, t.entregas, 2, 't300');
+    // El total de quincenas es (n - 1): nadie aporta a su propio turno
+    if(e1) e1.innerHTML = tablaTanda(T300_G1, pG1, monto300, T300_G1.length - 1, t.entregas, 1, 't300');
+    if(e2) e2.innerHTML = tablaTanda(T300_G2, pG2, monto300, T300_G2.length - 1, t.entregas, 2, 't300');
 
     // ── Recuadro pendientes de turno actual ──
     var quinG1 = pG1.map(function(p){ return Math.floor(p/monto300); });
@@ -11640,7 +11641,7 @@ function normalizarVisibilidadSocios() {
     // el índice del COBRADOR (el turno pagado), no el del aportante.
     var pagos = T1000_P.map(function(n,i){ return aportadoT1000(t, i); });
     var tb = document.getElementById('t1000-tabla');
-    if(tb) tb.innerHTML = tablaTanda(T1000_P, pagos, monto1000, T1000_P.length, t.entregas, null, 't1000');
+    if(tb) tb.innerHTML = tablaTanda(T1000_P, pagos, monto1000, T1000_P.length - 1, t.entregas, null, 't1000');
   };
 
   function crearModal(id, titulo, cuerpo, guardarFn){
@@ -11761,27 +11762,32 @@ function normalizarVisibilidadSocios() {
     var miFalta = Math.max(0, monto300 - miPago);
     var cubierto = aportante ? (miFalta <= 0) : false;
     var otroGrupo = grupoSel !== 0 && grupoSel !== grupo;
+    // Nadie aporta a su propio turno: ese es el que va a cobrar
+    var esSuTurno = !!aportante && !otroGrupo && n === aportante;
 
-    // Se bloquea solo si este participante ya cubrió su parte de este turno.
+    // Se bloquea si es su propio turno, o si ya cubrió su parte de este.
     // Que el turno ya se haya entregado no impide seguir cobrando lo pendiente.
-    var bloqueado = (otroGrupo || cubierto) ? 'disabled' : '';
-    if(cubierto) bloqueado = 'checked disabled';
+    var bloqueado = (otroGrupo || esSuTurno || cubierto) ? 'disabled' : '';
+    if(cubierto && !esSuTurno) bloqueado = 'checked disabled';
 
     var bg = otroGrupo ? 'var(--gris)'
+           : esSuTurno ? 'rgba(26,90,160,0.10)'
            : cubierto ? 'rgba(10,74,42,0.10)'
            : (aportante && miPago > 0) ? 'rgba(232,108,44,0.10)'
            : recaudado > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
 
-    var nombreTxt = cubierto ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+    var nombreTxt = (cubierto && !esSuTurno) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
 
     // Segunda línea con las cifras ya etiquetadas
     var detalle = 'T'+(i+1) + (recaudado>0 ? ' · rec $'+fmt(recaudado) : '');
     if(aportante && !otroGrupo){
-      detalle += cubierto
-        ? ' · \x3Cspan style="color:var(--verde);font-weight:700;"\x3Etú pagaste $'+fmt(miPago)+'\x3C/span\x3E'
-        : (miPago > 0
-            ? ' · \x3Cspan style="color:var(--naranja);font-weight:700;"\x3Etú $'+fmt(miPago)+', faltan $'+fmt(miFalta)+'\x3C/span\x3E'
-            : ' · \x3Cspan style="color:var(--rojo);font-weight:700;"\x3Etú debes $'+fmt(monto300)+'\x3C/span\x3E');
+      detalle += esSuTurno
+        ? ' · \x3Cspan style="color:var(--azul);font-weight:700;"\x3Etu turno, no aportas\x3C/span\x3E'
+        : cubierto
+          ? ' · \x3Cspan style="color:var(--verde);font-weight:700;"\x3Etú pagaste $'+fmt(miPago)+'\x3C/span\x3E'
+          : (miPago > 0
+              ? ' · \x3Cspan style="color:var(--naranja);font-weight:700;"\x3Etú $'+fmt(miPago)+', faltan $'+fmt(miFalta)+'\x3C/span\x3E'
+              : ' · \x3Cspan style="color:var(--rojo);font-weight:700;"\x3Etú debes $'+fmt(monto300)+'\x3C/span\x3E');
     }
     var etiquetaCobro = cobro ? ' \x3Cspan style="color:var(--texto2);font-size:10px;"\x3E(ya cobró)\x3C/span\x3E' : '';
 
@@ -11803,9 +11809,10 @@ function normalizarVisibilidadSocios() {
     if(infoEl){
       if(aportante){
         var pagado = sumaT300Aportante(t, aportante);
+        // Cada quien aporta a todos los turnos MENOS el suyo, por eso (n - 1).
         var totalPosible = 0;
-        if(T300_G1.indexOf(aportante)>=0) totalPosible += T300_G1.length * monto300;
-        if(T300_G2.indexOf(aportante)>=0) totalPosible += T300_G2.length * monto300;
+        if(T300_G1.indexOf(aportante)>=0) totalPosible += (T300_G1.length - 1) * monto300;
+        if(T300_G2.indexOf(aportante)>=0) totalPosible += (T300_G2.length - 1) * monto300;
         var pendiente = Math.max(0, totalPosible - pagado);
         infoEl.style.display = 'block';
         document.getElementById('ta300-pagado').textContent = '$'+fmt(pagado);
