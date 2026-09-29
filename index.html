@@ -1082,14 +1082,24 @@ async function diagnosticoSync() {
   });
   html += fila('Folios repetidos', dupes, dupes > 0);
 
-  var huerfanos = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento() : [];
-  html += fila('Recibos sin movimiento', huerfanos.length, huerfanos.length > 0);
+  var huerfanos  = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento() : [];
+  var desde7     = (typeof _fechaHaceDias === 'function') ? _fechaHaceDias(7) : '';
+  var recientes  = (typeof recibosSinMovimiento === 'function') ? recibosSinMovimiento(desde7) : [];
+  var historicos = huerfanos.length - recientes.length;
+
+  html += fila('Sin movimiento · últimos 7 días', recientes.length, recientes.length > 0);
+  html += fila('Sin movimiento · anteriores', historicos);
 
   var aviso = '';
-  if(huerfanos.length > 0) {
+  if(recientes.length > 0) {
     aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
-      +'<strong>Hay '+huerfanos.length+' recibo(s) sin su movimiento.</strong> Aparecen en Recibos pero no en Historial. '
-      +'Usa "Recuperar movimientos faltantes" para reconstruir el historial sin tocar saldos.</div>';
+      +'<strong>'+recientes.length+' recibo(s) recientes sin movimiento.</strong> Estos vienen del fallo de sincronización. '
+      +'Usa "Recuperar recientes" para reconstruir su renglón en Historial sin tocar saldos.</div>';
+  }
+  if(historicos > 0) {
+    aviso += '<div style="margin-top:10px;padding:10px;background:#f4f4f2;border-radius:8px;font-size:12px;color:#555;">'
+      +'<strong>'+historicos+' recibo(s) anteriores</strong> tampoco tienen movimiento, pero casi seguro vienen de la '
+      +'importación inicial y no son un error. Revísalos con "Ver lista" antes de tocarlos.</div>';
   }
   if(dupes > 0) {
     aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
@@ -1114,7 +1124,8 @@ async function diagnosticoSync() {
     +'<h3 style="margin:0 0 12px;font-size:17px;">Diagnóstico de sincronización</h3>'
     + html + aviso
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
-    + (huerfanos.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar movimientos faltantes</button>' : '')
+    + (recientes.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar recientes ('+recientes.length+')</button>' : '')
+    + (huerfanos.length > 0 ? '<button id="__ds_verhu" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Ver lista de huérfanos</button>' : '')
     + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
     +'<button id="__ds_close" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cerrar</button>'
@@ -1138,9 +1149,12 @@ async function diagnosticoSync() {
   var bhu = ov.querySelector('#__ds_huerf');
   if(bhu) bhu.onclick = function(){
     ov.remove();
-    repararRecibosSinMovimiento();
+    repararRecibosSinMovimiento(desde7);
     if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   };
+
+  var bvh = ov.querySelector('#__ds_verhu');
+  if(bvh) bvh.onclick = function(){ verRecibosSinMovimiento(); };
 
   var bfol = ov.querySelector('#__ds_folios');
   if(bfol) bfol.onclick = function(){
@@ -5609,12 +5623,16 @@ function nuevoFolio() {
 // Pasa cuando un snapshot de la nube llegó incompleto: el recibo entró pero
 // el movimiento no. El saldo suele estar bien (viene de socios/prestamos),
 // lo que falta es el renglón del historial.
-function recibosSinMovimiento() {
+// desdeFecha (YYYY-MM-DD) limita la búsqueda. Importa: hay recibos antiguos,
+// heredados de la importación inicial, que nunca tuvieron movimiento y NO son
+// un error a reparar. Solo los recientes vienen del fallo de sincronización.
+function recibosSinMovimiento(desdeFecha) {
   var huerfanos = [];
   (DB.recibos||[]).forEach(function(r){
     if(!r || r.estado === 'cancelado') return;
     var tipo = r.tipo;
     if(['ahorro','retiro','prestamo','tanda300','tanda1000','cumple'].indexOf(tipo) === -1) return;
+    if(desdeFecha && String(r.fecha||'') < desdeFecha) return;
     var nom = (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
     var existe = (DB.movimientos||[]).some(function(m){
       return m.tipo === tipo
@@ -5627,11 +5645,44 @@ function recibosSinMovimiento() {
   return huerfanos;
 }
 
+// Fecha de hace N días en formato YYYY-MM-DD
+function _fechaHaceDias(n) {
+  var d = new Date(); d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0,10);
+}
+
+// Lista los huérfanos sin modificar nada, para revisarlos antes de decidir
+function verRecibosSinMovimiento() {
+  var todos = recibosSinMovimiento();
+  if(!todos.length) { alert('No hay recibos sin movimiento.'); return; }
+  var porAnio = {};
+  todos.forEach(function(r){
+    var a = String(r.fecha||'????').slice(0,7);
+    porAnio[a] = (porAnio[a]||0) + 1;
+  });
+  var resumen = Object.keys(porAnio).sort().reverse().map(function(k){
+    return k + ': ' + porAnio[k];
+  }).join('\n');
+  var ultimos = todos.slice(0, 25).map(function(r){
+    return '#' + r.folio + ' · ' + r.tipo + ' · ' + (r.socio||'') + ' · $' + fmt(r.monto) + ' · ' + r.fecha;
+  }).join('\n');
+  alert('RECIBOS SIN MOVIMIENTO: ' + todos.length + '\n\nPor mes:\n' + resumen
+    + '\n\nPrimeros 25:\n' + ultimos
+    + '\n\nLos de meses viejos casi seguro vienen de la importación inicial y no hay que tocarlos.');
+}
+
 // Reconstruye SOLO el renglón del historial. No toca saldos ni utilidades,
 // porque esos ya vinieron aplicados con el snapshot de socios/prestamos.
-function repararRecibosSinMovimiento() {
-  var huerfanos = recibosSinMovimiento();
-  if(!huerfanos.length) { alert('No hay recibos sin movimiento.'); return []; }
+function repararRecibosSinMovimiento(desdeFecha) {
+  var huerfanos = recibosSinMovimiento(desdeFecha);
+  if(!huerfanos.length) { alert('No hay recibos sin movimiento en ese rango.'); return []; }
+  if(huerfanos.length > 15) {
+    if(!confirm('Vas a recrear ' + huerfanos.length + ' movimientos.\n\n'
+      + 'Es una cantidad alta. Los recibos antiguos suelen venir de la importación '
+      + 'inicial y NO son un error: recrearlos ensucia el historial.\n\n'
+      + 'Revisa primero con "Ver lista de huérfanos".\n\n'
+      + '¿Aun así continuar?')) return [];
+  }
 
   var detalle = huerfanos.map(function(r){
     return '• #' + r.folio + ' · ' + r.tipo + ' · ' + (r.socio||'') + ' · $' + fmt(r.monto) + ' · ' + r.fecha;
