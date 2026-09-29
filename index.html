@@ -1073,7 +1073,20 @@ async function diagnosticoSync() {
 
   var bloqueHWM = cajaObtenerHWM('movimientos') > locMovs || cajaObtenerHWM('recibos') > locRecs;
 
+  // Folios repetidos: dos recibos con el mismo número hacen que "Ver" abra el equivocado
+  var cuentaFolios = {}, dupes = 0;
+  (DB.recibos||[]).forEach(function(r){
+    var f = String(r.folio||''); if(!f) return;
+    cuentaFolios[f] = (cuentaFolios[f]||0) + 1;
+    if(cuentaFolios[f] === 2) dupes++;
+  });
+  html += fila('Folios repetidos', dupes, dupes > 0);
+
   var aviso = '';
+  if(dupes > 0) {
+    aviso += '<div style="margin-top:10px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
+      +'<strong>Hay '+dupes+' folio(s) repetido(s).</strong> Por eso al dar "Ver" se abre un recibo distinto al esperado. Usa "Reparar folios".</div>';
+  }
   if(f) {
     aviso += '<div style="margin-top:12px;padding:10px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
       +'<strong>Último fallo: '+f.codigo+'</strong><br>'+f.detalle+'<br><span style="color:#999;">'+f.cuando+'</span></div>';
@@ -1093,6 +1106,7 @@ async function diagnosticoSync() {
     +'<h3 style="margin:0 0 12px;font-size:17px;">Diagnóstico de sincronización</h3>'
     + html + aviso
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
+    + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
     +'<button id="__ds_close" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cerrar</button>'
     +'</div>';
@@ -1110,6 +1124,14 @@ async function diagnosticoSync() {
       var ff = window.__ultimoFalloFirebase || {};
       alert('❌ No subió.\n\nMotivo: ' + (ff.codigo||'desconocido') + '\n' + (ff.detalle||''));
     }
+  };
+
+  var bfol = ov.querySelector('#__ds_folios');
+  if(bfol) bfol.onclick = function(){
+    ov.remove();
+    repararFoliosDuplicados(false);
+    if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   };
 
   var bf = ov.querySelector('#__ds_force');
@@ -1254,15 +1276,26 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
   window.__aplicandoDatosFirebase = true;
 
   try {
-    // PROTECCIÓN HISTÓRICA: para movimientos y recibos, nunca reducir el conteo.
-    // Se toma el array con MÁS registros (local vs Firebase).
-    var _localMovs  = DB.movimientos || [];
-    DB.movimientos  = ((datos.movimientos||[]).length >= _localMovs.length)
-                      ? (datos.movimientos || []) : _localMovs;
+    // PROTECCIÓN HISTÓRICA: nunca reducir el conteo de movimientos ni recibos.
+    // La decisión es CONJUNTA a propósito: si se evalúa cada arreglo por
+    // separado se pueden tomar los recibos de la nube y los movimientos
+    // locales, dejando recibos sin su movimiento correspondiente.
+    var _localMovs = DB.movimientos || [];
+    var _localRecs = DB.recibos || [];
+    var _nubeMovs  = datos.movimientos || [];
+    var _nubeRecs  = datos.recibos || [];
 
-    var _localRecs  = DB.recibos || [];
-    DB.recibos      = ((datos.recibos||[]).length >= _localRecs.length)
-                      ? (datos.recibos || []) : _localRecs;
+    if(_nubeMovs.length >= _localMovs.length && _nubeRecs.length >= _localRecs.length) {
+      DB.movimientos = _nubeMovs;
+      DB.recibos     = _nubeRecs;
+    } else {
+      DB.movimientos = _localMovs;
+      DB.recibos     = _localRecs;
+      console.warn('⚠️ Snapshot de la nube descartado por venir incompleto.', {
+        movsNube: _nubeMovs.length, movsLocal: _localMovs.length,
+        recsNube: _nubeRecs.length, recsLocal: _localRecs.length
+      });
+    }
 
     DB.socios       = datos.socios       || [];
     DB.prestamos    = datos.prestamos    || [];
@@ -5532,11 +5565,63 @@ let folioCounter = 1;
 
 function iniciarFolioCounter() {
   if(DB.recibos && DB.recibos.length > 0) {
-    const folios = DB.recibos.map(r => parseInt(r.folio)||0);
+    // Se quitan las letras para que el contador avance por encima de AMBAS
+    // series (la de la PC y la del celular, que lleva prefijo "C").
+    const folios = DB.recibos.map(r => parseInt(String(r.folio||'').replace(/\D/g,''), 10) || 0);
     folioCounter = Math.max(...folios) + 1;
   } else {
     folioCounter = 1;
   }
+}
+
+// Genera un folio que no choque con los de otro dispositivo.
+// El celular emite su propia serie con prefijo "C" (C1734), porque ambos
+// equipos calculan "el más alto + 1" y offline llegarían al mismo número.
+function nuevoFolio() {
+  var esCel = /^cel_/.test(window._dispositivoId || '')
+              || /Mobi|Android/i.test(navigator.userAgent || '');
+  var pre = esCel ? 'C' : '';
+  var f, intentos = 0;
+  do {
+    f = pre + String(folioCounter++).padStart(4,'0');
+    intentos++;
+  } while (intentos < 500 && (DB.recibos||[]).some(function(r){ return r.folio === f; }));
+  return f;
+}
+
+// Renumera recibos con folio repetido. Conserva el más antiguo y reasigna
+// los demás, para que "Ver" deje de abrir el recibo equivocado.
+function repararFoliosDuplicados(silencioso) {
+  if(!DB.recibos || !DB.recibos.length) return [];
+  var vistos = {}, cambios = [];
+  // Del más viejo al más nuevo: el primero conserva su folio
+  for(var i = DB.recibos.length - 1; i >= 0; i--) {
+    var r = DB.recibos[i];
+    var f = String(r.folio || '');
+    if(!f) continue;
+    if(vistos[f]) {
+      iniciarFolioCounter();
+      var nuevo = nuevoFolio();
+      cambios.push({antes: f, ahora: nuevo, socio: r.socio || '', monto: r.monto});
+      r.folio = nuevo;
+      vistos[nuevo] = true;
+    } else {
+      vistos[f] = true;
+    }
+  }
+  if(cambios.length) {
+    if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    if(!silencioso) {
+      alert('Se corrigieron ' + cambios.length + ' folio(s) repetido(s):\n\n'
+        + cambios.map(function(c){
+            return '• ' + c.socio + ' $' + (typeof fmt==='function'?fmt(c.monto):c.monto)
+                 + ': #' + c.antes + ' → #' + c.ahora;
+          }).join('\n'));
+    }
+  } else if(!silencioso) {
+    alert('No hay folios repetidos.');
+  }
+  return cambios;
 }
 
 // ══════════════════════════════════════════════════
@@ -7239,7 +7324,7 @@ function procesarRetiro() {
   document.getElementById('pago-resumen').innerHTML = '<div class="empty"><div class="icon">◎</div><p>Selecciona un socio</p></div>';
 
   // Recibo
-  const folio = String(folioCounter++).padStart(4,'0');
+  const folio = nuevoFolio();
   reciboActual = {tipo:'retiro', socio:s.nombre, monto, fecha, concepto:'Retiro de ahorro', saldo:s.ahorro, notas:motivo, folio};
   const iniciales = s.nombre.split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
   const num = String(s.id).padStart(2,'0');
@@ -7334,7 +7419,7 @@ function procesarTanda() {
 // RECIBO
 // ══════════════════════════════════════════════════
 function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
-  const folio = String(folioCounter++).padStart(4,'0');
+  const folio = nuevoFolio();
   reciboActual = {tipo, socio, monto, fecha, concepto, saldo, notas, folio};
 
   const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda'};
@@ -7384,7 +7469,7 @@ function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
 }
 
 function mostrarReciboPrestamo(socio, monto, fecha, concepto, pendiente, interes, totalDeuda, estado, notas) {
-  const folio = String(folioCounter++).padStart(4,'0');
+  const folio = nuevoFolio();
   reciboActual = {tipo:'prestamo', socio, monto, fecha, concepto, saldo:pendiente, notas, folio};
   DB.recibos.unshift({folio,tipo:'prestamo',socio,monto,fecha,concepto,saldo:pendiente,
     notas,estado:'vigente',fechaEmision:new Date().toISOString().slice(0,10),
@@ -8219,7 +8304,7 @@ let reciboACancelar = null;
 const _mostrarReciboOrig = mostrarRecibo;
 
 function mostrarRecibo(tipo, socio, monto, fecha, concepto, saldo, notas) {
-  const folio = String(folioCounter++).padStart(4,'0');
+  const folio = nuevoFolio();
   reciboActual = {tipo, socio, monto, fecha, concepto, saldo, notas, folio};
 
   // Guardar en DB.recibos con referencia al movimiento
@@ -10373,7 +10458,7 @@ function confirmarEntregaCumple(){
   if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
   cerrarModal('modal-cumple-entrega');
   // Mostrar recibo de entrega en el overlay existente (igual que ahorro/préstamo)
-  var _folioEnt = String(folioCounter++).padStart(4,'0');
+  var _folioEnt = nuevoFolio();
   DB.recibos = DB.recibos || [];
   DB.recibos.unshift({folio:_folioEnt, tipo:'cumple', socio:nombre, monto:monto, fecha:fecha,
     fechaEmision:new Date().toLocaleDateString('es-MX'),
@@ -11645,6 +11730,51 @@ function normalizarVisibilidadSocios() {
     modal.classList.add('open');
   };
 
+  // Un renglón de turno en el modal de aporte.
+  // Muestra dos cifras distintas y las etiqueta, porque antes se confundían:
+  //   "rec" = recaudado en ese turno (lo que juntaron todos)
+  //   "tú"  = lo que lleva pagado el participante elegido A ESE turno
+  function filaTurnoT300(t, grupo, n, i, aportante, grupoSel, monto300, pagoEnTurno){
+    var cobro = (t.entregas||[]).find(function(e){
+      return Number(e.grupo)===grupo && Number(e.turno)===i+1;
+    });
+    var recaudado = sumaT300Turno(t, grupo, n);
+    var miPago = aportante ? pagoEnTurno(t, grupo, n, aportante) : 0;
+    var miFalta = Math.max(0, monto300 - miPago);
+    var cubierto = aportante ? (miFalta <= 0) : false;
+    var otroGrupo = grupoSel !== 0 && grupoSel !== grupo;
+
+    // Se bloquea solo si este participante ya cubrió su parte de este turno.
+    // Que el turno ya se haya entregado no impide seguir cobrando lo pendiente.
+    var bloqueado = (otroGrupo || cubierto) ? 'disabled' : '';
+    if(cubierto) bloqueado = 'checked disabled';
+
+    var bg = otroGrupo ? 'var(--gris)'
+           : cubierto ? 'rgba(10,74,42,0.10)'
+           : (aportante && miPago > 0) ? 'rgba(232,108,44,0.10)'
+           : recaudado > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
+
+    var nombreTxt = cubierto ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
+
+    // Segunda línea con las cifras ya etiquetadas
+    var detalle = 'T'+(i+1) + (recaudado>0 ? ' · rec $'+fmt(recaudado) : '');
+    if(aportante && !otroGrupo){
+      detalle += cubierto
+        ? ' · \x3Cspan style="color:var(--verde);font-weight:700;"\x3Etú pagaste $'+fmt(miPago)+'\x3C/span\x3E'
+        : (miPago > 0
+            ? ' · \x3Cspan style="color:var(--naranja);font-weight:700;"\x3Etú $'+fmt(miPago)+', faltan $'+fmt(miFalta)+'\x3C/span\x3E'
+            : ' · \x3Cspan style="color:var(--rojo);font-weight:700;"\x3Etú debes $'+fmt(monto300)+'\x3C/span\x3E');
+    }
+    var etiquetaCobro = cobro ? ' \x3Cspan style="color:var(--texto2);font-size:10px;"\x3E(ya cobró)\x3C/span\x3E' : '';
+
+    return '\x3Cdiv style="display:flex;align-items:flex-start;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
+      +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="'+grupo+'" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;margin-top:2px;"\x3E'
+      +'\x3Cspan style="font-size:12px;flex:1;line-height:1.35;"\x3E'+nombreTxt+etiquetaCobro
+        +'\x3Cbr\x3E\x3Cspan style="color:var(--texto2);font-size:10px;"\x3E'+detalle+'\x3C/span\x3E'
+      +'\x3C/span\x3E'
+      +'\x3C/div\x3E';
+  }
+
   window._ta300RefrescarTurnos = function(){
     var t = window.getTanda300();
     var monto300 = t.montoAporte || 300;
@@ -11676,25 +11806,7 @@ function normalizarVisibilidadSocios() {
     var listaG1 = document.getElementById('ta300-turnos-g1');
     if(listaG1){
       var g1Html = T300_G1.map(function(n, i){
-        var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===1 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Turno(t,1,n);
-        // Solo bloquear si: ya fue entregado Y este aportante ya pagó su parte de ese turno
-        var yaEstePago = aportante ? pagoAportanteEnTurno(t,1,n,aportante) >= monto300 : false;
-        // Solo se puede aportar al grupo del participante elegido
-        var otroGrupo = grupoSel !== 0 && grupoSel !== 1;
-        var bloqueado = (otroGrupo || (cobro && yaEstePago)) ? 'disabled' : '';
-        if(cobro && yaEstePago) bloqueado = 'checked disabled';
-        var entregadoPendiente = cobro && !yaEstePago; // entregado pero aún debe
-        var bg = otroGrupo ? 'var(--gris)'
-               : (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
-               : entregadoPendiente ? 'rgba(232,108,44,0.08)'  // naranja suave = entregado pero sin pagar
-               : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
-        var txt = (cobro && yaEstePago) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var etiqueta = entregadoPendiente ? ' \x3Cspan style="color:var(--naranja);font-size:10px;font-weight:600;"\x3E⚠ Ya cobró\x3C/span\x3E' : '';
-        return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
-          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="1" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
-          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E'+etiqueta+'\x3C/span\x3E'
-          +'\x3C/div\x3E';
+        return filaTurnoT300(t, 1, n, i, aportante, grupoSel, monto300, pagoAportanteEnTurno);
       }).join('');
       listaG1.innerHTML = g1Html;
     }
@@ -11702,24 +11814,7 @@ function normalizarVisibilidadSocios() {
     var listaG2 = document.getElementById('ta300-turnos-g2');
     if(listaG2){
       var g2Html = T300_G2.map(function(n, i){
-        var cobro = (t.entregas||[]).find(function(e){ return Number(e.grupo)===2 && Number(e.turno)===i+1; });
-        var pagadoTurno = sumaT300Turno(t,2,n);
-        var yaEstePago = aportante ? pagoAportanteEnTurno(t,2,n,aportante) >= monto300 : false;
-        // Solo se puede aportar al grupo del participante elegido
-        var otroGrupo = grupoSel !== 0 && grupoSel !== 2;
-        var bloqueado = (otroGrupo || (cobro && yaEstePago)) ? 'disabled' : '';
-        if(cobro && yaEstePago) bloqueado = 'checked disabled';
-        var entregadoPendiente = cobro && !yaEstePago;
-        var bg = otroGrupo ? 'var(--gris)'
-               : (cobro && yaEstePago) ? 'rgba(10,74,42,0.1)'
-               : entregadoPendiente ? 'rgba(232,108,44,0.08)'
-               : pagadoTurno > 0 ? 'rgba(26,122,90,0.05)' : 'var(--gris)';
-        var txt = (cobro && yaEstePago) ? '\x3Cs\x3E'+esc(n)+'\x3C/s\x3E' : esc(n);
-        var etiqueta = entregadoPendiente ? ' \x3Cspan style="color:var(--naranja);font-size:10px;font-weight:600;"\x3E⚠ Ya cobró\x3C/span\x3E' : '';
-        return '\x3Cdiv style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;background:'+bg+';cursor:pointer;" onclick="if(!this.querySelector(\'input\').disabled){this.querySelector(\'input\').checked=!this.querySelector(\'input\').checked;window._ta300ActualizarMonto();}"\x3E'
-          +'\x3Cinput type="checkbox" class="ta300-turno-cb" data-grupo="2" data-nombre="'+esc(n)+'" data-idx="'+i+'" '+bloqueado+' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;"\x3E'
-          +'\x3Cspan style="font-size:12px;flex:1;"\x3E'+txt+' \x3Cspan style="color:var(--texto2);"\x3ET'+(i+1)+(pagadoTurno>0?' $'+fmt(pagadoTurno):'')+'\x3C/span\x3E'+etiqueta+'\x3C/span\x3E'
-          +'\x3C/div\x3E';
+        return filaTurnoT300(t, 2, n, i, aportante, grupoSel, monto300, pagoAportanteEnTurno);
       }).join('');
       listaG2.innerHTML = g2Html;
     }
@@ -11772,7 +11867,7 @@ function normalizarVisibilidadSocios() {
     var pagadoTotal = sumaT300Aportante(t, aportante);
     var concepto = 'Aporte Tanda $300 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasRecibo = notas || turnosCubiertos.join(', ');
-    var folio = String(folioCounter++).padStart(4,'0');
+    var folio = nuevoFolio();
     DB.movimientos.unshift({tipo:'tanda300',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:concepto+(notas?' — '+notas:'')});
     DB.recibos.unshift({folio:folio,tipo:'tanda300',socio:aportante,monto:total,cuenta:cuenta,fecha:fecha,
       concepto:concepto,saldo:pagadoTotal,notas:notasRecibo,estado:'vigente',
@@ -12038,7 +12133,7 @@ function normalizarVisibilidadSocios() {
     var pagadoTotalT1000 = aportadoT1000(t, aportanteIdx);
     var conceptoT1000 = 'Aporte Tanda $1,000 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasReciboT1000 = notas || turnosCubiertos1000.join(', ');
-    var folioT1000 = String(folioCounter++).padStart(4,'0');
+    var folioT1000 = nuevoFolio();
     DB.movimientos.unshift({tipo:'tanda1000',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:conceptoT1000+(notas?' — '+notas:'')});
     DB.recibos.unshift({folio:folioT1000,tipo:'tanda1000',socio:aportante,cuenta:cuenta,monto:total,fecha:fecha,
       concepto:conceptoT1000,saldo:pagadoTotalT1000,notas:notasReciboT1000,estado:'vigente',
@@ -12824,7 +12919,7 @@ function confirmarAporteCumple(){
 }
 
 function generarReciboCumpleVisual(aportante, monto, fecha, notas, festejados) {
-  var folio = String(folioCounter++).padStart(4,'0');
+  var folio = nuevoFolio();
   DB.recibos = DB.recibos || [];
 
   // Calcular progreso del participante (cuántos lleva de 31)
@@ -13101,7 +13196,7 @@ function tgConfirmarPagoTurno(){
     var yaPago=(tr.pagos||[]).some(function(p){return p.quien===quien;});
     if(yaPago)turnosPagados++;else turnosPendientes++;
   });
-  var folio=String(folioCounter++).padStart(4,'0');
+  var folio=nuevoFolio();
   DB.recibos=DB.recibos||[];
   DB.recibos.unshift({folio:folio,tipo:'tanda',socio:quien,monto:monto,fecha:fecha,
     fechaEmision:new Date().toLocaleDateString('es-MX'),
