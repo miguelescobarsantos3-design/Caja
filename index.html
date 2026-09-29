@@ -1126,6 +1126,7 @@ async function diagnosticoSync() {
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
     + (recientes.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar recientes ('+recientes.length+')</button>' : '')
     + (huerfanos.length > 0 ? '<button id="__ds_verhu" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Ver lista de huérfanos</button>' : '')
+    + '<button id="__ds_unif" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Unificar nombre de socio</button>'
     + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
     +'<button id="__ds_close" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cerrar</button>'
@@ -1155,6 +1156,9 @@ async function diagnosticoSync() {
 
   var bvh = ov.querySelector('#__ds_verhu');
   if(bvh) bvh.onclick = function(){ verRecibosSinMovimiento(); };
+
+  var bun = ov.querySelector('#__ds_unif');
+  if(bun) bun.onclick = function(){ ov.remove(); abrirUnificarNombre(); };
 
   var bfol = ov.querySelector('#__ds_folios');
   if(bfol) bfol.onclick = function(){
@@ -5617,6 +5621,118 @@ function nuevoFolio() {
     intentos++;
   } while (intentos < 500 && (DB.recibos||[]).some(function(r){ return r.folio === f; }));
   return f;
+}
+
+// ═══════════════════════════════════════════════════════
+// UNIFICAR NOMBRE DE UN SOCIO
+// Cuando a alguien se le corrige el nombre, los recibos y movimientos viejos
+// conservan el anterior. Como los saldos se calculan buscando POR NOMBRE, esos
+// registros dejan de contarse y el estado de cuenta queda descuadrado.
+// ═══════════════════════════════════════════════════════
+function contarPorNombre(nombre) {
+  var n = String(nombre||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+  var coincide = function(v){
+    return String(v||'').replace(/^#\d+\s+/, '').trim().toUpperCase() === n;
+  };
+  return {
+    recibos:     (DB.recibos||[]).filter(function(r){ return coincide(r.socio); }).length,
+    movimientos: (DB.movimientos||[]).filter(function(m){ return coincide(m.socio); }).length,
+    prestamos:   (DB.prestamos||[]).filter(function(p){ return coincide(p.nombre); }).length,
+    utilidades:  (DB.utilidades||[]).filter(function(u){ return coincide(u.nombre); }).length,
+    socios:      (DB.socios||[]).filter(function(s){ return coincide(s.nombre); }).length
+  };
+}
+
+function unificarNombreSocio(nombreViejo, nombreNuevo) {
+  var viejo = String(nombreViejo||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+  var nuevo = String(nombreNuevo||'').replace(/^#\d+\s+/, '').trim();
+  if(!viejo || !nuevo) { alert('Faltan nombres.'); return 0; }
+  if(viejo === nuevo.toUpperCase()) { alert('Los nombres son iguales.'); return 0; }
+
+  var antes = contarPorNombre(viejo);
+  var total = antes.recibos + antes.movimientos + antes.prestamos + antes.utilidades + antes.socios;
+  if(!total) { alert('No se encontró ningún registro con "' + nombreViejo + '".'); return 0; }
+
+  // Si el destino no existe como socio, el renombre dejaría registros sin dueño
+  var destinoEsSocio = (DB.socios||[]).some(function(s){
+    return String(s.nombre||'').trim().toUpperCase() === nuevo.toUpperCase();
+  });
+  if(!destinoEsSocio && antes.socios === 0) {
+    if(!confirm('⚠️ No existe ningún socio llamado "' + nuevo + '".\n\n'
+      + 'Si renombras los registros a un nombre que no corresponde a ningún socio, '
+      + 'los saldos seguirán sin cuadrar.\n\n'
+      + 'Verifica primero el nombre exacto en Socios.\n\n'
+      + '¿Continuar de todos modos?')) return 0;
+  }
+
+  if(!confirm('Se van a renombrar ' + total + ' registro(s):\n\n'
+    + '• ' + antes.socios + ' socio(s)\n'
+    + '• ' + antes.recibos + ' recibo(s)\n'
+    + '• ' + antes.movimientos + ' movimiento(s)\n'
+    + '• ' + antes.prestamos + ' préstamo(s)\n'
+    + '• ' + antes.utilidades + ' registro(s) de utilidades\n\n'
+    + '"' + viejo + '"  →  "' + nuevo + '"\n\n'
+    + 'Esto NO cambia montos ni saldos, solo el nombre con el que están guardados.\n\n'
+    + '¿Continuar?')) return 0;
+
+  var coincide = function(v){
+    return String(v||'').replace(/^#\d+\s+/, '').trim().toUpperCase() === viejo;
+  };
+  // Conserva el prefijo "#NN " si el registro original lo traía
+  var renombrar = function(v){
+    var m = String(v||'').match(/^(#\d+\s+)/);
+    return (m ? m[1] : '') + nuevo;
+  };
+
+  (DB.socios||[]).forEach(function(s){ if(coincide(s.nombre)) s.nombre = nuevo; });
+  (DB.recibos||[]).forEach(function(r){ if(coincide(r.socio)) r.socio = renombrar(r.socio); });
+  (DB.movimientos||[]).forEach(function(m){ if(coincide(m.socio)) m.socio = renombrar(m.socio); });
+  (DB.prestamos||[]).forEach(function(p){ if(coincide(p.nombre)) p.nombre = nuevo; });
+  (DB.utilidades||[]).forEach(function(u){ if(coincide(u.nombre)) u.nombre = nuevo.toUpperCase(); });
+
+  if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
+  if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof cajaRenderTodo === 'function') cajaRenderTodo();
+
+  alert('✅ Se renombraron ' + total + ' registro(s).\n\n'
+    + 'Revisa el estado de cuenta: los abonos viejos ya deben contarse.');
+  return total;
+}
+
+// Diálogo para elegir los dos nombres
+function abrirUnificarNombre() {
+  var nombres = {};
+  (DB.recibos||[]).forEach(function(r){
+    var n = String(r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+    if(n) nombres[n] = (nombres[n]||0) + 1;
+  });
+  var lista = Object.keys(nombres).sort();
+  var opts = lista.map(function(n){
+    return '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+' ('+nombres[n]+')</option>';
+  }).join('');
+
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div style="background:#fff;padding:20px;border-radius:14px;max-width:430px;width:100%;">'
+    +'<h3 style="margin:0 0 6px;font-size:17px;">Unificar nombre de socio</h3>'
+    +'<p style="margin:0 0 14px;font-size:12px;color:#777;">Si a alguien se le corrigió el nombre, sus registros viejos quedaron con el anterior y dejan de sumar. Aquí los pasas al nombre correcto.</p>'
+    +'<label style="font-size:12px;font-weight:600;">Nombre viejo (el que hay que corregir)</label>'
+    +'<select id="__un_viejo" style="width:100%;padding:9px;margin:4px 0 12px;border:1px solid #ccc;border-radius:7px;font-size:13px;"><option value="">— Seleccionar —</option>'+opts+'</select>'
+    +'<label style="font-size:12px;font-weight:600;">Nombre correcto (destino)</label>'
+    +'<select id="__un_nuevo" style="width:100%;padding:9px;margin:4px 0 14px;border:1px solid #ccc;border-radius:7px;font-size:13px;"><option value="">— Seleccionar —</option>'+opts+'</select>'
+    +'<button id="__un_ok" style="width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Unificar</button>'
+    +'<button id="__un_x" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">Cancelar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#__un_x').onclick = function(){ ov.remove(); };
+  ov.querySelector('#__un_ok').onclick = function(){
+    var v = ov.querySelector('#__un_viejo').value;
+    var n = ov.querySelector('#__un_nuevo').value;
+    if(!v || !n) { alert('Selecciona ambos nombres.'); return; }
+    ov.remove();
+    unificarNombreSocio(v, n);
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+  };
 }
 
 // Detecta recibos vigentes que no tienen su movimiento en el historial.
@@ -12226,7 +12342,8 @@ function normalizarVisibilidadSocios() {
     if(infoEl){
       if(aportanteIdx >= 0){
         var pagado = aportadoT1000(t, aportanteIdx);
-        var totalPosible = T1000_P.length * monto1000;
+        // (n - 1): nadie aporta a su propio turno
+        var totalPosible = (T1000_P.length - 1) * monto1000;
         var pendiente = Math.max(0, totalPosible - pagado);
         infoEl.style.display = 'block';
         document.getElementById('ta1000-pagado').textContent = '$'+fmt(pagado);
