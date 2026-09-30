@@ -649,7 +649,8 @@ const CUENTAS_ESPECIALES = [
   'TANDA HECTOR 11',
   'TANDA SANTI 11',
   'CETES',
-  'CUMPLEAÑOS'
+  'CUMPLEAÑOS',
+  'COOPERACIONES'
 ];
 
 function aplicarCuentasPersistidas(cuentasData) {
@@ -1366,6 +1367,7 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
     if(typeof asegurarCuentasEspeciales === 'function') asegurarCuentasEspeciales();
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
+    if(typeof sincronizarSocioCooperaciones === 'function') sincronizarSocioCooperaciones();
 
     cajaGuardarSnapshotLocal(Object.assign({}, datos, {ts: tsFirebase || Date.now()}));
     cajaRenderTodo();
@@ -6013,6 +6015,8 @@ function renderDashboard() {
   const utilidades     = utilTot.total;
   const utilidadesPend = utilTot.pendiente;
 
+  // Las cooperaciones ya vienen dentro de totalAhorros, a través del socio
+  // especial COOPERACIONES, igual que TANDA 300 y TANDA 1000.
   document.getElementById('kpi-ahorros').textContent = fmt(totalAhorros);
   document.getElementById('kpi-socios-count').textContent = DB.socios.filter(s=>s.activo).length + ' socios activos';
   document.getElementById('kpi-prestamos').textContent = fmt(prestPendiente);
@@ -6075,9 +6079,8 @@ function renderDashboard() {
   if (typeof CUENTAS !== 'undefined') {
     const totalC = Object.values(CUENTAS).reduce((s,c)=>s+c.saldo,0);
     const _totalAhorros = (DB.socios||[]).reduce(function(t,s){ return t+(s.ahorro||0); },0);
-    // Se suma el dinero de cooperaciones: está en las cuentas pero es ajeno
-    const _retenido = (typeof totalFondosRetenidos === 'function') ? totalFondosRetenidos() : 0;
-    const debeH  = _totalAhorros - CAJA_REF.prestamos_pendientes + _retenido;
+    // Las cooperaciones ya están incluidas vía el socio especial COOPERACIONES
+    const debeH  = _totalAhorros - CAJA_REF.prestamos_pendientes;
     const diff   = totalC - debeH;
     const cuadra = Math.abs(diff) < 5;
     const sobra  = diff > 0;
@@ -8380,10 +8383,9 @@ function renderCuentas() {
   // Lo que DEBE haber disponible = ahorros (dinero de socios que no se prestó)
   // En realidad: EfectivoTotal - PréstamosPendientes = lo que debería estar en cuentas
   const _ahorrosDin = (DB.socios||[]).reduce(function(t,s){ return t+(s.ahorro||0); },0);
-  // El dinero de cooperaciones está en las cuentas pero no es de la caja:
-  // se debe entregar, así que suma a lo que "debe haber" disponible.
+  // Las cooperaciones ya están incluidas vía el socio especial COOPERACIONES
   const _retenido = (typeof totalFondosRetenidos === 'function') ? totalFondosRetenidos() : 0;
-  const debeHaber = _ahorrosDin - CAJA_REF.prestamos_pendientes + _retenido;
+  const debeHaber = _ahorrosDin - CAJA_REF.prestamos_pendientes;
   const diff = totalCuentas - debeHaber;
   const cuadra = Math.abs(diff) < 5;
   const sobra  = diff > 0;
@@ -11224,16 +11226,44 @@ function esc(v) {
   });
 }
 
-// Dinero de cooperaciones que está en las cuentas pero NO es de la caja:
-// se tiene en custodia y hay que entregarlo. Cuenta como pasivo en el cuadre.
+// Dinero de cooperaciones abiertas que la caja tiene en custodia.
 function totalFondosRetenidos() {
-  if(!Array.isArray(window.DB && DB.fondos)) return 0;
+  if(!window.DB || !Array.isArray(DB.fondos)) return 0;
   return DB.fondos.reduce(function(s, f){
     if(f.estado === 'cerrado') return s;
     var apo = (f.aportaciones||[]).reduce(function(a,x){ return a + (Number(x.monto)||0); }, 0);
     var sal = (f.salidas||[]).reduce(function(a,x){ return a + (Number(x.monto)||0); }, 0);
     return s + (apo - sal);
   }, 0);
+}
+
+// Refleja el saldo de las cooperaciones en un socio especial "COOPERACIONES",
+// igual que TANDA 300 y TANDA 1000. Así el dinero entra solo al total de
+// ahorros y al cuadre, sin necesidad de sumarlo aparte en cada cálculo.
+function sincronizarSocioCooperaciones() {
+  if(!window.DB) return 0;
+  if(!Array.isArray(DB.socios)) DB.socios = [];
+  var saldo = Math.round(totalFondosRetenidos() * 100) / 100;
+  var objetivo = 'COOPERACIONES';
+  var socio = DB.socios.find(function(s){
+    return String(s.nombre||'').trim().toUpperCase() === objetivo;
+  });
+  if(!socio) {
+    var ids = DB.socios.map(function(s){ return Number(s.id) || 0; });
+    socio = {
+      id: ids.length ? Math.max.apply(null, ids) + 1 : 1,
+      nombre: objetivo, tel:'', freq:'especial', cuota:0,
+      ahorro:0, categoria:'ESP', activo:true
+    };
+    DB.socios.push(socio);
+  }
+  socio.ahorro = saldo;
+  socio.cuota = 0;
+  socio.categoria = socio.categoria || 'ESP';
+  if(socio.freq == null || socio.freq === '') socio.freq = 'especial';
+  if(socio.activo == null) socio.activo = true;
+  if(socio.tel == null) socio.tel = '';
+  return saldo;
 }
 
 // ══════════════════════════════════════════════════
@@ -11425,9 +11455,13 @@ function abrirNuevoFondo() {
 }
 
 function guardarFondos() {
+  // Primero refleja el saldo en el socio especial, para que el guardado ya
+  // salga con el ahorro correcto y el cuadre no parpadee.
+  sincronizarSocioCooperaciones();
   if(typeof guardarEnLocal === 'function') guardarEnLocal();
   if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   if(typeof renderDashboard === 'function') renderDashboard();
+  if(typeof renderCuentas === 'function' && document.getElementById('view-cuentas') && document.getElementById('view-cuentas').classList.contains('active')) renderCuentas();
 }
 
 // Diálogo compartido por aportación y entrega
@@ -11657,6 +11691,7 @@ function guardarEnLocal() {
     asegurarCuentasEspeciales();
     if(typeof sincronizarSocioCumpleanosConFondo === 'function') sincronizarSocioCumpleanosConFondo();
     if(typeof sincronizarSociosTandasConFondos === 'function') sincronizarSociosTandasConFondos();
+    if(typeof sincronizarSocioCooperaciones === 'function') sincronizarSocioCooperaciones();
     if(typeof normalizarUtilidades === 'function') normalizarUtilidades();
     if(typeof sincronizarAhorradorUtilidades === 'function') sincronizarAhorradorUtilidades();
     const ahora = Date.now();
