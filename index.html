@@ -1332,6 +1332,7 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
       return (a.nombre||'').localeCompare(b.nombre||'', 'es', {sensitivity:'base'});
     });
     DB._directorio  = datos._directorio  || [];
+    DB.fondos       = datos.fondos       || DB.fondos || [];
     DB.tandasGrupales = datos.tandasGrupales || [];
 
     // tanda300: aplicar propiedades nuevas pero nunca reducir movimientos
@@ -1453,6 +1454,7 @@ async function guardarEnFirebase() {
       tandasGrupales: DB.tandasGrupales || [],
       tanda300:       DB.tanda300 || null,
       tanda1000:      DB.tanda1000 || null,
+      fondos:         DB.fondos || [],
       cuentas:        typeof CUENTAS !== 'undefined' ? JSON.parse(JSON.stringify(CUENTAS)) : null,
       ts:             ahora,
       _dispositivo:   window._dispositivoId || 'desconocido',
@@ -1701,6 +1703,9 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
     <div class="nav-item" onclick="goto('utilidades')">
       <span class="icon">⊞</span> Utilidades
+    </div>
+    <div class="nav-item" onclick="goto('fondos')">
+      <span class="icon">◈</span> Cooperaciones
     </div>
   </nav>
   <div style="padding:16px 24px;border-top:1px solid rgba(255,255,255,0.1);margin-top:auto;">
@@ -2107,6 +2112,26 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="card"><div class="card-header"><div class="card-title">Grupo 2</div></div><div id="t300-tabla-g2"></div></div>
     </div>
   </div>
+  <!-- ─── COOPERACIONES / FONDOS TEMPORALES ─── -->
+  <div class="content view" id="view-fondos">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h2 style="margin:0;font-size:20px;">Cooperaciones</h2>
+        <p style="margin:3px 0 0;font-size:12px;color:var(--texto2);">Quinielas, apoyos funerarios y colectas. Cada una lleva su propia cuenta.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="abrirNuevoFondo()" style="background:var(--verde);color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">+ Nueva cooperación</button>
+        <button onclick="window._fondosVerCerrados=!window._fondosVerCerrados;renderFondos();" id="btn-fondos-cerrados" style="background:var(--gris);color:var(--texto);border:1px solid var(--gris2);padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">Ver cerradas</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
+      <div class="kpi kpi-green"><div class="kpi-accent"></div><div class="kpi-label">En curso</div><div class="kpi-value" id="fondos-kpi-activos">0</div><div class="kpi-sub">cooperaciones abiertas</div></div>
+      <div class="kpi kpi-blue"><div class="kpi-accent"></div><div class="kpi-label">Dinero retenido</div><div class="kpi-value" id="fondos-kpi-saldo">$0</div><div class="kpi-sub">pendiente de entregar</div></div>
+      <div class="kpi kpi-orange"><div class="kpi-accent"></div><div class="kpi-label">Participaciones</div><div class="kpi-value" id="fondos-kpi-aportes">0</div><div class="kpi-sub">aportaciones registradas</div></div>
+    </div>
+    <div id="fondos-lista"></div>
+  </div>
+
   <!-- TANDA 1000 -->
   <div class="content view" id="view-tanda1000">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -2154,6 +2179,12 @@ window.addEventListener('unhandledrejection', function(e) {
           <div style="font-size:36px;margin-bottom:12px;">💸</div>
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;">Retiro</div>
           <div style="font-size:12px;color:var(--texto2);">Retirar dinero del ahorro del socio</div>
+        </div>
+
+        <div class="tipo-opcion" onclick="goto('fondos')" style="background: var(--blanco); border-radius: var(--radio); padding: 28px 20px; border: 1px solid var(--gris2); cursor: pointer; text-align: center; transition: 0.15s; box-shadow: var(--sombra);">
+          <div style="font-size:36px;margin-bottom:12px;">🤝</div>
+          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;">Cooperación</div>
+          <div style="font-size:12px;color:var(--texto2);">Quiniela, apoyo funerario o colecta temporal</div>
         </div>
       </div>
     </div>
@@ -3869,6 +3900,7 @@ window.addEventListener('unhandledrejection', function(e) {
           <div class="tab" onclick="filtrarRecibos('ahorro',this)">Ahorro</div>
           <div class="tab" onclick="filtrarRecibos('prestamo',this)">Préstamo</div>
           <div class="tab" onclick="filtrarRecibos('tanda',this)">Tanda</div>
+          <div class="tab" onclick="filtrarRecibos('fondo',this)">Cooperación</div>
           <div class="tab" onclick="filtrarRecibos('cancelado',this)">Cancelados</div>
         </div>
       </div>
@@ -5508,7 +5540,7 @@ Diana"></textarea>
 // ══════════════════════════════════════════════════
 let _d = {};
 var DB = window.DB || {
-  socios: [], prestamos: [], tandas: [],
+  socios: [], prestamos: [], tandas: [], fondos: [],
   movimientos: [], cumple: [],
   fondoCumple: [], configCumple: {participantes:31, aportacion:100},
   cumpleMatrix: {festejados:[], participantes:[]},
@@ -5956,6 +5988,7 @@ function renderVista(v) {
   else if (v==='prestamos') renderPrestamos();
   else if (v==='tandas') renderTandas();
   else if (v==='cumple') renderCumple();
+  else if (v==='fondos')   { if(typeof renderFondos==='function') renderFondos(); }
   else if (v==='tanda300') { if(typeof renderTanda300==='function') renderTanda300(); }
   else if (v==='tanda1000') { if(typeof renderTanda1000==='function') renderTanda1000(); }
   else if (v==='historial') renderHistorial('todos');
@@ -8619,8 +8652,8 @@ function renderRecibos(filtro) {
       return fb - fa;
     });
 
-  const tipos = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', cumple:'badge-purple', tanda300:'badge-blue', tanda1000:'badge-blue'};
-  const tipLabel = {ahorro:'Ahorro', prestamo:'Préstamo', tanda:'Tanda', cumple:'Cumpleaños', tanda300:'Tanda $300', tanda1000:'Tanda $1,000'};
+  const tipos = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', cumple:'badge-purple', tanda300:'badge-blue', tanda1000:'badge-blue', fondo:'badge-purple', retiro:'badge-gray'};
+  const tipLabel = {ahorro:'Ahorro', prestamo:'Préstamo', tanda:'Tanda', cumple:'Cumpleaños', tanda300:'Tanda $300', tanda1000:'Tanda $1,000', fondo:'Cooperación'};
 
   const tb = document.getElementById('recibos-tbody');
   if(!lista.length) {
@@ -9249,8 +9282,8 @@ function abrirFichaSocio(socioId) {
   const allMovs = DB.movimientos.filter(m =>
     m.socio === s.nombre || m.socio.includes(s.nombre.split(' ')[0])
   );
-  const tipIcon = {ahorro:'💰', prestamo:'📋', tanda:'🔄'};
-  const tipBadge = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow'};
+  const tipIcon = {ahorro:'💰', prestamo:'📋', tanda:'🔄', fondo:'🤝', retiro:'💸'};
+  const tipBadge = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', fondo:'badge-purple', retiro:'badge-gray'};
   document.getElementById('ficha-hist-tbody').innerHTML = allMovs.length
     ? allMovs.map(m => `<tr style="border-bottom:0.5px solid var(--gris);${m.cancelado?'opacity:0.4;text-decoration:line-through;':''}">
         <td style="padding:8px 12px;font-size:12px;color:var(--texto2);">${m.fecha}</td>
@@ -9541,9 +9574,9 @@ function verReciboAnterior(folio) {
   }
 
   // Reutilizar el modal de recibo existente
-  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', tanda300:'Recibo Tanda $300', tanda1000:'Recibo Tanda $1,000'};
-  const movLabels = {ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida', tanda300:'Aportación Tanda $300', tanda1000:'Aportación Tanda $1,000'};
-  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda', tanda300:'Total aportado', tanda1000:'Total aportado'};
+  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', tanda300:'Recibo Tanda $300', tanda1000:'Recibo Tanda $1,000', fondo:'Recibo de Cooperación'};
+  const movLabels = {ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida', tanda300:'Aportación Tanda $300', tanda1000:'Aportación Tanda $1,000', fondo:'Movimiento de cooperación'};
+  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda', tanda300:'Total aportado', tanda1000:'Total aportado', fondo:'Fondo acumulado'};
 
   // Restaurar reciboActual para que compartirWhatsApp funcione
   reciboActual = {...r};
@@ -11102,6 +11135,7 @@ function exportarRespaldo() {
     tandas:      DB.tandas,
     tanda300:    DB.tanda300  || null,
     tanda1000:   DB.tanda1000 || null,
+    fondos:      DB.fondos    || [],
     movimientos: DB.movimientos,
     cumple:      DB.cumple,
     fondoCumple: DB.fondoCumple,
@@ -11175,6 +11209,395 @@ function descargarImagen(blob) {
 }
 
 // ══════════════════════════════════════════════════
+// COOPERACIONES — fondos temporales independientes
+// Quinielas, apoyos funerarios, colectas. El dinero entra y sale de las
+// cuentas reales; cada fondo lleva su propio saldo y no se mezcla con otros.
+// ══════════════════════════════════════════════════
+window._fondosVerCerrados = false;
+
+const FONDO_TIPOS = {
+  quiniela:    {label:'Quiniela',        icono:'🎯', color:'#7b1fa2'},
+  apoyo:       {label:'Apoyo funerario', icono:'🕊️', color:'#455a64'},
+  cooperacion: {label:'Cooperación',     icono:'🤝', color:'#1a7a5a'},
+  otro:        {label:'Otro',            icono:'📦', color:'#1a3a6b'}
+};
+
+function fondoTotalAportado(f) {
+  return (f.aportaciones||[]).reduce(function(s,a){ return s + (Number(a.monto)||0); }, 0);
+}
+function fondoTotalEntregado(f) {
+  return (f.salidas||[]).reduce(function(s,x){ return s + (Number(x.monto)||0); }, 0);
+}
+function fondoSaldo(f) {
+  return Math.round((fondoTotalAportado(f) - fondoTotalEntregado(f)) * 100) / 100;
+}
+function getFondo(id) {
+  return (DB.fondos||[]).find(function(f){ return f.id === id; });
+}
+
+function renderFondos() {
+  if(!Array.isArray(DB.fondos)) DB.fondos = [];
+  var verCerrados = !!window._fondosVerCerrados;
+  var lista = DB.fondos.filter(function(f){
+    return verCerrados ? f.estado === 'cerrado' : f.estado !== 'cerrado';
+  });
+
+  var abiertos = DB.fondos.filter(function(f){ return f.estado !== 'cerrado'; });
+  var saldoTotal = abiertos.reduce(function(s,f){ return s + fondoSaldo(f); }, 0);
+  var totalAportes = abiertos.reduce(function(s,f){ return s + (f.aportaciones||[]).length; }, 0);
+
+  var k1 = document.getElementById('fondos-kpi-activos');
+  var k2 = document.getElementById('fondos-kpi-saldo');
+  var k3 = document.getElementById('fondos-kpi-aportes');
+  if(k1) k1.textContent = abiertos.length;
+  if(k2) k2.textContent = '$' + fmt(saldoTotal);
+  if(k3) k3.textContent = totalAportes;
+
+  var btnC = document.getElementById('btn-fondos-cerrados');
+  if(btnC) btnC.textContent = verCerrados ? 'Ver abiertas' : 'Ver cerradas';
+
+  var cont = document.getElementById('fondos-lista');
+  if(!cont) return;
+
+  if(!lista.length) {
+    cont.innerHTML = '<div class="empty" style="padding:48px 20px;text-align:center;">'
+      +'<div class="icon" style="font-size:38px;">🤝</div>'
+      +'<p style="margin-top:8px;color:var(--texto2);">'
+      + (verCerrados ? 'No hay cooperaciones cerradas.' : 'No hay cooperaciones en curso. Crea una con "+ Nueva cooperación".')
+      +'</p></div>';
+    return;
+  }
+
+  cont.innerHTML = lista.map(function(f){
+    var tipo = FONDO_TIPOS[f.tipo] || FONDO_TIPOS.otro;
+    var aportado = fondoTotalAportado(f);
+    var entregado = fondoTotalEntregado(f);
+    var saldo = fondoSaldo(f);
+    var nApo = (f.aportaciones||[]).length;
+    var cerrado = f.estado === 'cerrado';
+
+    var filasApo = (f.aportaciones||[]).slice().reverse().map(function(a, i){
+      var realIdx = (f.aportaciones||[]).length - 1 - i;
+      return '<tr style="border-bottom:0.5px solid var(--gris);">'
+        +'<td style="padding:6px 10px;font-size:12px;">'+esc(a.nombre||'—')+'</td>'
+        +'<td style="padding:6px 10px;font-size:12px;color:var(--texto2);">'+esc(a.fecha||'')+'</td>'
+        +'<td style="padding:6px 10px;font-size:12px;color:var(--texto2);">'+esc(a.notas||'')+'</td>'
+        +'<td class="mono" style="padding:6px 10px;text-align:right;color:var(--verde);font-weight:600;">$'+fmt(a.monto)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;">'
+          + (cerrado ? '' : '<button onclick="eliminarAporteFondo(\''+f.id+'\','+realIdx+')" title="Eliminar" style="background:var(--rojo-claro);color:var(--rojo);border:none;padding:3px 9px;border-radius:6px;cursor:pointer;font-weight:700;">×</button>')
+        +'</td></tr>';
+    }).join('');
+
+    var filasSal = (f.salidas||[]).slice().reverse().map(function(x, i){
+      var realIdx = (f.salidas||[]).length - 1 - i;
+      return '<tr style="border-bottom:0.5px solid var(--gris);">'
+        +'<td style="padding:6px 10px;font-size:12px;">'+esc(x.beneficiario||'—')+'</td>'
+        +'<td style="padding:6px 10px;font-size:12px;color:var(--texto2);">'+esc(x.fecha||'')+'</td>'
+        +'<td style="padding:6px 10px;font-size:12px;color:var(--texto2);">'+esc(x.notas||'')+'</td>'
+        +'<td class="mono" style="padding:6px 10px;text-align:right;color:var(--rojo);font-weight:600;">−$'+fmt(x.monto)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;">'
+          + (cerrado ? '' : '<button onclick="eliminarSalidaFondo(\''+f.id+'\','+realIdx+')" title="Eliminar" style="background:var(--rojo-claro);color:var(--rojo);border:none;padding:3px 9px;border-radius:6px;cursor:pointer;font-weight:700;">×</button>')
+        +'</td></tr>';
+    }).join('');
+
+    return '<div class="card" style="margin-bottom:16px;'+(cerrado?'opacity:.72;':'')+'">'
+      +'<div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'
+        +'<div style="display:flex;align-items:center;gap:10px;">'
+          +'<span style="font-size:24px;">'+tipo.icono+'</span>'
+          +'<div>'
+            +'<div class="card-title" style="margin:0;">'+esc(f.nombre)+(cerrado?' <span class="badge badge-gray" style="font-size:10px;">CERRADA</span>':'')+'</div>'
+            +'<div style="font-size:11px;color:var(--texto2);">'+tipo.label+' · abierta el '+esc(f.fecha||'')+' · '+nApo+' participación(es)</div>'
+          +'</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+          + (cerrado
+              ? '<button onclick="reabrirFondo(\''+f.id+'\')" class="btn btn-secondary btn-sm">Reabrir</button>'
+              : '<button onclick="abrirAporteFondo(\''+f.id+'\')" class="btn btn-sm" style="background:var(--verde);color:#fff;">+ Aportación</button>'
+                +'<button onclick="abrirSalidaFondo(\''+f.id+'\')" class="btn btn-sm" style="background:var(--azul);color:#fff;">− Entrega</button>'
+                +'<button onclick="cerrarFondo(\''+f.id+'\')" class="btn btn-secondary btn-sm">Cerrar</button>')
+          +'<button onclick="eliminarFondo(\''+f.id+'\')" class="btn btn-sm" style="background:var(--rojo-claro);color:var(--rojo);" title="Eliminar cooperación">🗑</button>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 16px;">'
+        +'<div style="background:var(--gris);border-radius:8px;padding:10px 14px;"><div style="font-size:10px;color:var(--texto2);">Recaudado</div><div class="mono" style="font-size:17px;font-weight:700;color:var(--verde);">$'+fmt(aportado)+'</div></div>'
+        +'<div style="background:var(--gris);border-radius:8px;padding:10px 14px;"><div style="font-size:10px;color:var(--texto2);">Entregado</div><div class="mono" style="font-size:17px;font-weight:700;color:var(--rojo);">$'+fmt(entregado)+'</div></div>'
+        +'<div style="background:'+(saldo>0?'rgba(26,122,90,0.10)':'var(--gris)')+';border-radius:8px;padding:10px 14px;"><div style="font-size:10px;color:var(--texto2);">En caja</div><div class="mono" style="font-size:17px;font-weight:800;color:'+(saldo>0?'var(--verde)':'var(--texto2)')+';">$'+fmt(saldo)+'</div></div>'
+      +'</div>'
+      + (f.notas ? '<div style="padding:0 16px 10px;font-size:12px;color:var(--texto2);">'+esc(f.notas)+'</div>' : '')
+      + (nApo ? '<div style="padding:0 16px 8px;"><div style="font-size:11px;font-weight:700;color:var(--texto2);margin-bottom:4px;">APORTACIONES</div>'
+          +'<table style="width:100%;border-collapse:collapse;">'+filasApo+'</table></div>' : '')
+      + ((f.salidas||[]).length ? '<div style="padding:0 16px 14px;"><div style="font-size:11px;font-weight:700;color:var(--texto2);margin:8px 0 4px;">ENTREGAS</div>'
+          +'<table style="width:100%;border-collapse:collapse;">'+filasSal+'</table></div>' : '<div style="padding-bottom:10px;"></div>')
+      +'</div>';
+  }).join('');
+}
+
+function abrirNuevoFondo() {
+  var opts = Object.keys(FONDO_TIPOS).map(function(k){
+    return '<option value="'+k+'">'+FONDO_TIPOS[k].icono+' '+FONDO_TIPOS[k].label+'</option>';
+  }).join('');
+  var ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div class="modal" style="max-width:420px;width:100%;">'
+    +'<h2>🤝 Nueva cooperación</h2>'
+    +'<div class="form-group"><label>Nombre</label><input type="text" id="nf-nombre" placeholder="Ej: Quiniela Mundial, Apoyo Sra. Pérez" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+    +'<div class="form-row">'
+      +'<div class="form-group"><label>Tipo</label><select id="nf-tipo" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);">'+opts+'</select></div>'
+      +'<div class="form-group"><label>Fecha</label><input type="date" id="nf-fecha" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+    +'</div>'
+    +'<div class="form-group"><label>Notas (opcional)</label><input type="text" id="nf-notas" placeholder="Ej: cierra el 15 de octubre" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+    +'<div class="modal-actions">'
+      +'<button class="btn btn-secondary" id="nf-cancel">Cancelar</button>'
+      +'<button class="btn btn-primary" id="nf-ok">Crear</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#nf-cancel').onclick = function(){ ov.remove(); };
+  setTimeout(function(){ var el = ov.querySelector('#nf-nombre'); if(el) el.focus(); }, 100);
+  ov.querySelector('#nf-ok').onclick = function(){
+    var nombre = (ov.querySelector('#nf-nombre').value||'').trim();
+    if(!nombre) { alert('Ponle un nombre a la cooperación.'); return; }
+    if(!Array.isArray(DB.fondos)) DB.fondos = [];
+    DB.fondos.unshift({
+      id: 'fnd_' + Date.now().toString(36) + '_' + Math.floor(Math.random()*999),
+      nombre: nombre,
+      tipo: ov.querySelector('#nf-tipo').value || 'otro',
+      fecha: ov.querySelector('#nf-fecha').value || new Date().toISOString().slice(0,10),
+      notas: (ov.querySelector('#nf-notas').value||'').trim(),
+      estado: 'abierto',
+      aportaciones: [],
+      salidas: []
+    });
+    ov.remove();
+    window._fondosVerCerrados = false;
+    renderFondos();
+    guardarFondos();
+  };
+}
+
+function guardarFondos() {
+  if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+  if(typeof renderDashboard === 'function') renderDashboard();
+}
+
+// Diálogo compartido por aportación y entrega
+function _modalMovFondo(f, esAporte) {
+  var titulo = esAporte ? '+ Aportación a "'+f.nombre+'"' : '− Entrega de "'+f.nombre+'"';
+  var etiquetaPersona = esAporte ? 'Quién aporta' : 'A quién se entrega';
+  var saldo = fondoSaldo(f);
+  var cuentas = (typeof opcionesCuentasCajaHTML === 'function')
+    ? opcionesCuentasCajaHTML()
+    : '<option value="efectivo">Efectivo / Caja chica</option><option value="bbva">BBVA</option><option value="nu">Nu banco</option><option value="mp">Mercado Pago</option><option value="bnmx">Banamex</option>';
+  cuentas += '<option value="ninguna">— Sin cuenta —</option>';
+
+  // Sugerencias con los socios ya registrados
+  var sugeridos = (DB.socios||[]).map(function(s){ return '<option value="'+esc(s.nombre)+'">'; }).join('');
+
+  var ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div class="modal" style="max-width:420px;width:100%;">'
+    +'<h2>'+esc(titulo)+'</h2>'
+    + (esAporte ? '' : '<div style="background:var(--gris);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;justify-content:space-between;"><span>Disponible en el fondo:</span><strong style="color:var(--verde);">$'+fmt(saldo)+'</strong></div>')
+    +'<div class="form-group"><label>'+etiquetaPersona+'</label>'
+      +'<input type="text" id="mf-nombre" list="mf-socios" autocomplete="off" placeholder="Nombre" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;">'
+      +'<datalist id="mf-socios">'+sugeridos+'</datalist></div>'
+    +'<div class="form-row">'
+      +'<div class="form-group"><label>Monto ($)</label><input type="number" id="mf-monto" min="1" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+      +'<div class="form-group"><label>Fecha</label><input type="date" id="mf-fecha" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+    +'</div>'
+    +'<div class="form-group"><label>Cuenta '+(esAporte?'donde entra':'de donde sale')+'</label><select id="mf-cuenta" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;background:var(--fondo);">'+cuentas+'</select></div>'
+    +'<div class="form-group"><label>Notas (opcional)</label><input type="text" id="mf-notas" style="width:100%;padding:10px 12px;border:1.5px solid var(--gris2);border-radius:var(--radio-sm);font-size:14px;"></div>'
+    +'<div class="modal-actions">'
+      +'<button class="btn btn-secondary" id="mf-cancel">Cancelar</button>'
+      +'<button class="btn btn-primary" id="mf-ok">'+(esAporte?'Registrar aportación':'Registrar entrega')+'</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#mf-cancel').onclick = function(){ ov.remove(); };
+  setTimeout(function(){ var el = ov.querySelector('#mf-nombre'); if(el) el.focus(); }, 100);
+  return ov;
+}
+
+function abrirAporteFondo(id) {
+  var f = getFondo(id); if(!f) return;
+  var ov = _modalMovFondo(f, true);
+  ov.querySelector('#mf-ok').onclick = function(){
+    var nombre = (ov.querySelector('#mf-nombre').value||'').trim();
+    var monto  = parseFloat(ov.querySelector('#mf-monto').value) || 0;
+    var fecha  = ov.querySelector('#mf-fecha').value || new Date().toISOString().slice(0,10);
+    var cuenta = ov.querySelector('#mf-cuenta').value || 'efectivo';
+    var notas  = (ov.querySelector('#mf-notas').value||'').trim();
+    if(!nombre) { alert('Escribe quién aporta.'); return; }
+    if(monto <= 0) { alert('El monto debe ser mayor a cero.'); return; }
+
+    var folio = nuevoFolio();
+    f.aportaciones.push({nombre:nombre, monto:monto, fecha:fecha, cuenta:cuenta, notas:notas, folio:folio});
+
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({
+      tipo:'fondo', socio:nombre, monto:monto, fecha:fecha, cuenta:cuenta,
+      notas:'Aportación · '+f.nombre+(notas?' — '+notas:''), fondoId:f.id
+    });
+    DB.recibos.unshift({
+      folio:folio, tipo:'fondo', socio:nombre, monto:monto, fecha:fecha, cuenta:cuenta,
+      concepto:'Aportación · '+f.nombre, saldo:fondoSaldo(f), notas:notas,
+      estado:'vigente', fechaEmision:new Date().toISOString().slice(0,10), motivoCancelacion:''
+    });
+
+    if(cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(cuenta, monto);
+    ov.remove();
+    renderFondos();
+    guardarFondos();
+    if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+    mostrarReciboFondo(f, nombre, monto, fecha, 'Aportación', folio, notas);
+  };
+}
+
+function abrirSalidaFondo(id) {
+  var f = getFondo(id); if(!f) return;
+  var ov = _modalMovFondo(f, false);
+  ov.querySelector('#mf-ok').onclick = function(){
+    var nombre = (ov.querySelector('#mf-nombre').value||'').trim();
+    var monto  = parseFloat(ov.querySelector('#mf-monto').value) || 0;
+    var fecha  = ov.querySelector('#mf-fecha').value || new Date().toISOString().slice(0,10);
+    var cuenta = ov.querySelector('#mf-cuenta').value || 'efectivo';
+    var notas  = (ov.querySelector('#mf-notas').value||'').trim();
+    if(!nombre) { alert('Escribe a quién se entrega.'); return; }
+    if(monto <= 0) { alert('El monto debe ser mayor a cero.'); return; }
+
+    var disponible = fondoSaldo(f);
+    if(monto > disponible) {
+      if(!confirm('La entrega de $'+fmt(monto)+' es mayor a lo disponible en el fondo ($'+fmt(disponible)+').\n\n'
+        +'El fondo quedaría en negativo.\n\n¿Continuar de todos modos?')) return;
+    }
+
+    var folio = nuevoFolio();
+    f.salidas.push({beneficiario:nombre, monto:monto, fecha:fecha, cuenta:cuenta, notas:notas, folio:folio});
+
+    if(!Array.isArray(DB.movimientos)) DB.movimientos = [];
+    DB.movimientos.unshift({
+      tipo:'fondo', socio:nombre, monto:-monto, fecha:fecha, cuenta:cuenta,
+      notas:'Entrega · '+f.nombre+(notas?' — '+notas:''), fondoId:f.id
+    });
+    DB.recibos.unshift({
+      folio:folio, tipo:'fondo', socio:nombre, monto:monto, fecha:fecha, cuenta:cuenta,
+      concepto:'Entrega · '+f.nombre, saldo:fondoSaldo(f), notas:notas,
+      estado:'vigente', fechaEmision:new Date().toISOString().slice(0,10), motivoCancelacion:''
+    });
+
+    if(cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(cuenta, -monto);
+    ov.remove();
+    renderFondos();
+    guardarFondos();
+    if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+    mostrarReciboFondo(f, nombre, monto, fecha, 'Entrega', folio, notas);
+  };
+}
+
+function eliminarAporteFondo(id, idx) {
+  var f = getFondo(id); if(!f) return;
+  var a = (f.aportaciones||[])[idx]; if(!a) return;
+  if(!confirm('¿Eliminar la aportación de '+a.nombre+' por $'+fmt(a.monto)+'?\n\n'
+    +'También se quita del historial y se revierte el saldo de la cuenta.')) return;
+
+  if(a.cuenta && a.cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(a.cuenta, -a.monto);
+  DB.movimientos = (DB.movimientos||[]).filter(function(m){
+    return !(m.fondoId === f.id && m.fecha === a.fecha && Math.abs(Number(m.monto)||0) === Math.abs(Number(a.monto)||0) && (m.socio||'') === a.nombre);
+  });
+  if(a.folio) DB.recibos = (DB.recibos||[]).filter(function(r){ return r.folio !== a.folio; });
+  f.aportaciones.splice(idx, 1);
+  renderFondos(); guardarFondos();
+  if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+}
+
+function eliminarSalidaFondo(id, idx) {
+  var f = getFondo(id); if(!f) return;
+  var x = (f.salidas||[])[idx]; if(!x) return;
+  if(!confirm('¿Eliminar la entrega a '+x.beneficiario+' por $'+fmt(x.monto)+'?\n\n'
+    +'También se quita del historial y se devuelve el dinero a la cuenta.')) return;
+
+  if(x.cuenta && x.cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(x.cuenta, x.monto);
+  DB.movimientos = (DB.movimientos||[]).filter(function(m){
+    return !(m.fondoId === f.id && m.fecha === x.fecha && Math.abs(Number(m.monto)||0) === Math.abs(Number(x.monto)||0) && (m.socio||'') === x.beneficiario);
+  });
+  if(x.folio) DB.recibos = (DB.recibos||[]).filter(function(r){ return r.folio !== x.folio; });
+  f.salidas.splice(idx, 1);
+  renderFondos(); guardarFondos();
+  if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+}
+
+function cerrarFondo(id) {
+  var f = getFondo(id); if(!f) return;
+  var saldo = fondoSaldo(f);
+  if(saldo > 0.009) {
+    if(!confirm('"'+f.nombre+'" todavía tiene $'+fmt(saldo)+' sin entregar.\n\n'
+      +'Lo normal es registrar primero la entrega con el botón "− Entrega".\n\n'
+      +'¿Cerrarla de todos modos?')) return;
+  } else if(!confirm('¿Cerrar "'+f.nombre+'"?\n\nSe podrá consultar desde "Ver cerradas" y se puede reabrir.')) return;
+  f.estado = 'cerrado';
+  f.fechaCierre = new Date().toISOString().slice(0,10);
+  renderFondos(); guardarFondos();
+}
+
+function reabrirFondo(id) {
+  var f = getFondo(id); if(!f) return;
+  f.estado = 'abierto';
+  delete f.fechaCierre;
+  window._fondosVerCerrados = false;
+  renderFondos(); guardarFondos();
+}
+
+function eliminarFondo(id) {
+  var f = getFondo(id); if(!f) return;
+  var n = (f.aportaciones||[]).length + (f.salidas||[]).length;
+  if(!confirm('¿ELIMINAR "'+f.nombre+'" por completo?\n\n'
+    +'Tiene '+n+' movimiento(s) registrado(s).\n\n'
+    +'Los saldos de las cuentas NO se revierten: si ya entró o salió dinero, '
+    +'tendrás que ajustarlo a mano.\n\nEsta acción no se puede deshacer.')) return;
+  DB.fondos = (DB.fondos||[]).filter(function(x){ return x.id !== id; });
+  renderFondos(); guardarFondos();
+}
+
+// Recibo de cooperación, reutilizando el overlay existente
+function mostrarReciboFondo(f, persona, monto, fecha, tipoMov, folio, notas) {
+  try {
+    var tipo = FONDO_TIPOS[f.tipo] || FONDO_TIPOS.otro;
+    reciboActual = {folio:folio, tipo:'fondo', socio:persona, monto:monto, fecha:fecha,
+                    concepto:tipoMov+' · '+f.nombre, saldo:fondoSaldo(f), notas:notas||''};
+
+    document.getElementById('recibo-header').className = 'recibo-header tanda';
+    document.getElementById('recibo-header').style.background = tipo.color;
+    document.getElementById('recibo-tipo').textContent = tipoMov + ' — ' + f.nombre;
+    document.getElementById('recibo-folio').textContent = 'Folio #'+folio+' · '+fecha;
+    document.getElementById('recibo-socio').textContent = persona;
+    var meta = document.getElementById('recibo-socio-meta');
+    if(meta) meta.textContent = tipo.label;
+    var av = document.getElementById('recibo-avatar');
+    if(av) {
+      av.textContent = persona.split(' ').slice(0,2).map(function(p){return p[0]||'';}).join('').toUpperCase();
+      av.style.background = tipo.color;
+    }
+    document.getElementById('recibo-mov-label').textContent = tipoMov === 'Entrega' ? 'Entrega recibida' : 'Aportación recibida';
+    document.getElementById('recibo-monto').textContent = '$'+fmt(monto);
+    document.getElementById('recibo-fecha').textContent = fecha;
+    document.getElementById('recibo-concepto').textContent = f.nombre;
+    var rowAnt = document.getElementById('recibo-row-saldo-ant');
+    if(rowAnt) rowAnt.style.display = 'none';
+    document.getElementById('recibo-saldo-label').textContent = 'Fondo acumulado';
+    var sEl = document.getElementById('recibo-saldo');
+    sEl.textContent = '$'+fmt(fondoSaldo(f));
+    sEl.style.color = tipo.color;
+    var rtd = document.getElementById('recibo-row-total-deuda');
+    if(rtd) rtd.style.display = 'none';
+    var rn = document.getElementById('recibo-row-notas');
+    if(notas) { rn.style.display='flex'; document.getElementById('recibo-notas').textContent = notas; }
+    else rn.style.display='none';
+    document.getElementById('recibo-overlay').classList.add('open');
+  } catch(e) { console.warn('mostrarReciboFondo', e); }
+}
+
+// ══════════════════════════════════════════════════
 // PERSISTENCIA EN LOCALSTORAGE
 // ══════════════════════════════════════════════════
 const LS_KEY = 'caja_ahorro_2026';
@@ -11207,6 +11630,7 @@ function guardarEnLocal() {
       tandasGrupales: DB.tandasGrupales||[],
       tanda300:     DB.tanda300 || null,
       tanda1000:    DB.tanda1000 || null,
+      fondos:       DB.fondos || [],
       cuentas:      typeof CUENTAS !== 'undefined' ? JSON.parse(JSON.stringify(CUENTAS)) : null
     };
     const json = JSON.stringify(datos);
@@ -11255,6 +11679,7 @@ function cargarDesdeLocal() {
     if(typeof normalizarPrestamosSinInteres === 'function') normalizarPrestamosSinInteres();
     fixSocioIds();
     DB.tandas       = datos.tandas       || [];
+    DB.fondos       = datos.fondos       || [];
     DB.movimientos  = datos.movimientos  || [];
     DB.cumple       = datos.cumple       || [];
     DB.fondoCumple  = datos.fondoCumple  || [];
@@ -12816,6 +13241,7 @@ function procesarRespaldoJSON(input) {
       // Respaldos viejos no traían las tandas fijas: conservar las actuales
       if(datos.tanda300  !== undefined && datos.tanda300  !== null) DB.tanda300  = datos.tanda300;
       if(datos.tanda1000 !== undefined && datos.tanda1000 !== null) DB.tanda1000 = datos.tanda1000;
+      if(Array.isArray(datos.fondos)) DB.fondos = datos.fondos;
       DB.movimientos  = datos.movimientos  || [];
       DB.cumple       = datos.cumple       || [];
       DB.fondoCumple  = datos.fondoCumple  || [];
