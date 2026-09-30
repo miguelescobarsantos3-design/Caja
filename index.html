@@ -11208,6 +11208,15 @@ function descargarImagen(blob) {
   URL.revokeObjectURL(url);
 }
 
+// Escape de HTML disponible en todo el archivo.
+// Existían tres versiones privadas dentro de IIFEs, ninguna alcanzable desde
+// el ámbito global, así que el código de nivel superior no tenía cómo escapar.
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+
 // ══════════════════════════════════════════════════
 // COOPERACIONES — fondos temporales independientes
 // Quinielas, apoyos funerarios, colectas. El dinero entra y sale de las
@@ -11280,6 +11289,9 @@ function renderFondos() {
     return;
   }
 
+  // Si algo falla al construir las tarjetas, se avisa en pantalla en vez de
+  // dejar el contenido anterior y aparentar que no hay nada.
+  try {
   cont.innerHTML = lista.map(function(f){
     var tipo = FONDO_TIPOS[f.tipo] || FONDO_TIPOS.otro;
     var aportado = fondoTotalAportado(f);
@@ -11342,6 +11354,12 @@ function renderFondos() {
           +'<table style="width:100%;border-collapse:collapse;">'+filasSal+'</table></div>' : '<div style="padding-bottom:10px;"></div>')
       +'</div>';
   }).join('');
+  } catch(e) {
+    console.error('renderFondos', e);
+    cont.innerHTML = '<div style="padding:20px;background:#fdecea;border-radius:10px;color:#7b241c;font-size:13px;">'
+      +'<strong>No se pudieron dibujar las cooperaciones.</strong><br>'+esc(e.message||e)
+      +'<br><span style="color:#999;font-size:11px;">Los datos están a salvo; es un error al mostrarlos.</span></div>';
+  }
 }
 
 function abrirNuevoFondo() {
