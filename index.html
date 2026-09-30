@@ -6075,7 +6075,9 @@ function renderDashboard() {
   if (typeof CUENTAS !== 'undefined') {
     const totalC = Object.values(CUENTAS).reduce((s,c)=>s+c.saldo,0);
     const _totalAhorros = (DB.socios||[]).reduce(function(t,s){ return t+(s.ahorro||0); },0);
-    const debeH  = _totalAhorros - CAJA_REF.prestamos_pendientes;
+    // Se suma el dinero de cooperaciones: está en las cuentas pero es ajeno
+    const _retenido = (typeof totalFondosRetenidos === 'function') ? totalFondosRetenidos() : 0;
+    const debeH  = _totalAhorros - CAJA_REF.prestamos_pendientes + _retenido;
     const diff   = totalC - debeH;
     const cuadra = Math.abs(diff) < 5;
     const sobra  = diff > 0;
@@ -8378,7 +8380,10 @@ function renderCuentas() {
   // Lo que DEBE haber disponible = ahorros (dinero de socios que no se prestó)
   // En realidad: EfectivoTotal - PréstamosPendientes = lo que debería estar en cuentas
   const _ahorrosDin = (DB.socios||[]).reduce(function(t,s){ return t+(s.ahorro||0); },0);
-  const debeHaber = _ahorrosDin - CAJA_REF.prestamos_pendientes;
+  // El dinero de cooperaciones está en las cuentas pero no es de la caja:
+  // se debe entregar, así que suma a lo que "debe haber" disponible.
+  const _retenido = (typeof totalFondosRetenidos === 'function') ? totalFondosRetenidos() : 0;
+  const debeHaber = _ahorrosDin - CAJA_REF.prestamos_pendientes + _retenido;
   const diff = totalCuentas - debeHaber;
   const cuadra = Math.abs(diff) < 5;
   const sobra  = diff > 0;
@@ -8387,7 +8392,9 @@ function renderCuentas() {
   const banner = document.getElementById('cuadre-banner');
   if (cuadra) {
     banner.style.cssText = 'border-radius:14px;padding:18px 24px;margin-bottom:24px;display:flex;align-items:center;gap:16px;background:var(--verde-claro);border:2px solid var(--verde);';
-    banner.innerHTML = '<span style="font-size:28px;line-height:1;">✓</span><div><strong style="font-size:16px;color:var(--verde);display:block;">La caja cuadra perfectamente</strong><span style="font-size:13px;color:var(--texto2);">Total en cuentas coincide con lo que debe haber disponible.</span></div>';
+    banner.innerHTML = '<span style="font-size:28px;line-height:1;">✓</span><div><strong style="font-size:16px;color:var(--verde);display:block;">La caja cuadra perfectamente</strong><span style="font-size:13px;color:var(--texto2);">Total en cuentas coincide con lo que debe haber disponible.'
+      + (_retenido > 0 ? ' Incluye $'+fmt(_retenido)+' de cooperaciones en custodia.' : '')
+      + '</span></div>';
   } else {
     const color = sobra ? '#1b5e20' : 'var(--rojo)';
     const bg    = sobra ? '#e8f5e9' : 'var(--rojo-claro)';
@@ -8396,7 +8403,7 @@ function renderCuentas() {
     banner.innerHTML = `<span style="font-size:28px;line-height:1;">${sobra ? '▲' : '▼'}</span>
       <div>
         <strong style="font-size:16px;color:${color};display:block;">${sobra ? 'Sobran' : 'Faltan'} $${fmt(Math.abs(diff))} en cuentas</strong>
-        <span style="font-size:13px;color:var(--texto2);">Cuentas: $${fmt(totalCuentas)} &nbsp;·&nbsp; Debe haber: $${fmt(debeHaber)}</span>
+        <span style="font-size:13px;color:var(--texto2);">Cuentas: $${fmt(totalCuentas)} &nbsp;·&nbsp; Debe haber: $${fmt(debeHaber)}${_retenido > 0 ? ' &nbsp;·&nbsp; incluye $'+fmt(_retenido)+' de cooperaciones' : ''}</span>
       </div>`;
   }
 
@@ -11215,6 +11222,18 @@ function esc(v) {
   return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
   });
+}
+
+// Dinero de cooperaciones que está en las cuentas pero NO es de la caja:
+// se tiene en custodia y hay que entregarlo. Cuenta como pasivo en el cuadre.
+function totalFondosRetenidos() {
+  if(!Array.isArray(window.DB && DB.fondos)) return 0;
+  return DB.fondos.reduce(function(s, f){
+    if(f.estado === 'cerrado') return s;
+    var apo = (f.aportaciones||[]).reduce(function(a,x){ return a + (Number(x.monto)||0); }, 0);
+    var sal = (f.salidas||[]).reduce(function(a,x){ return a + (Number(x.monto)||0); }, 0);
+    return s + (apo - sal);
+  }, 0);
 }
 
 // ══════════════════════════════════════════════════
