@@ -5988,7 +5988,7 @@ function renderVista(v) {
   else if (v==='prestamos') renderPrestamos();
   else if (v==='tandas') renderTandas();
   else if (v==='cumple') renderCumple();
-  else if (v==='fondos')   { if(typeof renderFondos==='function') renderFondos(); }
+  else if (v==='fondos')   { window._fondosVerCerrados = false; if(typeof renderFondos==='function') renderFondos(); }
   else if (v==='tanda300') { if(typeof renderTanda300==='function') renderTanda300(); }
   else if (v==='tanda1000') { if(typeof renderTanda1000==='function') renderTanda1000(); }
   else if (v==='historial') renderHistorial('todos');
@@ -11253,8 +11253,16 @@ function renderFondos() {
   if(k2) k2.textContent = '$' + fmt(saldoTotal);
   if(k3) k3.textContent = totalAportes;
 
+  var nCerradas = DB.fondos.filter(function(f){ return f.estado === 'cerrado'; }).length;
   var btnC = document.getElementById('btn-fondos-cerrados');
-  if(btnC) btnC.textContent = verCerrados ? 'Ver abiertas' : 'Ver cerradas';
+  if(btnC) {
+    btnC.textContent = verCerrados
+      ? '← Ver abiertas (' + abiertos.length + ')'
+      : 'Ver cerradas (' + nCerradas + ')';
+    // Resalta cuando estás viendo el archivo, para que no se confunda con la vista normal
+    btnC.style.background = verCerrados ? 'var(--azul)' : 'var(--gris)';
+    btnC.style.color      = verCerrados ? '#fff' : 'var(--texto)';
+  }
 
   var cont = document.getElementById('fondos-lista');
   if(!cont) return;
@@ -11262,9 +11270,13 @@ function renderFondos() {
   if(!lista.length) {
     cont.innerHTML = '<div class="empty" style="padding:48px 20px;text-align:center;">'
       +'<div class="icon" style="font-size:38px;">🤝</div>'
-      +'<p style="margin-top:8px;color:var(--texto2);">'
-      + (verCerrados ? 'No hay cooperaciones cerradas.' : 'No hay cooperaciones en curso. Crea una con "+ Nueva cooperación".')
-      +'</p></div>';
+      + (verCerrados
+          ? '<p style="margin-top:8px;color:var(--texto2);">No hay cooperaciones cerradas.</p>'
+            + (abiertos.length
+                ? '<button onclick="window._fondosVerCerrados=false;renderFondos();" style="margin-top:10px;background:var(--azul);color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">← Ver las '+abiertos.length+' en curso</button>'
+                : '')
+          : '<p style="margin-top:8px;color:var(--texto2);">No hay cooperaciones en curso. Crea una con "+ Nueva cooperación".</p>')
+      +'</div>';
     return;
   }
 
