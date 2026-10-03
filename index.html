@@ -15845,10 +15845,10 @@ window.guardarConfigT1000 = function() {
 
     var camposPart = tipo === 't300'
       ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
-        + '<div><label style="font-size:12px;font-weight:700;">Grupo 1 (orden de turno)</label><textarea id="nt-g1" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G1||[]).join('\n')) + '</textarea></div>'
-        + '<div><label style="font-size:12px;font-weight:700;">Grupo 2 (orden de turno)</label><textarea id="nt-g2" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G2||[]).join('\n')) + '</textarea></div>'
+        + '<div><label style="font-size:12px;font-weight:700;">Grupo 1 (orden de turno)</label><textarea id="ciclo-g1" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G1||[]).join('\n')) + '</textarea></div>'
+        + '<div><label style="font-size:12px;font-weight:700;">Grupo 2 (orden de turno)</label><textarea id="ciclo-g2" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G2||[]).join('\n')) + '</textarea></div>'
         + '</div>'
-      : '<label style="font-size:12px;font-weight:700;">Participantes (orden de turno)</label><textarea id="nt-p" rows="10" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T1000_P||[]).join('\n')) + '</textarea>';
+      : '<label style="font-size:12px;font-weight:700;">Participantes (orden de turno)</label><textarea id="ciclo-p" rows="10" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T1000_P||[]).join('\n')) + '</textarea>';
 
     abrirModal(
       '<h3 style="margin:0 0 4px;font-size:18px;">🔄 Cerrar ' + nombreTanda(tipo) + ' e iniciar una nueva</h3>'
@@ -15864,10 +15864,10 @@ window.guardarConfigT1000 = function() {
       + '<p style="font-size:12px;color:var(--texto2);margin:0 0 10px;">Revisa la lista para la nueva tanda: quita, agrega o cambia el orden (un nombre por línea).</p>'
       + camposPart
       + '<div style="margin-top:12px;"><label style="font-size:12px;font-weight:700;">Aporte por quincena</label> '
-      +   '<input id="nt-monto" type="number" min="1" value="' + monto + '" style="width:120px;padding:7px 10px;border:1.5px solid var(--gris2);border-radius:8px;font-size:14px;"></div>'
+      +   '$ <input id="ciclo-monto" type="text" inputmode="decimal" autocomplete="off" value="' + monto + '" onfocus="this.select()" style="width:120px;padding:7px 10px;border:1.5px solid var(--gris2);border-radius:8px;font-size:14px;"></div>'
       + '<div style="margin-top:14px;background:rgba(124,58,237,0.08);border-radius:10px;padding:12px 14px;">'
       +   '<label style="font-size:12px;font-weight:700;">Para confirmar escribe <span style="color:#7c3aed;">NUEVA</span></label><br>'
-      +   '<input id="nt-confirma" type="text" autocomplete="off" style="margin-top:6px;width:160px;padding:8px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:14px;text-transform:uppercase;">'
+      +   '<input id="ciclo-confirma" type="text" autocomplete="off" style="margin-top:6px;width:160px;padding:8px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:14px;text-transform:uppercase;">'
       +   '<div style="font-size:11px;color:var(--texto2);margin-top:6px;">Antes del cambio se descarga un respaldo automático.</div>'
       + '</div>'
       + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
@@ -15878,19 +15878,24 @@ window.guardarConfigT1000 = function() {
   };
 
   window.confirmarNuevaTanda = function(tipo){
-    if(String(($('nt-confirma')||{}).value||'').trim().toUpperCase() !== 'NUEVA') {
+    if(String(($('ciclo-confirma')||{}).value||'').trim().toUpperCase() !== 'NUEVA') {
       alert('Escribe NUEVA para confirmar.');
       return;
     }
     function lista(id){ return String(($(id)||{}).value||'').split('\n').map(function(x){ return x.trim().toUpperCase(); }).filter(Boolean); }
-    var monto = parseInt(($('nt-monto')||{}).value, 10) || 0;
-    if(monto <= 0) { alert('Indica el aporte por quincena.'); return; }
+    var _mTxt = String(($('ciclo-monto')||{}).value || '').replace(/[^\d.]/g, '');
+    var monto = parseFloat(_mTxt) || 0;
+    if(monto <= 0) {
+      alert('Escribe el aporte por quincena (solo el número, por ejemplo 300).');
+      var _el = $('ciclo-monto'); if(_el) setTimeout(function(){ _el.focus(); _el.select(); }, 50);
+      return;
+    }
     var g1, g2, p;
     if(tipo === 't300') {
-      g1 = lista('nt-g1'); g2 = lista('nt-g2');
+      g1 = lista('ciclo-g1'); g2 = lista('ciclo-g2');
       if(g1.length < 2 || g2.length < 2) { alert('Cada grupo necesita al menos 2 participantes.'); return; }
     } else {
-      p = lista('nt-p');
+      p = lista('ciclo-p');
       if(p.length < 2) { alert('La tanda necesita al menos 2 participantes.'); return; }
     }
 
@@ -15980,7 +15985,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=20261002-02')
+    navigator.serviceWorker.register('./sw.js?v=20261002-04')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
