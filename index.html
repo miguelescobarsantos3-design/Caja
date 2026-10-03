@@ -819,7 +819,21 @@ function _mergeTanda(remota, local) {
   if(!remota) return JSON.parse(JSON.stringify(local));
   if(!local)  return JSON.parse(JSON.stringify(remota));
 
+  // Ciclos distintos: gana completo el ciclo más nuevo (no se mezclan tandas)
+  var _cR = Number(remota.ciclo || 1), _cL = Number(local.ciclo || 1);
+  if(_cR !== _cL) return JSON.parse(JSON.stringify(_cR > _cL ? remota : local));
+
   var resultado = { entregado:0, entregas:[], movimientos:[] };
+  // Conservar configuración e historial de ciclos
+  ['g1','g2','participantes','inicioCiclo'].forEach(function(k){
+    var v = local[k] !== undefined ? local[k] : remota[k];
+    if(v !== undefined) resultado[k] = JSON.parse(JSON.stringify(v));
+  });
+  if(local.ciclo || remota.ciclo) resultado.ciclo = _cL;
+  var _hist = {};
+  (remota.historial||[]).concat(local.historial||[]).forEach(function(h){ if(h && h.ciclo) _hist[h.ciclo] = h; });
+  var _histArr = Object.keys(_hist).map(function(k){ return _hist[k]; }).sort(function(a,b){ return a.ciclo - b.ciclo; });
+  if(_histArr.length) resultado.historial = JSON.parse(JSON.stringify(_histArr));
   var monto = local.montoAporte || remota.montoAporte;
   if(monto) resultado.montoAporte = monto;
 
@@ -1185,12 +1199,20 @@ function cajaTsLocal() {
 // ── PROTECCIÓN HISTÓRICA: High-Water Marks ──────────────────────────────────
 // Garantiza que ningún guardado pueda REDUCIR conteos de movimientos/recibos.
 // Se actualiza en cada guardado/carga exitosa. Solo sube, nunca baja.
+// Movimientos de la tanda actual + los de ciclos archivados.
+// Así, al iniciar una tanda nueva el conteo total no baja y la protección no bloquea.
+function cajaContarMovsTanda(t) {
+  if(!t) return 0;
+  var n = (t.movimientos || []).length;
+  (t.historial || []).forEach(function(h){ n += (h && h.movimientos ? h.movimientos.length : 0); });
+  return n;
+}
 function cajaActualizarHWM(datos) {
   var campos = [
     ['movimientos', (datos.movimientos||[]).length],
     ['recibos',     (datos.recibos||[]).length],
-    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0)],
-    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0)]
+    ['t300movs',    cajaContarMovsTanda(datos.tanda300)],
+    ['t1000movs',   cajaContarMovsTanda(datos.tanda1000)]
   ];
   campos.forEach(function(c) {
     var prev = parseInt(localStorage.getItem('caja_hwm_'+c[0])||'0', 10) || 0;
@@ -1207,8 +1229,8 @@ function cajaReiniciarHWM(datos) {
   var campos = [
     ['movimientos', (datos.movimientos||[]).length],
     ['recibos',     (datos.recibos||[]).length],
-    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0)],
-    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0)]
+    ['t300movs',    cajaContarMovsTanda(datos.tanda300)],
+    ['t1000movs',   cajaContarMovsTanda(datos.tanda1000)]
   ];
   campos.forEach(function(c){
     try { localStorage.setItem('caja_hwm_'+c[0], String(c[1])); } catch(e) {}
@@ -1218,8 +1240,8 @@ function cajaVerificarHWM(datos) {
   var checks = [
     ['movimientos', (datos.movimientos||[]).length,   'movimientos generales'],
     ['recibos',     (datos.recibos||[]).length,       'recibos'],
-    ['t300movs',    (datos.tanda300 && datos.tanda300.movimientos ? datos.tanda300.movimientos.length : 0), 'movimientos Tanda $300'],
-    ['t1000movs',   (datos.tanda1000 && datos.tanda1000.movimientos ? datos.tanda1000.movimientos.length : 0), 'movimientos Tanda $1000']
+    ['t300movs',    cajaContarMovsTanda(datos.tanda300), 'movimientos Tanda $300'],
+    ['t1000movs',   cajaContarMovsTanda(datos.tanda1000), 'movimientos Tanda $1000']
   ];
   var problemas = [];
   checks.forEach(function(c) {
@@ -1338,9 +1360,13 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 
     // tanda300: aplicar propiedades nuevas pero nunca reducir movimientos
     var _localT300Movs = (DB.tanda300 && DB.tanda300.movimientos) ? DB.tanda300.movimientos : [];
-    if(datos.tanda300) {
+    var _localT300Ciclo = Number((DB.tanda300 && DB.tanda300.ciclo) || 1);
+    if(datos.tanda300 && Number(datos.tanda300.ciclo || 1) < _localT300Ciclo) {
+      console.warn('⚠️ tanda300: la nube trae un ciclo viejo, se conserva el ciclo local ' + _localT300Ciclo);
+    } else if(datos.tanda300) {
+      var _cambioCicloT300 = Number(datos.tanda300.ciclo || 1) !== _localT300Ciclo;
       DB.tanda300 = datos.tanda300;
-      if((datos.tanda300.movimientos||[]).length < _localT300Movs.length) {
+      if(!_cambioCicloT300 && (datos.tanda300.movimientos||[]).length < _localT300Movs.length) {
         DB.tanda300 = Object.assign({}, datos.tanda300, {movimientos: _localT300Movs});
         console.warn('⚠️ tanda300.movimientos protegidos: Firebase='+( datos.tanda300.movimientos||[]).length+' < local='+_localT300Movs.length);
       }
@@ -1350,9 +1376,13 @@ function cajaAplicarDatosFirebaseSeguro(datos, motivo, forzar) {
 
     // tanda1000: ídem
     var _localT1000Movs = (DB.tanda1000 && DB.tanda1000.movimientos) ? DB.tanda1000.movimientos : [];
-    if(datos.tanda1000) {
+    var _localT1000Ciclo = Number((DB.tanda1000 && DB.tanda1000.ciclo) || 1);
+    if(datos.tanda1000 && Number(datos.tanda1000.ciclo || 1) < _localT1000Ciclo) {
+      console.warn('⚠️ tanda1000: la nube trae un ciclo viejo, se conserva el ciclo local ' + _localT1000Ciclo);
+    } else if(datos.tanda1000) {
+      var _cambioCicloT1000 = Number(datos.tanda1000.ciclo || 1) !== _localT1000Ciclo;
       DB.tanda1000 = datos.tanda1000;
-      if((datos.tanda1000.movimientos||[]).length < _localT1000Movs.length) {
+      if(!_cambioCicloT1000 && (datos.tanda1000.movimientos||[]).length < _localT1000Movs.length) {
         DB.tanda1000 = Object.assign({}, datos.tanda1000, {movimientos: _localT1000Movs});
         console.warn('⚠️ tanda1000.movimientos protegidos: Firebase='+(datos.tanda1000.movimientos||[]).length+' < local='+_localT1000Movs.length);
       }
@@ -2095,11 +2125,13 @@ window.addEventListener('unhandledrejection', function(e) {
   <!-- TANDA 300 -->
   <div class="content view" id="view-tanda300">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-      <h2 style="margin:0;font-size:20px;">Tanda $300</h2>
+      <h2 style="margin:0;font-size:20px;">Tanda $300 <span id="t300-ciclo-label" style="font-size:13px;font-weight:700;color:#7c3aed;background:rgba(124,58,237,0.1);padding:3px 10px;border-radius:20px;vertical-align:middle;"></span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button onclick="abrirAporteT300()" style="background:var(--verde);color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">+ Aporte</button>
         <button onclick="abrirEntregaT300()" style="background:var(--azul);color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🏆 Entregar</button>
         <button onclick="editarConfigT300()" style="background:var(--gris);color:var(--texto);border:1px solid var(--gris2);padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✏️ Editar participantes</button>
+        <button onclick="iniciarNuevaTanda('t300')" style="background:#7c3aed;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔄 Nueva tanda</button>
+        <button onclick="verCiclosTanda('t300')" style="background:var(--gris);color:var(--texto);border:1px solid var(--gris2);padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">📚 Ciclos anteriores</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
@@ -2137,8 +2169,12 @@ window.addEventListener('unhandledrejection', function(e) {
   <!-- TANDA 1000 -->
   <div class="content view" id="view-tanda1000">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="margin:0;font-size:20px;">Tanda $1,000</h2>
-      <button onclick="editarConfigT1000()" style="background:var(--verde);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✏️ Editar participantes</button>
+      <h2 style="margin:0;font-size:20px;">Tanda $1,000 <span id="t1000-ciclo-label" style="font-size:13px;font-weight:700;color:#7c3aed;background:rgba(124,58,237,0.1);padding:3px 10px;border-radius:20px;vertical-align:middle;"></span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="editarConfigT1000()" style="background:var(--verde);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✏️ Editar participantes</button>
+        <button onclick="iniciarNuevaTanda('t1000')" style="background:#7c3aed;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔄 Nueva tanda</button>
+        <button onclick="verCiclosTanda('t1000')" style="background:var(--gris);color:var(--texto);border:1px solid var(--gris2);padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">📚 Ciclos anteriores</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
       <div class="kpi kpi-blue"><div class="kpi-accent"></div><div class="kpi-label">Fondo Acumulado</div><div class="kpi-value" id="t1000-kpi-fondo">$0</div><div class="kpi-sub">en caja</div></div>
@@ -7581,8 +7617,9 @@ function procesarRetiro() {
   if(document.getElementById('rt-cuenta')) document.getElementById('rt-cuenta').value = '';
   DB.movimientos.unshift({tipo:'retiro', socio:s.nombre, monto:-monto, fecha, notas:motivo||'Retiro de ahorro',
     cuenta: rtCuentaKey || null});
+  const folioRt = nuevoFolio();
   DB.recibos.unshift({
-    folio:String(folioCounter).padStart(4,'0'), tipo:'retiro', socio:s.nombre, monto, fecha,
+    folio:folioRt, tipo:'retiro', socio:s.nombre, monto, fecha,
     concepto:'Retiro de ahorro', saldo:s.ahorro, notas:motivo, estado:'vigente',
     fechaEmision:new Date().toISOString().slice(0,10), motivoCancelacion:'',
     _snapshot:{socioId:s.id, ahorro_antes:ahorroAntes}
@@ -7596,7 +7633,7 @@ function procesarRetiro() {
   document.getElementById('pago-resumen').innerHTML = '<div class="empty"><div class="icon">◎</div><p>Selecciona un socio</p></div>';
 
   // Recibo
-  const folio = nuevoFolio();
+  const folio = folioRt;
   reciboActual = {tipo:'retiro', socio:s.nombre, monto, fecha, concepto:'Retiro de ahorro', saldo:s.ahorro, notas:motivo, folio};
   const iniciales = s.nombre.split(' ').slice(0,2).map(p=>p[0]||'').join('').toUpperCase();
   const num = String(s.id).padStart(2,'0');
@@ -8656,9 +8693,24 @@ function renderRecibos(filtro) {
              String(r.monto||0).includes(busqueda);
     });
   }
+  // Más reciente primero: fecha del recibo → fecha de emisión → folio → orden de captura
+  var _fechaClave = function(f){
+    f = String(f||'').trim();
+    var m = f.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // DD/MM/AAAA
+    if(m) return m[3] + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0');
+    return f.slice(0,10); // AAAA-MM-DD
+  };
+  var _numFolio = function(r){ return parseInt(String(r.folio||'').replace(/\D/g,''), 10) || 0; };
+  var _pos = new Map();
+  DB.recibos.forEach(function(r, i){ _pos.set(r, i); });
   const lista = listaBase.sort(function(a, b){
-      var fa = parseInt(a.folio) || 0, fb = parseInt(b.folio) || 0;
-      return fb - fa;
+      var fa = _fechaClave(a.fecha), fb = _fechaClave(b.fecha);
+      if(fa !== fb) return fa < fb ? 1 : -1;
+      var ea = _fechaClave(a.fechaEmision), eb = _fechaClave(b.fechaEmision);
+      if(ea !== eb) return ea < eb ? 1 : -1;
+      var na = _numFolio(a), nb = _numFolio(b);
+      if(na !== nb) return nb - na;
+      return (_pos.get(a)||0) - (_pos.get(b)||0);
     });
 
   const tipos = {ahorro:'badge-green', prestamo:'badge-orange', tanda:'badge-yellow', cumple:'badge-purple', tanda300:'badge-blue', tanda1000:'badge-blue', fondo:'badge-purple', retiro:'badge-gray'};
@@ -12060,7 +12112,10 @@ function normalizarVisibilidadSocios() {
   var T300_G1_BASE = ['HAROLDO','JUAN ANTONIO A','ERI ROMERO','NANCY','UBALDO A','CARBALLO A','RAFAEL A','GERMAN','MIGUEL A','RAMON A','JULIO'];
   var T300_G2_BASE = ['JUAN ANTONIO B','JUAN ANTONIO C','WILBER','JORGE','UBALDO B','CARBALLO B','MIGUEL B','RAFAEL B','EUGENIO','RAMON B','SANTIAGO'];
   // Usar DB solo si tiene nombres con sufijos A/B/C; si no, usar BASE (evita que Firebase sin sufijos sobreescriba)
-  function _t300TieneSufijos(arr){ return Array.isArray(arr) && arr.some(function(n){ return /\s[ABC]$/.test(n); }); }
+  function _t300TieneSufijos(arr){
+    if(Array.isArray(arr) && arr.length && DB.tanda300 && Number(DB.tanda300.ciclo||1) > 1) return true; // ciclo nuevo: lista libre
+    return Array.isArray(arr) && arr.some(function(n){ return /\s[ABC]$/.test(n); });
+  }
   var T300_G1 = _t300TieneSufijos(DB.tanda300 && DB.tanda300.g1) ? DB.tanda300.g1.slice() : T300_G1_BASE.slice();
   var T300_G2 = _t300TieneSufijos(DB.tanda300 && DB.tanda300.g2) ? DB.tanda300.g2.slice() : T300_G2_BASE.slice();
   // Lista base — solo se usa si DB no tiene participantes guardados
@@ -12117,8 +12172,8 @@ function normalizarVisibilidadSocios() {
       T300_G2.length = 0;
       DB.tanda300.g2.forEach(function(p){ T300_G2.push(p); });
     }
-    // Auto-normalizar nombres A/B/C en movimientos (resistente a Firebase con datos viejos)
-    ;(function(){
+    // Auto-normalizar nombres A/B/C en movimientos (solo ciclo 1, datos viejos de Firebase)
+    if(Number(DB.tanda300.ciclo||1) <= 1) (function(){
       var mG1={'JUAN ANTONIO':'JUAN ANTONIO A','UBALDO':'UBALDO A','CARBALLO':'CARBALLO A','RAFAEL':'RAFAEL A','MIGUEL':'MIGUEL A','RAMON':'RAMON A'};
       var mG2={'JUAN ANTONIO':'JUAN ANTONIO C','UBALDO':'UBALDO B','CARBALLO':'CARBALLO B','RAFAEL':'RAFAEL B','MIGUEL':'MIGUEL B','RAMON':'RAMON B'};
       (DB.tanda300.movimientos||[]).forEach(function(m){
@@ -15700,11 +15755,232 @@ window.guardarConfigT1000 = function() {
 };
 </script>
 
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CICLOS DE TANDA — cerrar la tanda terminada e iniciar una nueva
+// La tanda cerrada se archiva completa en t.historial (no se borra nada).
+// La nueva arranca con ciclo+1; la sincronización respeta el ciclo más alto.
+// ═══════════════════════════════════════════════════════
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function dinero(n){ return '$' + (typeof fmt === 'function' ? fmt(Number(n)||0) : (Number(n)||0).toFixed(2)); }
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function hoy(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function fechaMx(f){ if(!f) return '—'; var d=new Date(String(f).slice(0,10)+'T12:00:00'); return isNaN(d) ? f : d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}); }
+  function suma(arr){ return (arr||[]).reduce(function(s,x){ return s + (Number(x.monto)||0); }, 0); }
+  function nombreTanda(tipo){ return tipo === 't300' ? 'Tanda $300' : 'Tanda $1,000'; }
+  function getT(tipo){ return tipo === 't300' ? window.getTanda300() : window.getTanda1000(); }
+  function inicioDe(t){
+    if(t.inicioCiclo) return t.inicioCiclo;
+    var f = (t.movimientos||[]).map(function(m){ return String(m.fecha||''); }).filter(Boolean).sort();
+    return f[0] || '';
+  }
+  function cerrarModalCiclo(){ var m=$('modal-ciclo-tanda'); if(m) m.remove(); }
+  window.cerrarModalCiclo = cerrarModalCiclo;
+
+  function abrirModal(html){
+    cerrarModalCiclo();
+    var div = document.createElement('div');
+    div.id = 'modal-ciclo-tanda';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    div.innerHTML = '<div style="background:var(--blanco,#fff);color:var(--texto,#111);border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.3);">' + html + '</div>';
+    div.addEventListener('click', function(e){ if(e.target === div) cerrarModalCiclo(); });
+    document.body.appendChild(div);
+  }
+
+  // ── Etiqueta "Ciclo N" en el encabezado ──
+  function pintarCiclo(tipo){
+    var el = $(tipo + '-ciclo-label'); if(!el) return;
+    var t = tipo === 't300' ? DB.tanda300 : DB.tanda1000;
+    var c = Number((t && t.ciclo) || 1);
+    el.textContent = 'Ciclo ' + c;
+  }
+  ['300','1000'].forEach(function(n){
+    var nombre = 'renderTanda' + n;
+    var orig = window[nombre];
+    if(typeof orig !== 'function' || orig.__conCiclo) return;
+    var w = function(){ var r = orig.apply(this, arguments); try { pintarCiclo('t' + n); } catch(e){} return r; };
+    w.__conCiclo = true;
+    window[nombre] = w;
+  });
+
+  // ── Iniciar nueva tanda ──
+  window.iniciarNuevaTanda = function(tipo){
+    if(typeof modoRutaActivo === 'function' && modoRutaActivo()) {
+      alert('🛵 Estás en MODO RUTA.\n\nPara cerrar una tanda e iniciar otra hazlo en la PC (Maestro), después de cerrar la ruta.');
+      return;
+    }
+    if(typeof cajaModoMaestro === 'function' && !cajaModoMaestro()) {
+      alert('🔒 Este equipo está en solo lectura.\n\nCerrar una tanda solo se puede en la PC en modo MAESTRO, para que el cambio llegue a la nube.');
+      return;
+    }
+    var t = getT(tipo);
+    var aportado  = suma(t.movimientos);
+    var entregado = suma(t.entregas);
+    var fondo = aportado - entregado;
+    var ciclo = Number(t.ciclo || 1);
+    var monto = t.montoAporte || (tipo === 't300' ? 300 : 1000);
+
+    if(Math.abs(fondo) >= 0.01) {
+      alert('⚠️ No se puede cerrar todavía.\n\nLa ' + nombreTanda(tipo) + ' tiene ' + dinero(fondo) + ' en el fondo.\n'
+        + 'Primero entrega o ajusta ese dinero para que el fondo quede en $0.00.');
+      return;
+    }
+
+    var pendientes = [];
+    if(tipo === 't300') {
+      [[window.T300_G1,1],[window.T300_G2,2]].forEach(function(par){
+        (par[0]||[]).forEach(function(n,i){
+          var cobro = (t.entregas||[]).some(function(e){ return Number(e.grupo)===par[1] && Number(e.turno)===i+1; });
+          if(!cobro) pendientes.push('G' + par[1] + ': ' + n);
+        });
+      });
+    } else {
+      (window.T1000_P||[]).forEach(function(n,i){
+        var cobro = (t.entregas||[]).some(function(e){ return Number(e.turno)===i+1; });
+        if(!cobro) pendientes.push(n);
+      });
+    }
+
+    var camposPart = tipo === 't300'
+      ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+        + '<div><label style="font-size:12px;font-weight:700;">Grupo 1 (orden de turno)</label><textarea id="nt-g1" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G1||[]).join('\n')) + '</textarea></div>'
+        + '<div><label style="font-size:12px;font-weight:700;">Grupo 2 (orden de turno)</label><textarea id="nt-g2" rows="11" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T300_G2||[]).join('\n')) + '</textarea></div>'
+        + '</div>'
+      : '<label style="font-size:12px;font-weight:700;">Participantes (orden de turno)</label><textarea id="nt-p" rows="10" style="width:100%;font-family:DM Mono,monospace;font-size:12px;border:1.5px solid var(--gris2);border-radius:8px;padding:8px;">' + esc((window.T1000_P||[]).join('\n')) + '</textarea>';
+
+    abrirModal(
+      '<h3 style="margin:0 0 4px;font-size:18px;">🔄 Cerrar ' + nombreTanda(tipo) + ' e iniciar una nueva</h3>'
+      + '<p style="margin:0 0 14px;font-size:13px;color:var(--texto2);">Ciclo ' + ciclo + ' se archiva completo → arranca el <strong>Ciclo ' + (ciclo+1) + '</strong> en ceros.</p>'
+      + '<div style="background:var(--gris,#f4f4f4);border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:12px;line-height:1.7;">'
+      +   '<strong>Resumen del ciclo ' + ciclo + '</strong><br>'
+      +   'Inicio: ' + fechaMx(inicioDe(t)) + ' · Aportes: ' + (t.movimientos||[]).length + ' (' + dinero(aportado) + ')<br>'
+      +   'Entregas: ' + (t.entregas||[]).length + ' (' + dinero(entregado) + ') · Fondo: ' + dinero(fondo)
+      + '</div>'
+      + (pendientes.length
+          ? '<div style="background:#fff3e0;border:1.5px solid #ff9800;border-radius:10px;padding:10px 14px;font-size:12px;margin-bottom:12px;"><strong style="color:#e65100;">⚠️ ' + pendientes.length + ' turno(s) sin marcar como cobrado:</strong><br>' + esc(pendientes.join(', ')) + '</div>'
+          : '')
+      + '<p style="font-size:12px;color:var(--texto2);margin:0 0 10px;">Revisa la lista para la nueva tanda: quita, agrega o cambia el orden (un nombre por línea).</p>'
+      + camposPart
+      + '<div style="margin-top:12px;"><label style="font-size:12px;font-weight:700;">Aporte por quincena</label> '
+      +   '<input id="nt-monto" type="number" min="1" value="' + monto + '" style="width:120px;padding:7px 10px;border:1.5px solid var(--gris2);border-radius:8px;font-size:14px;"></div>'
+      + '<div style="margin-top:14px;background:rgba(124,58,237,0.08);border-radius:10px;padding:12px 14px;">'
+      +   '<label style="font-size:12px;font-weight:700;">Para confirmar escribe <span style="color:#7c3aed;">NUEVA</span></label><br>'
+      +   '<input id="nt-confirma" type="text" autocomplete="off" style="margin-top:6px;width:160px;padding:8px 10px;border:1.5px solid #7c3aed;border-radius:8px;font-size:14px;text-transform:uppercase;">'
+      +   '<div style="font-size:11px;color:var(--texto2);margin-top:6px;">Antes del cambio se descarga un respaldo automático.</div>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
+      +   '<button class="btn btn-secondary" onclick="cerrarModalCiclo()">Cancelar</button>'
+      +   '<button class="btn btn-primary" style="background:#7c3aed;border-color:#7c3aed;" onclick="confirmarNuevaTanda(\'' + tipo + '\')">Cerrar ciclo ' + ciclo + ' e iniciar ' + (ciclo+1) + '</button>'
+      + '</div>'
+    );
+  };
+
+  window.confirmarNuevaTanda = function(tipo){
+    if(String(($('nt-confirma')||{}).value||'').trim().toUpperCase() !== 'NUEVA') {
+      alert('Escribe NUEVA para confirmar.');
+      return;
+    }
+    function lista(id){ return String(($(id)||{}).value||'').split('\n').map(function(x){ return x.trim().toUpperCase(); }).filter(Boolean); }
+    var monto = parseInt(($('nt-monto')||{}).value, 10) || 0;
+    if(monto <= 0) { alert('Indica el aporte por quincena.'); return; }
+    var g1, g2, p;
+    if(tipo === 't300') {
+      g1 = lista('nt-g1'); g2 = lista('nt-g2');
+      if(g1.length < 2 || g2.length < 2) { alert('Cada grupo necesita al menos 2 participantes.'); return; }
+    } else {
+      p = lista('nt-p');
+      if(p.length < 2) { alert('La tanda necesita al menos 2 participantes.'); return; }
+    }
+
+    // 1) Respaldo automático
+    try { if(typeof descargarRespaldo === 'function') descargarRespaldo(); } catch(e) {}
+
+    // 2) Archivar ciclo actual
+    var t = getT(tipo);
+    var ciclo = Number(t.ciclo || 1);
+    var aportado = suma(t.movimientos), entregado = suma(t.entregas);
+    var archivo = {
+      ciclo: ciclo,
+      inicio: inicioDe(t),
+      cierre: hoy(),
+      montoAporte: t.montoAporte || (tipo === 't300' ? 300 : 1000),
+      aportado: aportado,
+      entregado: entregado,
+      movimientos: JSON.parse(JSON.stringify(t.movimientos || [])),
+      entregas: JSON.parse(JSON.stringify(t.entregas || []))
+    };
+    if(tipo === 't300') { archivo.g1 = (window.T300_G1||[]).slice(); archivo.g2 = (window.T300_G2||[]).slice(); }
+    else { archivo.participantes = (window.T1000_P||[]).slice(); }
+    t.historial = (t.historial || []).filter(function(h){ return h && Number(h.ciclo) !== ciclo; });
+    t.historial.push(archivo);
+
+    // 3) Arrancar ciclo nuevo en ceros
+    t.ciclo = ciclo + 1;
+    t.inicioCiclo = hoy();
+    t.montoAporte = monto;
+    t.movimientos = [];
+    t.entregas = [];
+    t.entregado = 0;
+    t.fondo = 0;
+    if(tipo === 't300') {
+      t.g1 = g1.slice(); t.g2 = g2.slice();
+      window.T300_G1.length = 0; g1.forEach(function(n){ window.T300_G1.push(n); });
+      window.T300_G2.length = 0; g2.forEach(function(n){ window.T300_G2.push(n); });
+      DB.tanda300 = t;
+    } else {
+      t.participantes = p.slice();
+      window.T1000_P.length = 0; p.forEach(function(n){ window.T1000_P.push(n); });
+      DB.tanda1000 = t;
+    }
+
+    cerrarModalCiclo();
+    if(typeof guardarDatos === 'function') guardarDatos({render:true, firebase:true, fuente:'nueva-' + tipo});
+    if(tipo === 't300' && typeof renderTanda300 === 'function') renderTanda300();
+    if(tipo === 't1000' && typeof renderTanda1000 === 'function') renderTanda1000();
+    alert('✅ ' + nombreTanda(tipo) + ': Ciclo ' + ciclo + ' archivado.\nYa puedes registrar aportes del Ciclo ' + (ciclo+1) + '.');
+  };
+
+  // ── Ver ciclos anteriores ──
+  window.verCiclosTanda = function(tipo){
+    var t = getT(tipo);
+    var hist = (t.historial || []).slice().sort(function(a,b){ return b.ciclo - a.ciclo; });
+    if(!hist.length) {
+      alert('Todavía no hay ciclos cerrados de la ' + nombreTanda(tipo) + '.\nEl ciclo actual es el ' + Number(t.ciclo||1) + '.');
+      return;
+    }
+    var html = '<h3 style="margin:0 0 12px;font-size:18px;">📚 ' + nombreTanda(tipo) + ' — ciclos anteriores</h3>';
+    hist.forEach(function(h){
+      var nombres = h.g1 ? (h.g1.length + h.g2.length) : (h.participantes||[]).length;
+      var aportePor = {};
+      (h.movimientos||[]).forEach(function(m){
+        var k = (h.g1 ? 'G' + m.grupo + ' · ' : '') + (m.aportante || '?');
+        aportePor[k] = (aportePor[k]||0) + (Number(m.monto)||0);
+      });
+      var filas = Object.keys(aportePor).sort().map(function(k){
+        return '<tr><td style="padding:3px 8px;">' + esc(k) + '</td><td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;">' + dinero(aportePor[k]) + '</td></tr>';
+      }).join('');
+      html += '<details style="border:1px solid var(--gris2);border-radius:10px;padding:10px 14px;margin-bottom:10px;">'
+        + '<summary style="cursor:pointer;font-weight:700;">Ciclo ' + h.ciclo + ' · ' + fechaMx(h.inicio) + ' → ' + fechaMx(h.cierre) + '</summary>'
+        + '<div style="font-size:13px;margin:8px 0;line-height:1.7;">' + nombres + ' participantes · aporte ' + dinero(h.montoAporte) + '<br>'
+        + 'Aportado: <strong>' + dinero(h.aportado) + '</strong> · Entregado: <strong>' + dinero(h.entregado) + '</strong> (' + (h.entregas||[]).length + ' entregas)</div>'
+        + '<table style="width:100%;font-size:12px;border-collapse:collapse;">' + filas + '</table>'
+        + '</details>';
+    });
+    html += '<div style="text-align:right;margin-top:8px;"><button class="btn btn-secondary" onclick="cerrarModalCiclo()">Cerrar</button></div>';
+    abrirModal(html);
+  };
+
+  setTimeout(function(){ try { pintarCiclo('t300'); pintarCiclo('t1000'); } catch(e){} }, 500);
+})();
+</script>
+
 <!-- Service Worker PWA: red primero, sin caché viejo -->
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=20260525-01')
+    navigator.serviceWorker.register('./sw.js?v=20261002-02')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
