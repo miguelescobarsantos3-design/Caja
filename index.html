@@ -4874,6 +4874,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex-shrink:0;padding-top:12px;border-top:1px solid var(--gris2);">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-estado-cuenta')">Cerrar</button>
       <button class="btn btn-secondary" onclick="editarDesdeEC()">✏️ Editar</button>
+      <button class="btn btn-secondary" id="ec-btn-nuevo-prestamo" onclick="nuevoPrestamoDesdeEC()" style="background:#fff3e0;color:#e65100;border:1px solid #ffb74d;">📋 Nuevo préstamo</button>
       <button class="btn btn-secondary" onclick="pagarDesdeEC()" style="background:var(--verde);color:#fff;border-color:var(--verde);">💰 Registrar pago</button>
       <button class="btn btn-primary" onclick="compartirEstadoCuentaWA()">📲 WhatsApp</button>
     </div>
@@ -6232,6 +6233,7 @@ function abrirEstadoCuentaSocio(id) {
 function abrirEstadoCuentaAhorro(socioId) {
   const s = DB.socios.find(x => x.id === socioId);
   if(!s) return;
+  _ecSocioAhorroId = s.id;
 
   // Movimientos de ahorro del socio
   const movs = (DB.movimientos || [])
@@ -8976,11 +8978,53 @@ function seleccionarAccionCancel(accion) {
 // ESTADO DE CUENTA DE PRÉSTAMO
 // ══════════════════════════════════════════════════
 let _ecPrestamoActual = null;
+let _ecSocioAhorroId = null;
+
+// Abre "Nuevo préstamo" con el socio/deudor del Estado de cuenta ya seleccionado
+function nuevoPrestamoDesdeEC() {
+  let socio = null, nombre = '';
+  if(_ecSocioAhorroId != null) {
+    socio = DB.socios.find(x => x.id === _ecSocioAhorroId);
+  } else if(_ecPrestamoActual) {
+    const p = _ecPrestamoActual;
+    nombre = p.nombre || '';
+    socio = DB.socios.find(x => (p.socioId != null && x.id === p.socioId)) ||
+            DB.socios.find(x => (x.nombre||'').toLowerCase().trim() === nombre.toLowerCase().trim());
+  }
+  if(socio) nombre = socio.nombre;
+  if(!nombre) return;
+  cerrarModal('modal-estado-cuenta');
+  abrirNuevoPrestamo();
+  setTimeout(function() {
+    const sel = document.getElementById('np-socio');
+    let ok = false;
+    if(socio && sel) {
+      for(let i = 0; i < sel.options.length; i++) {
+        if(parseInt(sel.options[i].value) === socio.id) {
+          npTipo('socio');
+          sel.selectedIndex = i;
+          sel.dispatchEvent(new Event('change'));
+          ok = true;
+          break;
+        }
+      }
+    }
+    if(!ok) {
+      // Deudor externo (o socio oculto en préstamos): llenar el nombre
+      npTipo('externo');
+      const inp = document.getElementById('np-nombre-externo');
+      if(inp) { inp.value = nombre; inp.dispatchEvent(new Event('input')); }
+    }
+    const cap = document.getElementById('np-capital');
+    if(cap) cap.focus();
+  }, 200);
+}
 
 function abrirEstadoCuenta(prestamoId) {
   const p = DB.prestamos.find(x => x.id === prestamoId);
   if(!p) return;
   _ecPrestamoActual = p;
+  _ecSocioAhorroId = null;
 
   // ── Consolidar TODOS los préstamos del mismo deudor ──────────────
   const todos = DB.prestamos.filter(x =>
