@@ -1973,6 +1973,11 @@ window.addEventListener('unhandledrejection', function(e) {
             <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:2px;">Efectivo</div>
             <div style="font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,0.85);" id="hero-efec">$43,000</div>
           </div>
+          <div style="width:1px;background:rgba(255,255,255,0.12);"></div>
+          <div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:2px;">Cetes</div>
+            <div style="font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,0.85);" id="hero-cetes">$0</div>
+          </div>
         </div>
       </div>
 
@@ -6157,6 +6162,8 @@ function renderDashboard() {
     document.getElementById('hero-bnmx').textContent  = '$' + fmt(CUENTAS.bnmx.saldo);
     document.getElementById('hero-aztec').textContent = '$' + fmt(CUENTAS.azteca ? CUENTAS.azteca.saldo : 0);
     document.getElementById('hero-efec').textContent  = '$' + fmt(CUENTAS.efectivo.saldo);
+    var _heroCetes = document.getElementById('hero-cetes');
+    if(_heroCetes) _heroCetes.textContent = '$' + fmt(CUENTAS.cetes ? CUENTAS.cetes.saldo : 0);
 
     const badge = document.getElementById('hero-cuadre-badge');
     const diffEl = document.getElementById('hero-diff');
