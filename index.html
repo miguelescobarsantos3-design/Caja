@@ -660,6 +660,33 @@ function aplicarCuentasPersistidas(cuentasData) {
   });
 }
 
+// Agrega a cualquier lista de cuentas (selects) las cuentas que falten, p. ej. Cetes
+function completarSelectsCuentas(raiz) {
+  try {
+    if(typeof CUENTAS === 'undefined') return;
+    (raiz || document).querySelectorAll('select').forEach(function(sel){
+      if(!sel.querySelector('option[value="bbva"]') || !sel.querySelector('option[value="nu"]')) return;
+      Object.keys(CUENTAS).forEach(function(k){
+        if(sel.querySelector('option[value="'+k+'"]')) return;
+        var o = document.createElement('option');
+        o.value = k;
+        o.textContent = CUENTAS[k].nombre || CUENTAS[k].label || k;
+        sel.appendChild(o);
+      });
+    });
+  } catch(e) {}
+}
+document.addEventListener('DOMContentLoaded', function(){
+  completarSelectsCuentas();
+  try {
+    new MutationObserver(function(muts){
+      for(var i = 0; i < muts.length; i++) {
+        if(muts[i].addedNodes && muts[i].addedNodes.length) { completarSelectsCuentas(); break; }
+      }
+    }).observe(document.body, {childList:true, subtree:true});
+  } catch(e) {}
+});
+
 function asegurarCuentasEspeciales() {
   try {
     if(!DB.socios) DB.socios = [];
@@ -8381,6 +8408,7 @@ const CUENTAS = {
   bbva:     { label:'BBVA', nombre:'BBVA',              color:'#0d47a1', saldo: 6252.18  },
   azteca:   { label:'AZTC', nombre:'Azteca',            color:'#e65100', saldo: 0.00     },
   efectivo: { label:'EFEC', nombre:'Efectivo / Caja chica', color:'#1b5e20', saldo: 0.00 },
+  cetes:    { label:'CETES', nombre:'Cetes',            color:'#00695c', saldo: 0.00     },
 };
 
 // Datos globales de caja (del Excel)
@@ -8453,7 +8481,7 @@ function renderCuentas() {
   const grid = document.getElementById('cuentas-grid');
   const n = Object.keys(CUENTAS).length;
   grid.style.gridTemplateColumns = `repeat(${n},1fr)`;
-  const iconos = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵' };
+  const iconos = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵', cetes:'📈' };
   grid.innerHTML = Object.entries(CUENTAS).map(([k, c]) => {
     const pct = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : '0.0';
     const barW = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : 0;
@@ -8476,7 +8504,7 @@ function renderCuentas() {
 
   // Tabla
   const tb = document.getElementById('cuentas-tbody');
-  const iconMap = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵' };
+  const iconMap = { mp:'💜', bnmx:'🔴', nu:'🟣', bbva:'🔵', azteca:'🟠', efectivo:'💵', cetes:'📈' };
   tb.innerHTML = Object.entries(CUENTAS).map(([k, c]) => {
     const pct = totalCuentas > 0 ? (c.saldo / totalCuentas * 100).toFixed(1) : '0.0';
     const esCero = c.saldo === 0;
