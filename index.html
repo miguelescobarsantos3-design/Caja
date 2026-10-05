@@ -8903,6 +8903,10 @@ function confirmarCancelacion() {
       }
     }
 
+    if(r.tipo === 'tanda300' || r.tipo === 'tanda1000') {
+      revertirAporteTandaRecibo(r);
+    }
+
     // Marcar movimiento en historial como cancelado
     const mov = DB.movimientos.find(m =>
       m.socio === r.socio && Math.abs(m.monto) === r.monto &&
@@ -8926,6 +8930,67 @@ function confirmarCancelacion() {
 
 
 
+
+// Quita de la tanda ($300 / $1,000) los aportes que generó un recibo cancelado
+function revertirAporteTandaRecibo(r) {
+  var es300 = r.tipo === 'tanda300';
+  var t = es300
+    ? (typeof window.getTanda300 === 'function' ? window.getTanda300() : DB.tanda300)
+    : (typeof window.getTanda1000 === 'function' ? window.getTanda1000() : DB.tanda1000);
+  if(!t || !Array.isArray(t.movimientos)) return;
+  var quitar = [];
+  // 1) Recibos nuevos: los aportes llevan el folio
+  t.movimientos.forEach(function(m, i){ if(m.folio && m.folio === r.folio) quitar.push(i); });
+  // 2) Recibos anteriores: buscar por grupo/turno + fecha (aunque el nombre se haya cambiado)
+  if(!quitar.length) {
+    var turnos = Array.isArray(r.turnos) ? r.turnos : [];
+    var nTurnos = turnos.length || 1;
+    var montoTurno = Math.round((Number(r.monto)||0) / nTurnos * 100) / 100;
+    var nomRec = (r.socio||'').trim().toUpperCase();
+    turnos.forEach(function(txt){
+      var mg = es300 ? /Grupo\s*(\d+)/i.exec(txt) : null;
+      var mt = /Turno\s*(\d+)/i.exec(txt);
+      var grupo = mg ? parseInt(mg[1],10) : null;
+      var tIdx = mt ? parseInt(mt[1],10) - 1 : null;
+      var cobActual = '';
+      if(es300 && grupo && tIdx != null) {
+        var lista = grupo === 1 ? (window.T300_G1||[]) : (window.T300_G2||[]);
+        cobActual = lista[tIdx] || '';
+      }
+      var mc = /\(([^)]+)\)/.exec(txt);
+      var cobTexto = mc ? mc[1].trim() : '';
+      function candidato(m, i, porNombre){
+        if(quitar.indexOf(i) >= 0 || m.folio) return false;
+        if(m.fecha !== r.fecha) return false;
+        if(Math.abs((Number(m.monto)||0) - montoTurno) > 0.01) return false;
+        if(es300) {
+          if(grupo && m.grupo !== grupo) return false;
+          if(m.cobrador !== cobActual && m.cobrador !== cobTexto) return false;
+        } else {
+          if(tIdx != null && m.idx !== tIdx) return false;
+        }
+        return porNombre ? (m.aportante||'').trim().toUpperCase() === nomRec : true;
+      }
+      var idx = -1;
+      for(var i = t.movimientos.length - 1; i >= 0; i--) { if(candidato(t.movimientos[i], i, true)) { idx = i; break; } }
+      if(idx < 0) for(var j = t.movimientos.length - 1; j >= 0; j--) { if(candidato(t.movimientos[j], j, false)) { idx = j; break; } }
+      if(idx >= 0) quitar.push(idx);
+    });
+  }
+  if(!quitar.length) {
+    alert('⚠️ No se encontró el aporte de este recibo en la tanda.\n\n'
+      + 'El recibo se marcará como cancelado, pero revisa el aporte de ' + r.socio
+      + ' con "Editar aportes" y elimínalo a mano si sigue ahí.');
+    return;
+  }
+  t.movimientos = t.movimientos.filter(function(m, i){ return quitar.indexOf(i) < 0; });
+  // Devolver el dinero de la cuenta donde había entrado
+  if(r.cuenta && r.cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') {
+    actualizarSaldoCuenta(r.cuenta, -(Number(r.monto)||0));
+  }
+  if(es300 && typeof renderTanda300 === 'function') renderTanda300();
+  if(!es300 && typeof renderTanda1000 === 'function') renderTanda1000();
+}
 
 function borrarReciboDirecto(folio) {
   const r = DB.recibos.find(x => x.folio === folio);
@@ -12741,20 +12806,20 @@ function normalizarVisibilidadSocios() {
       return;
     }
     var esParcial = montoPorTurno < monto300;
+    var folio = nuevoFolio();
     var turnosCubiertos = [];
     var total = 0;
     cbs.forEach(function(cb){
       var grupo = parseInt(cb.dataset.grupo, 10);
       var cobrador = cb.dataset.nombre;
       var idx = parseInt(cb.dataset.idx, 10);
-      t.movimientos.push({ aportante:aportante, cobrador:cobrador, grupo:grupo, monto:montoPorTurno, fecha:fecha, notas:notas||(esParcial?'Aportación parcial':'') });
+      t.movimientos.push({ aportante:aportante, cobrador:cobrador, grupo:grupo, monto:montoPorTurno, fecha:fecha, notas:notas||(esParcial?'Aportación parcial':''), folio:folio });
       turnosCubiertos.push('Grupo '+grupo+' — Turno '+(idx+1)+' ('+cobrador+')'+(esParcial?' $'+fmt(montoPorTurno)+'/'+fmt(monto300):''));
       total += montoPorTurno;
     });
     var pagadoTotal = sumaT300Aportante(t, aportante);
     var concepto = 'Aporte Tanda $300 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasRecibo = notas || turnosCubiertos.join(', ');
-    var folio = nuevoFolio();
     DB.movimientos.unshift({tipo:'tanda300',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:concepto+(notas?' — '+notas:'')});
     DB.recibos.unshift({folio:folio,tipo:'tanda300',socio:aportante,monto:total,cuenta:cuenta,fecha:fecha,
       concepto:concepto,saldo:pagadoTotal,notas:notasRecibo,estado:'vigente',
@@ -13009,19 +13074,19 @@ function normalizarVisibilidadSocios() {
     var cbs = document.querySelectorAll('.ta1000-turno-cb:not([disabled]):checked');
     if(!cbs.length){ alert('Selecciona al menos un turno.'); return; }
     var total = 0;
+    var folioT1000 = nuevoFolio();
     var turnosCubiertos1000 = [];
     cbs.forEach(function(cb){
       var idx = parseInt(cb.dataset.idx, 10);
       var cobrador = T1000_P[idx];
       // aportanteIdx identifica QUIÉN pagó; idx es el turno que se cubrió
-      t.movimientos.push({ aportante:aportante, aportanteIdx:aportanteIdx, cobrador:cobrador, idx:idx, monto:monto1000, fecha:fecha, notas:notas||'' });
+      t.movimientos.push({ aportante:aportante, aportanteIdx:aportanteIdx, cobrador:cobrador, idx:idx, monto:monto1000, fecha:fecha, notas:notas||'', folio:folioT1000 });
       turnosCubiertos1000.push('Turno '+(idx+1)+' ('+cobrador+')');
       total += monto1000;
     });
     var pagadoTotalT1000 = aportadoT1000(t, aportanteIdx);
     var conceptoT1000 = 'Aporte Tanda $1,000 — '+cbs.length+' turno'+(cbs.length!==1?'s':'');
     var notasReciboT1000 = notas || turnosCubiertos1000.join(', ');
-    var folioT1000 = nuevoFolio();
     DB.movimientos.unshift({tipo:'tanda1000',socio:aportante,monto:total,fecha:fecha,cuenta:cuenta,notas:conceptoT1000+(notas?' — '+notas:'')});
     DB.recibos.unshift({folio:folioT1000,tipo:'tanda1000',socio:aportante,cuenta:cuenta,monto:total,fecha:fecha,
       concepto:conceptoT1000,saldo:pagadoTotalT1000,notas:notasReciboT1000,estado:'vigente',
