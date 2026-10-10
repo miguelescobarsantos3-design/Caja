@@ -8821,6 +8821,21 @@ function abrirCancelar(folio) {
   } else if(r.tipo === 'tanda') {
     efectos.push(`La aportación de <strong>${r.socio}</strong> por <strong>$${fmt(r.monto)}</strong> se marcará como no cobrada`);
   }
+  // Avisar del efecto en la cuenta bancaria o caja chica
+  (function(){
+    var _mv = (DB.movimientos||[]).find(function(m){
+      return m.socio === r.socio && Math.abs(Number(m.monto)||0) === Math.abs(Number(r.monto)||0)
+        && m.fecha === r.fecha && m.tipo === r.tipo && !m.cancelado;
+    });
+    var _c = (_mv && _mv.cuenta) || r.cuenta;
+    if(_c && _c !== 'ninguna') {
+      var _nom = (typeof CUENTAS !== 'undefined' && CUENTAS[_c])
+        ? (CUENTAS[_c].nombre || CUENTAS[_c].label || _c) : _c;
+      var _sale = (r.tipo === 'retiro') || (r.tipo === 'fondo' && /entrega/i.test(r.concepto||''));
+      efectos.push('En <strong>' + esc(_nom) + '</strong> se ' + (_sale ? 'sumarán' : 'restarán')
+        + ' <strong>$' + fmt(Math.abs(r.monto)) + '</strong>');
+    }
+  })();
   efectos.push(`El recibo quedará marcado como <strong style="color:var(--rojo)">CANCELADO</strong>`);
 
   document.getElementById('cancel-efectos').innerHTML = efectos.map(e => `<li>${e}</li>`).join('');
@@ -8948,7 +8963,33 @@ function confirmarCancelacion() {
       m.socio === r.socio && Math.abs(m.monto) === r.monto &&
       m.fecha === r.fecha && m.tipo === r.tipo && !m.cancelado
     );
+
+    // Devolver el dinero a la cuenta bancaria o a caja chica.
+    // Antes no se hacía: el saldo revertía en el socio o el préstamo, pero el
+    // dinero seguía contado en BBVA/efectivo y el cuadre quedaba desfasado.
+    if(mov && typeof actualizarSaldoCuenta === 'function') {
+      var _cta = mov.cuenta || r.cuenta || null;
+      var _mtoCta = Math.abs(Number(r.monto) || 0);
+      if(_cta && _cta !== 'ninguna' && _mtoCta > 0) {
+        // Al registrar, estos tipos SACAN dinero; el resto lo METEN
+        var _salioDinero = (r.tipo === 'retiro')
+          || (r.tipo === 'fondo' && /entrega/i.test(r.concepto || ''));
+        actualizarSaldoCuenta(_cta, _salioDinero ? _mtoCta : -_mtoCta);
+        console.log('↩️ Cuenta revertida por cancelación:', _cta,
+          (_salioDinero ? '+' : '-') + _mtoCta, '· folio', r.folio);
+      }
+    }
+
     if(mov) mov.cancelado = true;
+
+    // Si el recibo era de una cooperación, quitarlo también de su fondo
+    if(r.tipo === 'fondo' && Array.isArray(DB.fondos)) {
+      DB.fondos.forEach(function(f){
+        f.aportaciones = (f.aportaciones||[]).filter(function(a){ return a.folio !== r.folio; });
+        f.salidas      = (f.salidas||[]).filter(function(x){ return x.folio !== r.folio; });
+      });
+      if(typeof sincronizarSocioCooperaciones === 'function') sincronizarSocioCooperaciones();
+    }
 
     // Marcar recibo como cancelado
     r.estado = 'cancelado';
@@ -8961,6 +9002,8 @@ function confirmarCancelacion() {
   renderPrestamos();
   renderAhorros();
   renderDashboard();
+  if(typeof renderCuentas === 'function') renderCuentas();
+  if(typeof renderFondos === 'function') renderFondos();
   if(typeof guardarRapido === 'function') guardarRapido();
 }
 
