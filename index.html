@@ -8942,6 +8942,24 @@ function confirmarCancelacion() {
         if(movInt) movInt.interesRevertido = devuelto;
         if(typeof window.actualizarTotalesUtilidadesUI === 'function') window.actualizarTotalesUtilidadesUI(false);
         if(typeof window.renderUtilidades === 'function') window.renderUtilidades();
+        window.__resumenCancel = 'Se devolvieron $' + fmt(devuelto) + ' a Utilidades.';
+      } else if(movInt) {
+        // El movimiento existe pero sin interés: no hay nada que devolver.
+        // Antes esto pasaba en silencio y parecía que la app no hacía su trabajo.
+        var _utilPend = 0;
+        try {
+          var _n = (r.socio||'').trim().toUpperCase();
+          (DB.utilidades||[]).forEach(function(u){
+            if(String(u.nombre||'').trim().toUpperCase() === _n) {
+              _utilPend += (typeof cobradoUtilidad === 'function' ? cobradoUtilidad(u) : (Number(u.cobrado)||0));
+            }
+          });
+        } catch(e) {}
+        window.__resumenCancel = 'Este abono no tenía interés registrado, así que Utilidades no cambió.'
+          + (_utilPend > 0
+              ? '\n\n' + r.socio + ' tiene $' + fmt(_utilPend) + ' marcados como interés cobrado. '
+                + 'Si parte de este abono era interés, ajústalo en Utilidades → Editar.'
+              : '');
       }
     }
     if(r.tipo === 'tanda') {
@@ -9005,6 +9023,13 @@ function confirmarCancelacion() {
   if(typeof renderCuentas === 'function') renderCuentas();
   if(typeof renderFondos === 'function') renderFondos();
   if(typeof guardarRapido === 'function') guardarRapido();
+
+  // Informar qué pasó con Utilidades, en vez de dejarlo en silencio
+  if(window.__resumenCancel) {
+    var _msg = window.__resumenCancel;
+    window.__resumenCancel = null;
+    setTimeout(function(){ alert('Cancelación aplicada.\n\n' + _msg); }, 150);
+  }
 }
 
 
