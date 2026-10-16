@@ -3678,10 +3678,12 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="kpi kpi-yellow"><div class="kpi-accent"></div><div class="kpi-label" id="util-pendientes-label">Pendientes</div><div class="kpi-value" id="util-pendientes-count-kpi">0</div><div class="kpi-sub" id="util-deudores-kpi">con saldo por cobrar</div></div>
     </div>
     <div class="card">
-      <div class="card-header"><div>
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div>
         <div class="card-title">Resumen de intereses 2026</div>
         <div class="card-subtitle" id="util-resumen-subtitle">Mostrando solo pendientes y parciales · Totales incluyen histórico completo</div>
-      </div></div>
+      </div>
+      <button id="util-toggle-liq" onclick="window._utilVerLiquidados=!window._utilVerLiquidados;if(typeof renderUtilidades==='function')renderUtilidades();" style="background:var(--gris);border:1px solid var(--gris2);color:var(--texto);padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;">Ver liquidados</button>
+      </div>
       <div style="overflow-x:auto;"><table>
         <thead><tr><th>Deudor</th><th>Total interés</th><th>Pendiente</th><th>Cobrado</th><th>% cobrado</th><th>Estado</th><th></th></tr></thead>
         <tbody id="util-tbody"><tr style="background:rgba(255,210,0,0.2);"><td><strong>AIRLIS IVONNE CRISANTO BARRIENTOS</strong></td><td class="mono">$2,400</td><td class="mono" style="color:var(--rojo);">—</td><td class="mono" style="color:var(--verde);">$2,400</td><td class="mono font-bold" style="color:var(--verde);">100.0%</td><td><span class="badge badge-green">✓ Liquidado</span></td><td><button class="btn btn-sm" onclick="abrirEditarUtilidad(0)" style="padding:4px 10px;font-size:11px;">✏</button></td></tr>
@@ -15623,24 +15625,16 @@ function exportarExcel(tipo) {
       + (verLiq ? 'No hay registros de utilidades.' : 'No hay intereses pendientes. Todo liquidado.')
       + '</td></tr>';
 
-    // Primero los totales: reescribe el subtítulo con textContent y borraría
-    // cualquier botón que se le hubiera agregado antes.
     window.actualizarTotalesUtilidadesUI(false);
 
-    // Interruptor para ver también los liquidados. Sin esto, un registro que
-    // queda mal tras una cancelación es invisible y no se puede corregir.
-    var sub = document.getElementById('util-resumen-subtitle');
-    if(sub) {
-      var b = document.getElementById('util-toggle-liq');
-      if(!b) {
-        b = document.createElement('button');
-        b.id = 'util-toggle-liq';
-        b.onclick = function(){ window._utilVerLiquidados = !window._utilVerLiquidados; window.renderUtilidades(); };
-      }
-      b.style.cssText = 'margin-left:10px;border:1px solid var(--gris2);padding:4px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;'
-        + (verLiq ? 'background:var(--azul);color:#fff;' : 'background:var(--gris);color:var(--texto);');
+    // El botón vive en el HTML del encabezado, no dentro del subtítulo:
+    // actualizarTotalesUtilidadesUI reescribe ese subtítulo con textContent
+    // y se llevaba por delante cualquier elemento agregado ahí.
+    var b = document.getElementById('util-toggle-liq');
+    if(b) {
       b.textContent = verLiq ? '← Ver solo pendientes' : 'Ver liquidados (' + nLiq + ')';
-      sub.appendChild(b);
+      b.style.background = verLiq ? 'var(--azul)' : 'var(--gris)';
+      b.style.color      = verLiq ? '#fff' : 'var(--texto)';
     }
   };
 
