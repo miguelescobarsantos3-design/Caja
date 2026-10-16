@@ -6380,12 +6380,25 @@ function abrirPagoSocio(id) {
         const sel = document.getElementById('pr-select');
         if (!sel) return;
         const nombreLower = prestActivo.nombre.toLowerCase().trim();
-        for (let opt of sel.options) {
-          if (opt.value === nombreLower || opt.value.startsWith(nombreLower.split(' ')[0])) {
-            sel.value = opt.value;
-            sel.dispatchEvent(new Event('change'));
-            break;
-          }
+
+        // Coincidencia EXACTA. Antes había un respaldo que comparaba solo la
+        // primera palabra, y como la lista va alfabética, al buscar
+        // "JESUS HERNANDEZ" seleccionaba "JESUS ALBERTO CRUZ" y el abono se
+        // aplicaba a la persona equivocada.
+        let elegido = Array.from(sel.options).find(o => o.value === nombreLower);
+
+        // Respaldo inequívoco: por socioId, no por texto
+        if (!elegido && typeof consolidarPrestamos === 'function') {
+          const c = consolidarPrestamos().find(x => x.socioId === id);
+          if (c) elegido = Array.from(sel.options).find(o => o.value === c.key);
+        }
+
+        if (elegido) {
+          sel.value = elegido.value;
+          sel.dispatchEvent(new Event('change'));
+        } else {
+          alert('No se encontró el préstamo de ' + prestActivo.nombre + ' en la lista.\n\n'
+            + 'Selecciónalo manualmente para evitar aplicar el abono a otra persona.');
         }
       }, 180);
     } else {
@@ -11374,14 +11387,15 @@ function pagarDesdeEC() {
           }
         }
 
-        // Intento 2: la primera palabra del nombre (para consolidados)
-        if (!matched) {
-          const primerNombre = nombreLower.split(' ')[0];
-          for (let opt of sel.options) {
-            if (opt.value.startsWith(primerNombre)) {
-              sel.value = opt.value;
-              matched = true;
-              break;
+        // Intento 2: por socioId, que es inequívoco.
+        // Antes se buscaba por la primera palabra del nombre, lo que con
+        // homónimos ("JESUS ...") seleccionaba al primero de la lista y
+        // aplicaba el abono a otra persona.
+        if (!matched && p.socioId != null && typeof consolidarPrestamos === 'function') {
+          const c = consolidarPrestamos().find(x => x.socioId === p.socioId);
+          if (c) {
+            for (let opt of sel.options) {
+              if (opt.value === c.key) { sel.value = opt.value; matched = true; break; }
             }
           }
         }
@@ -11389,6 +11403,9 @@ function pagarDesdeEC() {
         // Dispara el cambio para cargar el resumen
         if (matched) {
           sel.dispatchEvent(new Event('change'));
+        } else {
+          alert('No se encontró el préstamo de ' + p.nombre + ' en la lista.\n\n'
+            + 'Selecciónalo manualmente para no aplicar el abono a otra persona.');
         }
       }, 180);
     }, 120);
@@ -15575,14 +15592,23 @@ function exportarExcel(tipo) {
     var tb = document.getElementById('util-tbody');
     if(!tb) return;
     var filas = [];
+    var verLiq = !!window._utilVerLiquidados;
+    var nLiq = 0;
     (DB.utilidades || []).forEach(function(u, i){
       var total = totalU(u);
       var cobrado = Math.min(cobradoU(u), total);
       var pendiente = Math.max(0, r2(total - cobrado));
-      if(total <= 0 || pendiente <= 0.009) return; // aquí se esconden los liquidados
+      if(total <= 0) return;
+      var liquidado = pendiente <= 0.009;
+      if(liquidado) nLiq++;
+      // Los liquidados se ocultan salvo que se pidan: si quedan mal por una
+      // cancelación, sin este interruptor no hay forma de corregirlos.
+      if(liquidado && !verLiq) return;
       var pct = total > 0 ? (cobrado / total * 100) : 0;
       var parcial = cobrado > 0;
-      var estado = parcial ? '<span class="badge badge-yellow">Parcial</span>' : '<span class="badge badge-orange">Pendiente</span>';
+      var estado = liquidado ? '<span class="badge badge-green">✓ Liquidado</span>'
+                 : parcial ? '<span class="badge badge-yellow">Parcial</span>'
+                 : '<span class="badge badge-orange">Pendiente</span>';
       filas.push('<tr id="util-row-' + i + '">'
         + '<td><strong>' + esc(u.nombre) + '</strong></td>'
         + '<td class="mono">$' + money(total) + '</td>'
@@ -15593,8 +15619,29 @@ function exportarExcel(tipo) {
         + '<td><div class="util-actions-row"><button class="btn btn-secondary btn-sm" onclick="abrirEditarUtilidad(' + i + ')">Editar</button><button class="btn btn-danger btn-sm" onclick="confirmarEliminarUtilidad(' + i + ')">Eliminar</button></div></td>'
         + '</tr>');
     });
-    tb.innerHTML = filas.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--texto2);padding:24px;">No hay intereses pendientes. Todo liquidado.</td></tr>';
+    tb.innerHTML = filas.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--texto2);padding:24px;">'
+      + (verLiq ? 'No hay registros de utilidades.' : 'No hay intereses pendientes. Todo liquidado.')
+      + '</td></tr>';
+
+    // Primero los totales: reescribe el subtítulo con textContent y borraría
+    // cualquier botón que se le hubiera agregado antes.
     window.actualizarTotalesUtilidadesUI(false);
+
+    // Interruptor para ver también los liquidados. Sin esto, un registro que
+    // queda mal tras una cancelación es invisible y no se puede corregir.
+    var sub = document.getElementById('util-resumen-subtitle');
+    if(sub) {
+      var b = document.getElementById('util-toggle-liq');
+      if(!b) {
+        b = document.createElement('button');
+        b.id = 'util-toggle-liq';
+        b.onclick = function(){ window._utilVerLiquidados = !window._utilVerLiquidados; window.renderUtilidades(); };
+      }
+      b.style.cssText = 'margin-left:10px;border:1px solid var(--gris2);padding:4px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;'
+        + (verLiq ? 'background:var(--azul);color:#fff;' : 'background:var(--gris);color:var(--texto);');
+      b.textContent = verLiq ? '← Ver solo pendientes' : 'Ver liquidados (' + nLiq + ')';
+      sub.appendChild(b);
+    }
   };
 
   setTimeout(function(){
