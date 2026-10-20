@@ -6590,7 +6590,18 @@ function renderPrestamos(filtro) {
       const editBtn = e.target.closest('.pr-edit-btn');
       if(editBtn) {
         const id = parseInt(editBtn.dataset.id);
-        if(id) abrirEditarPrestamo(id);
+        if(!id) return;
+        // Si el deudor tiene varios créditos, preguntar cuál. Antes abría
+        // siempre el primero y no había forma de llegar a los demás.
+        const _p = DB.prestamos.find(x => x.id === id);
+        const _hermanos = _p
+          ? DB.prestamos.filter(x => (x.nombre||'').toLowerCase() === (_p.nombre||'').toLowerCase())
+          : [];
+        if(_hermanos.length > 1 && typeof elegirPrestamoParaEditar === 'function') {
+          elegirPrestamoParaEditar(_p.nombre);
+        } else {
+          abrirEditarPrestamo(id);
+        }
         return;
       }
       const ec = e.target.closest('.pr-ec-btn');
@@ -13880,37 +13891,45 @@ function procesarRespaldoJSON(input) {
   reader.readAsText(file, 'utf-8');
 }
 
-function editarDesdeEC() {
-  const p = _ecPrestamoActual;
-  if(!p) return;
+// Selector de préstamo cuando un deudor tiene más de uno.
+// Antes vivía dentro de editarDesdeEC y solo se podía usar desde el estado de
+// cuenta; el lápiz de la lista abría siempre el primero sin preguntar.
+function elegirPrestamoParaEditar(nombre, idModalCerrar) {
+  var todos = (DB.prestamos||[])
+    .filter(function(x){ return (x.nombre||'').toLowerCase() === String(nombre||'').toLowerCase(); })
+    .sort(function(a,b){ return a.id - b.id; });
 
-  const todos = DB.prestamos.filter(x => x.nombre.toLowerCase() === p.nombre.toLowerCase()).sort((a,b) => a.id - b.id);
+  if(!todos.length) { alert('No se encontraron préstamos de ' + nombre); return; }
 
   if(todos.length === 1) {
-    cerrarModal('modal-estado-cuenta');
-    setTimeout(() => abrirEditarPrestamo(todos[0].id), 150);
+    if(idModalCerrar) cerrarModal(idModalCerrar);
+    setTimeout(function(){ abrirEditarPrestamo(todos[0].id); }, idModalCerrar ? 150 : 0);
     return;
   }
 
-  // Quitar selector anterior si existe
   var prev = document.getElementById('_selector-prestamo-edit');
   if(prev) prev.remove();
 
   var overlay = document.createElement('div');
   overlay.id = '_selector-prestamo-edit';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:19999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:19999;display:flex;align-items:center;justify-content:center;padding:12px;';
 
   var btns = todos.map(function(pr) {
-    var cap = pr.capital || pr.monto || 0;
+    var cap  = pr.capital || pr.monto || 0;
     var pend = pr.pendiente || 0;
-    var est = pr.estado === 'liquidado' ? '✓ Liquidado' : 'Activo — $' + fmt(pend) + ' pendiente';
+    var pag  = pr.pagado || 0;
+    var liq  = pr.estado === 'liquidado';
+    var est  = liq ? '✓ Liquidado' : 'Activo · pagado $' + fmt(pag) + ' · pendiente $' + fmt(pend);
     var btn = document.createElement('button');
-    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 14px;border:1.5px solid #d1d5db;background:#f9fafb;border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:8px;';
-    btn.innerHTML = '<strong style="color:#111;">Préstamo #' + String(pr.id).padStart(3,'0') + ' — $' + fmt(cap) + '</strong><br><span style="color:#6b7280;font-size:12px;">' + est + '</span>';
+    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 14px;border:1.5px solid '
+      + (liq ? '#bbf7d0' : '#d1d5db') + ';background:' + (liq ? '#f0fdf4' : '#f9fafb')
+      + ';border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:8px;';
+    btn.innerHTML = '<strong style="color:#111;">Préstamo #' + String(pr.id).padStart(3,'0')
+      + ' — capital $' + fmt(cap) + '</strong><br><span style="color:#6b7280;font-size:12px;">' + est + '</span>';
     btn.onclick = function() {
       overlay.remove();
-      cerrarModal('modal-estado-cuenta');
-      setTimeout(function(){ abrirEditarPrestamo(pr.id); }, 150);
+      if(idModalCerrar) cerrarModal(idModalCerrar);
+      setTimeout(function(){ abrirEditarPrestamo(pr.id); }, idModalCerrar ? 150 : 0);
     };
     return btn;
   });
@@ -13921,13 +13940,20 @@ function editarDesdeEC() {
   cancelBtn.onclick = function(){ overlay.remove(); };
 
   var box = document.createElement('div');
-  box.style.cssText = 'background:#ffffff;border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.35);';
-  box.innerHTML = '<h3 style="margin:0 0 4px;font-size:16px;color:#111;">¿Cuál préstamo editar?</h3><p style="margin:0 0 16px;font-size:13px;color:#6b7280;">' + p.nombre + '</p>';
+  box.style.cssText = 'background:#ffffff;border-radius:16px;padding:24px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.35);max-height:85vh;overflow-y:auto;';
+  box.innerHTML = '<h3 style="margin:0 0 4px;font-size:16px;color:#111;">¿Cuál préstamo editar?</h3>'
+    + '<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">' + esc(nombre) + ' tiene ' + todos.length + ' créditos</p>';
   btns.forEach(function(b){ box.appendChild(b); });
   box.appendChild(cancelBtn);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+}
+
+function editarDesdeEC() {
+  const p = _ecPrestamoActual;
+  if(!p) return;
+  elegirPrestamoParaEditar(p.nombre, 'modal-estado-cuenta');
 }
 
 function previewTotalEdicion() {
