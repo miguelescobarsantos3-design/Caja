@@ -1071,6 +1071,78 @@ async function cerrarModoRuta() {
 }
 
 // ═══════════════════════════════════════════════════════
+// CONCILIACIÓN DE CUENTAS
+// Recorre el historial y suma, por cuenta, los movimientos vigentes y los
+// cancelados. Sirve para ubicar deriva: hasta hace poco las cancelaciones no
+// devolvían el dinero a la cuenta, así que ese monto quedó contado de más.
+// No conozco los saldos iniciales, por eso se reporta el "inicial implícito"
+// en vez de un absoluto.
+// ═══════════════════════════════════════════════════════
+function conciliarCuentas() {
+  if(typeof CUENTAS === 'undefined') { alert('No hay cuentas configuradas.'); return; }
+
+  var vig = {}, canc = {}, sinCta = {vig:0, canc:0, n:0};
+  (DB.movimientos||[]).forEach(function(m){
+    var k = m.cuenta, v = Number(m.monto)||0;
+    if(!k || k === 'ninguna' || !CUENTAS[k]) {
+      sinCta.n++;
+      if(m.cancelado) sinCta.canc += v; else sinCta.vig += v;
+      return;
+    }
+    if(m.cancelado) canc[k] = (canc[k]||0) + v;
+    else            vig[k]  = (vig[k]||0)  + v;
+  });
+
+  var totalCanc = 0;
+  var filas = Object.keys(CUENTAS).map(function(k){
+    var c = CUENTAS[k];
+    var saldo = Number(c.saldo)||0;
+    var mv = vig[k] || 0;
+    var cn = canc[k] || 0;
+    totalCanc += cn;
+    var inicial = saldo - mv;
+    return '<tr style="border-bottom:1px solid #eee;">'
+      +'<td style="padding:7px 8px;font-size:12px;font-weight:600;">'+esc(c.nombre||c.label||k)+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:12px;font-family:monospace;">$'+fmt(saldo)+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:12px;font-family:monospace;color:#555;">$'+fmt(mv)+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:12px;font-family:monospace;color:#888;">$'+fmt(inicial)+'</td>'
+      +'<td style="padding:7px 8px;text-align:right;font-size:12px;font-family:monospace;color:'+(Math.abs(cn)>0.009?'#c0392b':'#999')+';font-weight:'+(Math.abs(cn)>0.009?'700':'400')+';">$'+fmt(cn)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div style="background:#fff;padding:20px;border-radius:14px;max-width:620px;width:100%;max-height:88vh;overflow-y:auto;">'
+    +'<h3 style="margin:0 0 4px;font-size:17px;">Conciliación de cuentas</h3>'
+    +'<p style="margin:0 0 14px;font-size:12px;color:#777;">Suma del historial por cuenta. El <strong>inicial implícito</strong> es lo que había antes del primer movimiento registrado.</p>'
+    +'<table style="width:100%;border-collapse:collapse;">'
+      +'<thead><tr style="border-bottom:2px solid #ddd;">'
+        +'<th style="padding:7px 8px;text-align:left;font-size:11px;color:#666;">CUENTA</th>'
+        +'<th style="padding:7px 8px;text-align:right;font-size:11px;color:#666;">SALDO HOY</th>'
+        +'<th style="padding:7px 8px;text-align:right;font-size:11px;color:#666;">MOVS. VIGENTES</th>'
+        +'<th style="padding:7px 8px;text-align:right;font-size:11px;color:#666;">INICIAL IMPLÍCITO</th>'
+        +'<th style="padding:7px 8px;text-align:right;font-size:11px;color:#666;">EN CANCELADOS</th>'
+      +'</tr></thead><tbody>'+filas+'</tbody></table>'
+    + (Math.abs(totalCanc) > 0.009
+        ? '<div style="margin-top:14px;padding:11px;background:#fdecea;border-radius:8px;font-size:12px;color:#7b241c;">'
+          +'<strong>$'+fmt(totalCanc)+' pasaron por cuentas y luego se cancelaron.</strong><br>'
+          +'Las cancelaciones hechas antes del arreglo de esta semana no devolvían el dinero a la cuenta. '
+          +'Si ese es el caso, parte de esta cifra sigue contada de más en tus saldos.</div>'
+        : '')
+    + (sinCta.n > 0
+        ? '<div style="margin-top:10px;padding:11px;background:#f4f4f2;border-radius:8px;font-size:12px;color:#555;">'
+          +sinCta.n+' movimiento(s) sin cuenta asignada (neto $'+fmt(sinCta.vig)+'). No afectan ningún saldo bancario.</div>'
+        : '')
+    +'<div style="margin-top:12px;padding:11px;background:#eef4fb;border-radius:8px;font-size:12px;color:#1a3a6b;">'
+      +'<strong>Cómo usarlo:</strong> compara la columna <em>Saldo hoy</em> con el saldo real de cada banco y el efectivo contado. '
+      +'Donde no coincida, corrige el saldo en Cuentas y cuadre. Eso deja una base limpia.</div>'
+    +'<button id="__cc_x" style="margin-top:14px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Cerrar</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#__cc_x').onclick = function(){ ov.remove(); };
+}
+
+// ═══════════════════════════════════════════════════════
 // DIAGNÓSTICO DE SINCRONIZACIÓN
 // Muestra por qué no sube y permite reintentar, sin usar la consola.
 // ═══════════════════════════════════════════════════════
@@ -1161,6 +1233,7 @@ async function diagnosticoSync() {
     + html + aviso
     +'<button id="__ds_retry" style="margin-top:14px;width:100%;background:#16a34a;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">↑ Reintentar subida</button>'
     + (recientes.length > 0 ? '<button id="__ds_huerf" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Recuperar recientes ('+recientes.length+')</button>' : '')
+    + '<button id="__ds_conc" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Conciliar cuentas</button>'
     + '<button id="__ds_unif" style="margin-top:8px;width:100%;background:#eee;color:#444;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Unificar nombre de socio</button>'
     + (dupes > 0 ? '<button id="__ds_folios" style="margin-top:8px;width:100%;background:#1a3a6b;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Reparar folios repetidos</button>' : '')
     + (bloqueHWM ? '<button id="__ds_force" style="margin-top:8px;width:100%;background:#b45309;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Desbloquear y subir</button>' : '')
@@ -1188,6 +1261,9 @@ async function diagnosticoSync() {
     repararRecibosSinMovimiento(desde7);
     if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
   };
+
+  var bcc = ov.querySelector('#__ds_conc');
+  if(bcc) bcc.onclick = function(){ ov.remove(); conciliarCuentas(); };
 
   var bun = ov.querySelector('#__ds_unif');
   if(bun) bun.onclick = function(){ ov.remove(); abrirUnificarNombre(); };
@@ -4978,8 +5054,8 @@ window.addEventListener('unhandledrejection', function(e) {
         </div>
         <div id="ficha-ahorro-movs" style="border:0.5px solid var(--gris2);border-radius:var(--radio-sm);overflow:hidden;max-height:200px;overflow-y:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <thead><tr style="background:var(--gris2);"><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;">Fecha</th><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;">Concepto</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:600;">Monto</th></tr></thead>
-            <tbody id="ficha-ahorro-tbody"><tr><td colspan="3" style="padding:16px;text-align:center;color:var(--texto2);font-size:12px;">Sin movimientos registrados en el sistema</td></tr></tbody>
+            <thead><tr style="background:var(--gris2);"><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;">Fecha</th><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;">Concepto</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:600;">Monto</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:600;"></th></tr></thead>
+            <tbody id="ficha-ahorro-tbody"><tr><td colspan="4" style="padding:16px;text-align:center;color:var(--texto2);font-size:12px;">Sin movimientos registrados en el sistema</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -8991,9 +9067,14 @@ function confirmarCancelacion() {
       revertirAporteTandaRecibo(r);
     }
 
-    // Marcar movimiento en historial como cancelado
+    // Marcar movimiento en historial como cancelado.
+    // La comparación ignora mayúsculas y el prefijo "#NN " para que coincida
+    // con las guardas de arriba: si una encontraba el movimiento y esta no,
+    // se revertía el saldo del socio pero no el de la cuenta.
+    const _nomCmp = (v) => String(v||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
     const mov = DB.movimientos.find(m =>
-      m.socio === r.socio && Math.abs(m.monto) === r.monto &&
+      _nomCmp(m.socio) === _nomCmp(r.socio) &&
+      Math.abs(Number(m.monto)||0) === Math.abs(Number(r.monto)||0) &&
       m.fecha === r.fecha && m.tipo === r.tipo && !m.cancelado
     );
 
@@ -9436,6 +9517,142 @@ function _descargarEC(blob, nombre) {
 }
 
 
+// ══════════════════════════════════════════════════
+// EDITAR / ELIMINAR UN MOVIMIENTO DE AHORRO
+// Antes no existía: para corregir un depósito había que cambiar el total del
+// socio a mano, sin rastro. Esto ajusta saldo, cuenta y recibo a la vez.
+// ══════════════════════════════════════════════════
+function _socioDeMov(m) {
+  var n = (m.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+  return (DB.socios||[]).find(function(x){ return (x.nombre||'').trim().toUpperCase() === n; });
+}
+
+function _reciboDeMov(m) {
+  return (DB.recibos||[]).find(function(r){
+    return r.tipo === m.tipo && r.fecha === m.fecha && r.estado !== 'cancelado'
+      && Math.abs(Number(r.monto)||0) === Math.abs(Number(m.monto)||0)
+      && (r.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase()
+         === (m.socio||'').replace(/^#\d+\s+/, '').trim().toUpperCase();
+  });
+}
+
+function editarMovAhorro(idx) {
+  var m = DB.movimientos[idx];
+  if(!m || (m.tipo !== 'ahorro' && m.tipo !== 'retiro')) return;
+  var s = _socioDeMov(m);
+  var esRetiro = m.tipo === 'retiro';
+  var montoAct = Math.abs(Number(m.monto)||0);
+
+  var cuentas = (typeof opcionesCuentasCajaHTML === 'function')
+    ? opcionesCuentasCajaHTML()
+    : '<option value="efectivo">Efectivo / Caja chica</option>';
+  cuentas += '<option value="ninguna">— Sin cuenta —</option>';
+
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = '<div style="background:#fff;padding:22px;border-radius:14px;max-width:400px;width:100%;">'
+    +'<h3 style="margin:0 0 4px;font-size:17px;">Editar '+(esRetiro?'retiro':'depósito')+'</h3>'
+    +'<p style="margin:0 0 14px;font-size:12px;color:#777;">'+esc(m.socio||'')+' · '+esc(m.fecha||'')+'</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      +'<div><label style="font-size:12px;font-weight:600;">Monto ($)</label>'
+        +'<input type="number" id="__em_monto" step="0.01" min="0" value="'+montoAct+'" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:7px;font-size:14px;"></div>'
+      +'<div><label style="font-size:12px;font-weight:600;">Fecha</label>'
+        +'<input type="date" id="__em_fecha" value="'+esc(m.fecha||'')+'" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:7px;font-size:14px;"></div>'
+    +'</div>'
+    +'<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Cuenta</label>'
+      +'<select id="__em_cuenta" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:7px;font-size:14px;">'+cuentas+'</select></div>'
+    +'<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Concepto</label>'
+      +'<input type="text" id="__em_notas" value="'+esc(m.notas||'')+'" style="width:100%;padding:9px;border:1px solid #ccc;border-radius:7px;font-size:14px;"></div>'
+    +'<div style="margin-top:12px;padding:10px;background:#fff8e1;border-radius:8px;font-size:12px;color:#7a5c00;">'
+      +'Al guardar se ajusta el ahorro de '+esc(s?s.nombre:'el socio')+', el saldo de la cuenta y el recibo.</div>'
+    +'<div style="display:flex;gap:8px;margin-top:14px;">'
+      +'<button id="__em_x" style="flex:1;background:#eee;color:#444;border:none;padding:11px;border-radius:8px;font-size:13px;cursor:pointer;">Cancelar</button>'
+      +'<button id="__em_ok" style="flex:1;background:#16a34a;color:#fff;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Guardar</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var selC = ov.querySelector('#__em_cuenta');
+  if(selC && m.cuenta) selC.value = m.cuenta;
+
+  ov.querySelector('#__em_x').onclick = function(){ ov.remove(); };
+  ov.querySelector('#__em_ok').onclick = function(){
+    var nuevoMonto = Math.abs(parseFloat(ov.querySelector('#__em_monto').value) || 0);
+    var nuevaFecha = ov.querySelector('#__em_fecha').value || m.fecha;
+    var nuevaCta   = ov.querySelector('#__em_cuenta').value;
+    var nuevasNot  = (ov.querySelector('#__em_notas').value||'').trim();
+    if(nuevoMonto <= 0) { alert('El monto debe ser mayor a cero.'); return; }
+
+    // Impacto con signo: un retiro saca dinero, un depósito lo mete
+    var signo = esRetiro ? -1 : 1;
+    var antes = signo * montoAct;
+    var despues = signo * nuevoMonto;
+    var delta = despues - antes;
+
+    if(s) s.ahorro = Math.round(((Number(s.ahorro)||0) + delta) * 100) / 100;
+
+    // Cuenta: quitar el efecto viejo y aplicar el nuevo
+    if(typeof actualizarSaldoCuenta === 'function') {
+      if(m.cuenta && m.cuenta !== 'ninguna') actualizarSaldoCuenta(m.cuenta, -antes);
+      if(nuevaCta && nuevaCta !== 'ninguna')  actualizarSaldoCuenta(nuevaCta, despues);
+    }
+
+    var rec = _reciboDeMov(m);
+
+    m.monto  = signo * nuevoMonto;
+    m.fecha  = nuevaFecha;
+    m.cuenta = nuevaCta;
+    m.notas  = nuevasNot;
+
+    if(rec) {
+      rec.monto = nuevoMonto;
+      rec.fecha = nuevaFecha;
+      rec.cuenta = nuevaCta;
+      if(nuevasNot) rec.concepto = nuevasNot;
+      if(s) rec.saldo = s.ahorro;
+    }
+
+    ov.remove();
+    if(typeof guardarEnLocal === 'function') guardarEnLocal();
+    if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+    if(s && typeof abrirFichaSocio === 'function') abrirFichaSocio(s.id);
+    if(typeof renderAhorros === 'function') renderAhorros();
+    if(typeof renderDashboard === 'function') renderDashboard();
+    if(typeof renderCuentas === 'function') renderCuentas();
+    if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+  };
+}
+
+function eliminarMovAhorro(idx) {
+  var m = DB.movimientos[idx];
+  if(!m || (m.tipo !== 'ahorro' && m.tipo !== 'retiro')) return;
+  var s = _socioDeMov(m);
+  var esRetiro = m.tipo === 'retiro';
+  var monto = Math.abs(Number(m.monto)||0);
+  var rec = _reciboDeMov(m);
+
+  if(!confirm('¿Eliminar este ' + (esRetiro?'retiro':'depósito') + ' de $' + fmt(monto) + '?\n\n'
+    + 'Socio: ' + (m.socio||'') + '\nFecha: ' + (m.fecha||'') + '\n\n'
+    + 'Se ajustará el ahorro' + (m.cuenta && m.cuenta !== 'ninguna' ? ', el saldo de la cuenta' : '')
+    + (rec ? ' y se borrará el recibo #' + rec.folio : '') + '.\n\nNo se puede deshacer.')) return;
+
+  var signo = esRetiro ? -1 : 1;
+  var efecto = signo * monto;
+
+  if(s) s.ahorro = Math.round(((Number(s.ahorro)||0) - efecto) * 100) / 100;
+  if(m.cuenta && m.cuenta !== 'ninguna' && typeof actualizarSaldoCuenta === 'function') {
+    actualizarSaldoCuenta(m.cuenta, -efecto);
+  }
+  if(rec) DB.recibos = (DB.recibos||[]).filter(function(r){ return r !== rec; });
+  DB.movimientos.splice(idx, 1);
+
+  if(typeof guardarEnLocal === 'function') guardarEnLocal();
+  if(typeof guardarEnFirebase === 'function') guardarEnFirebase();
+  if(s && typeof abrirFichaSocio === 'function') abrirFichaSocio(s.id);
+  if(typeof renderAhorros === 'function') renderAhorros();
+  if(typeof renderDashboard === 'function') renderDashboard();
+  if(typeof renderCuentas === 'function') renderCuentas();
+  if(typeof renderRecibos === 'function') renderRecibos(_filtroRecibosActual || 'todos');
+}
+
 function abrirFichaSocio(socioId) {
   const s = DB.socios.find(x => x.id === socioId);
   if(!s) return;
@@ -9477,17 +9694,31 @@ function abrirFichaSocio(socioId) {
   document.getElementById('ficha-ahorro-total').textContent = '$' + fmt(s.ahorro);
   document.getElementById('ficha-cuota').textContent        = '$' + fmt(s.cuota) + ' ' + s.freq;
 
-  // Movimientos — filtrar EXACTAMENTE por nombre del socio
-  const aMovs = DB.movimientos.filter(m => m.tipo === 'ahorro' && !m.cancelado &&
-    m.socio.toLowerCase() === s.nombre.toLowerCase());
+  // Movimientos — filtrar EXACTAMENTE por nombre del socio.
+  // Se conserva el índice real en DB.movimientos para poder editarlos o
+  // borrarlos uno por uno, en vez de ajustar el total a mano.
+  const aIdx = [];
+  DB.movimientos.forEach((m, i) => {
+    if((m.tipo === 'ahorro' || m.tipo === 'retiro') && !m.cancelado &&
+       (m.socio||'').toLowerCase() === s.nombre.toLowerCase()) aIdx.push(i);
+  });
   const aTbody = document.getElementById('ficha-ahorro-tbody');
-  aTbody.innerHTML = aMovs.length
-    ? aMovs.map(m => `<tr style="border-bottom:0.5px solid var(--gris);">
+  aTbody.innerHTML = aIdx.length
+    ? aIdx.map(i => {
+        const m = DB.movimientos[i];
+        const esRetiro = m.tipo === 'retiro';
+        const monto = Math.abs(Number(m.monto)||0);
+        return `<tr style="border-bottom:0.5px solid var(--gris);">
         <td style="padding:8px 12px;font-size:12px;color:var(--texto2);">${m.fecha}</td>
-        <td style="padding:8px 12px;font-size:12px;">${m.notas||'Depósito de ahorro'}</td>
-        <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;color:var(--verde);font-weight:600;">+$${fmt(m.monto)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="3" style="padding:16px;text-align:center;color:var(--texto2);font-size:12px;">Sin movimientos registrados en el sistema</td></tr>';
+        <td style="padding:8px 12px;font-size:12px;">${esc(m.notas||(esRetiro?'Retiro de ahorro':'Depósito de ahorro'))}</td>
+        <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;color:${esRetiro?'var(--rojo)':'var(--verde)'};font-weight:600;">${esRetiro?'−':'+'}$${fmt(monto)}</td>
+        <td style="padding:6px 10px;text-align:right;white-space:nowrap;">
+          <button onclick="editarMovAhorro(${i})" title="Editar" style="background:var(--gris2);border:none;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">✏</button>
+          <button onclick="eliminarMovAhorro(${i})" title="Eliminar" style="background:var(--rojo-claro);color:var(--rojo);border:none;padding:3px 8px;border-radius:6px;cursor:pointer;font-weight:700;margin-left:3px;">×</button>
+        </td>
+      </tr>`;
+      }).join('')
+    : '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--texto2);font-size:12px;">Sin movimientos registrados en el sistema</td></tr>';
 
   // Tab préstamo
   const pContent = document.getElementById('ficha-prestamo-content');
