@@ -3753,6 +3753,24 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="kpi kpi-orange"><div class="kpi-accent"></div><div class="kpi-label">Saldo pendiente 2026</div><div class="kpi-value mono" id="util-pendiente-kpi" style="color:var(--rojo);">$43,980.00</div><div class="kpi-sub">por cobrar</div></div>
       <div class="kpi kpi-yellow"><div class="kpi-accent"></div><div class="kpi-label" id="util-pendientes-label">Pendientes</div><div class="kpi-value" id="util-pendientes-count-kpi">0</div><div class="kpi-sub" id="util-deudores-kpi">con saldo por cobrar</div></div>
     </div>
+    <div class="card" id="util-pagos-card" style="margin-bottom:20px;border:1.5px solid rgba(13,122,95,0.35);">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div class="card-title">💸 Pago de utilidades</div>
+          <div class="card-subtitle">Cada pago se resta de UTILIDADES y de la cuenta de donde sale el dinero</div>
+        </div>
+        <button onclick="abrirPagoUtilidades()" style="background:var(--verde);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:700;font-size:14px;">💸 Pagar utilidades</button>
+      </div>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;padding:4px 20px 14px;">
+        <div><div style="font-size:11px;font-weight:700;color:var(--texto2);text-transform:uppercase;letter-spacing:.5px;">Cobrado</div><div class="mono" id="util-pag-cobrado" style="font-size:18px;font-weight:700;">$0.00</div></div>
+        <div><div style="font-size:11px;font-weight:700;color:var(--texto2);text-transform:uppercase;letter-spacing:.5px;">Pagado</div><div class="mono" id="util-pag-pagado" style="font-size:18px;font-weight:700;color:var(--rojo);">$0.00</div></div>
+        <div><div style="font-size:11px;font-weight:700;color:var(--texto2);text-transform:uppercase;letter-spacing:.5px;">Disponible para pagar</div><div class="mono" id="util-pag-disponible" style="font-size:22px;font-weight:800;color:var(--verde);">$0.00</div></div>
+      </div>
+      <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Folio</th><th>Fecha</th><th>Pagado a</th><th>Cuenta</th><th style="text-align:right;">Monto</th><th>Notas</th></tr></thead>
+        <tbody id="util-pagos-tbody"><tr><td colspan="6" style="text-align:center;color:var(--texto2);padding:14px;">Sin pagos registrados</td></tr></tbody>
+      </table></div>
+    </div>
     <div class="card">
       <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div>
         <div class="card-title">Resumen de intereses 2026</div>
@@ -9097,7 +9115,7 @@ function confirmarCancelacion() {
       var _mtoCta = Math.abs(Number(r.monto) || 0);
       if(_cta && _cta !== 'ninguna' && _mtoCta > 0) {
         // Al registrar, estos tipos SACAN dinero; el resto lo METEN
-        var _salioDinero = (r.tipo === 'retiro')
+        var _salioDinero = (r.tipo === 'retiro') || (r.tipo === 'pago_utilidad')
           || (r.tipo === 'fondo' && /entrega/i.test(r.concepto || ''));
         actualizarSaldoCuenta(_cta, _salioDinero ? _mtoCta : -_mtoCta);
         console.log('↩️ Cuenta revertida por cancelación:', _cta,
@@ -10105,15 +10123,15 @@ function verReciboAnterior(folio) {
   }
 
   // Reutilizar el modal de recibo existente
-  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', tanda300:'Recibo Tanda $300', tanda1000:'Recibo Tanda $1,000', fondo:'Recibo de Cooperación'};
-  const movLabels = {ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida', tanda300:'Aportación Tanda $300', tanda1000:'Aportación Tanda $1,000', fondo:'Movimiento de cooperación'};
-  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda', tanda300:'Total aportado', tanda1000:'Total aportado', fondo:'Fondo acumulado'};
+  const tipos = {ahorro:'Recibo de Ahorro', prestamo:'Recibo de Préstamo', tanda:'Recibo de Tanda', tanda300:'Recibo Tanda $300', tanda1000:'Recibo Tanda $1,000', fondo:'Recibo de Cooperación', pago_utilidad:'Comprobante de Pago de Utilidades'};
+  const movLabels = {pago_utilidad:'Utilidad pagada', ahorro:'Depósito de ahorro', prestamo:'Abono recibido', tanda:'Aportación recibida', tanda300:'Aportación Tanda $300', tanda1000:'Aportación Tanda $1,000', fondo:'Movimiento de cooperación'};
+  const saldoLabels = {ahorro:'Total ahorrado', prestamo:'Saldo pendiente', tanda:'Monto de la tanda', tanda300:'Total aportado', tanda1000:'Total aportado', fondo:'Fondo acumulado', pago_utilidad:'Utilidades disponibles'};
 
   // Restaurar reciboActual para que compartirWhatsApp funcione
   reciboActual = {...r};
 
   // Header
-  var bgHeader = r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'var(--azul)' : null;
+  var bgHeader = r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'var(--azul)' : (r.tipo==='pago_utilidad' ? 'linear-gradient(135deg,#0d7a5f,#10a37f)' : null);
   document.getElementById('recibo-header').className = 'recibo-header ' + (r.tipo==='tanda300'||r.tipo==='tanda1000' ? 'tanda' : r.tipo);
   if(bgHeader) document.getElementById('recibo-header').style.background = bgHeader;
   else document.getElementById('recibo-header').style.background = '';
@@ -16570,11 +16588,187 @@ window.guardarConfigT1000 = function() {
 })();
 </script>
 
+
+<script>
+// ═══════════════════════════════════════════════════════
+// PAGO DE UTILIDADES
+// Cada pago se guarda en el historial como tipo 'pago_utilidad' (se sincroniza
+// con la nube como cualquier movimiento). UTILIDADES = cobrado − pagado.
+// Cancelar el recibo del pago revierte todo (cuenta y disponible).
+// ═══════════════════════════════════════════════════════
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function r2(n){ return Math.round((Number(n)||0)*100)/100; }
+  function dinero(n){ return '$' + (typeof fmt === 'function' ? fmt(r2(n)) : r2(n).toFixed(2)); }
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function hoy(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  function pagosUtil(){
+    return (DB.movimientos || []).filter(function(m){ return m && m.tipo === 'pago_utilidad' && !m.cancelado; });
+  }
+  function totalPagado(){
+    return r2(pagosUtil().reduce(function(s, m){ return s + Math.abs(Number(m.monto)||0); }, 0));
+  }
+  function totalCobrado(){
+    try { return r2(window.calcularTotalesUtilidades().cobrado); } catch(e) { return 0; }
+  }
+  function disponible(){ return r2(totalCobrado() - totalPagado()); }
+  window.utilidadesPagadas = totalPagado;
+  window.utilidadesDisponibles = disponible;
+
+  // UTILIDADES (saldo del socio especial) = cobrado − pagado
+  var _sincOrig = window.sincronizarAhorradorUtilidades;
+  if(typeof _sincOrig === 'function' && !_sincOrig.__conPagos) {
+    var w = function(monto){
+      if(monto === undefined) monto = totalCobrado();
+      return _sincOrig(r2(Number(monto) - totalPagado()));
+    };
+    w.__conPagos = true;
+    window.sincronizarAhorradorUtilidades = w;
+  }
+
+  function pintarPanel(){
+    if(!$('util-pagos-card')) return;
+    var cob = totalCobrado(), pag = totalPagado();
+    $('util-pag-cobrado').textContent = dinero(cob);
+    $('util-pag-pagado').textContent = pag > 0 ? '−' + dinero(pag) : dinero(0);
+    $('util-pag-disponible').textContent = dinero(cob - pag);
+    var lista = pagosUtil().slice().sort(function(a,b){ return String(b.fecha||'').localeCompare(String(a.fecha||'')); });
+    var tb = $('util-pagos-tbody');
+    if(!lista.length) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--texto2);padding:14px;">Sin pagos registrados</td></tr>';
+      return;
+    }
+    tb.innerHTML = lista.map(function(m){
+      var cta = (typeof CUENTAS !== 'undefined' && m.cuenta && CUENTAS[m.cuenta]) ? CUENTAS[m.cuenta].nombre : (m.cuenta || '—');
+      var folio = m.folio ? '<span class="mono font-bold" style="cursor:pointer;color:var(--azul);" onclick="verReciboAnterior(\'' + esc(m.folio) + '\')">#' + esc(m.folio) + '</span>' : '—';
+      return '<tr><td>' + folio + '</td><td>' + esc(m.fecha) + '</td><td><strong>' + esc(m.socio) + '</strong></td><td>' + esc(cta) + '</td>'
+        + '<td class="mono" style="text-align:right;color:var(--rojo);font-weight:700;">' + dinero(Math.abs(Number(m.monto)||0)) + '</td><td style="font-size:12px;color:var(--texto2);">' + esc(m.notas || '') + '</td></tr>';
+    }).join('');
+  }
+  window.pintarPagosUtilidades = pintarPanel;
+
+  // Repintar el panel cada vez que se dibuja Utilidades
+  var _renderOrig = window.renderUtilidades;
+  if(typeof _renderOrig === 'function' && !_renderOrig.__conPagos) {
+    var rw = function(){ var r = _renderOrig.apply(this, arguments); try { pintarPanel(); } catch(e){} return r; };
+    rw.__conPagos = true;
+    window.renderUtilidades = rw;
+  }
+
+  function cerrarModalPago(){ var m=$('modal-pago-util'); if(m) m.remove(); }
+  window.cerrarModalPagoUtil = cerrarModalPago;
+
+  window.abrirPagoUtilidades = function(){
+    if(typeof modoRutaActivo === 'function' && modoRutaActivo()) {
+      alert('🛵 Estás en MODO RUTA.\n\nLos pagos de utilidades se registran en la PC (Maestro).');
+      return;
+    }
+    if(typeof cajaModoMaestro === 'function' && !cajaModoMaestro()) {
+      alert('🔒 Este equipo está en solo lectura.\n\nLos pagos de utilidades solo se registran en la PC en modo MAESTRO.');
+      return;
+    }
+    var disp = disponible();
+    if(disp <= 0.009) { alert('No hay utilidades disponibles para pagar.\n\nCobrado: ' + dinero(totalCobrado()) + '\nPagado: ' + dinero(totalPagado())); return; }
+
+    var socios = (DB.socios || []).filter(function(s){ return s.activo !== false && s.categoria !== 'ESP'; })
+      .map(function(s){ return s.nombre; }).sort(function(a,b){ return a.localeCompare(b,'es'); });
+    var cuentas = (typeof CUENTAS !== 'undefined') ? Object.keys(CUENTAS) : [];
+    var optCtas = cuentas.map(function(k){
+      return '<option value="' + esc(k) + '"' + (k === 'efectivo' ? ' selected' : '') + '>' + esc(CUENTAS[k].nombre) + ' (' + dinero(CUENTAS[k].saldo) + ')</option>';
+    }).join('');
+
+    cerrarModalPago();
+    var div = document.createElement('div');
+    div.id = 'modal-pago-util';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    var inp = 'width:100%;padding:9px 11px;border:1.5px solid var(--gris2);border-radius:8px;font-size:14px;box-sizing:border-box;';
+    div.innerHTML = '<div style="background:var(--blanco,#fff);color:var(--texto,#111);border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.3);">'
+      + '<h3 style="margin:0 0 4px;font-size:18px;">💸 Pagar utilidades</h3>'
+      + '<p style="margin:0 0 14px;font-size:13px;color:var(--texto2);">Disponible: <strong style="color:var(--verde);">' + dinero(disp) + '</strong></p>'
+      + '<label style="font-size:12px;font-weight:700;">Pagado a</label>'
+      + '<input id="pu-socio" list="pu-socios-lista" autocomplete="off" placeholder="Nombre del socio" style="' + inp + 'text-transform:uppercase;margin:4px 0 12px;">'
+      + '<datalist id="pu-socios-lista">' + socios.map(function(n){ return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      +   '<div><label style="font-size:12px;font-weight:700;">Monto</label><input id="pu-monto" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" style="' + inp + 'margin-top:4px;"></div>'
+      +   '<div><label style="font-size:12px;font-weight:700;">Fecha</label><input id="pu-fecha" type="date" value="' + hoy() + '" style="' + inp + 'margin-top:4px;"></div>'
+      + '</div>'
+      + '<label style="font-size:12px;font-weight:700;display:block;margin-top:12px;">Sale de la cuenta</label>'
+      + '<select id="pu-cuenta" style="' + inp + 'margin-top:4px;">' + optCtas + '</select>'
+      + '<label style="font-size:12px;font-weight:700;display:block;margin-top:12px;">Notas (opcional)</label>'
+      + '<input id="pu-notas" type="text" autocomplete="off" placeholder="Ej. Reparto de utilidades 2026" style="' + inp + 'margin-top:4px;">'
+      + '<div id="pu-error" style="display:none;margin-top:10px;color:var(--rojo);font-size:13px;font-weight:600;"></div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">'
+      +   '<button class="btn btn-secondary" onclick="cerrarModalPagoUtil()">Cancelar</button>'
+      +   '<button class="btn btn-primary" style="background:var(--verde);border-color:var(--verde);" onclick="confirmarPagoUtilidades()">Registrar pago</button>'
+      + '</div></div>';
+    div.addEventListener('click', function(e){ if(e.target === div) cerrarModalPago(); });
+    document.body.appendChild(div);
+    setTimeout(function(){ var el=$('pu-socio'); if(el) el.focus(); }, 50);
+  };
+
+  window.confirmarPagoUtilidades = function(){
+    function error(msg, id){ var e=$('pu-error'); e.textContent = msg; e.style.display='block'; if(id && $(id)) $(id).focus(); }
+    var socio  = String(($('pu-socio')||{}).value || '').trim().toUpperCase().replace(/\s+/g,' ');
+    var monto  = r2(parseFloat(String(($('pu-monto')||{}).value || '').replace(/[^\d.]/g,'')) || 0);
+    var fecha  = String(($('pu-fecha')||{}).value || '') || hoy();
+    var cuenta = String(($('pu-cuenta')||{}).value || '');
+    var notas  = String(($('pu-notas')||{}).value || '').trim();
+    var disp = disponible();
+
+    if(!socio) return error('Escribe a quién se le paga.', 'pu-socio');
+    if(monto <= 0) return error('Escribe el monto a pagar.', 'pu-monto');
+    if(monto > disp + 0.009) return error('El monto es mayor que lo disponible (' + dinero(disp) + ').', 'pu-monto');
+    if(typeof CUENTAS !== 'undefined' && CUENTAS[cuenta] && monto > (Number(CUENTAS[cuenta].saldo)||0) + 0.009) {
+      if(!confirm('La cuenta ' + CUENTAS[cuenta].nombre + ' tiene ' + dinero(CUENTAS[cuenta].saldo) + ' y vas a sacar ' + dinero(monto) + '.\n\n¿Registrar el pago de todos modos?')) return;
+    }
+
+    var folio = (typeof nuevoFolio === 'function') ? nuevoFolio() : String(Date.now()).slice(-6);
+    var dispDespues = r2(disp - monto);
+
+    DB.movimientos.unshift({
+      tipo:'pago_utilidad', socio:socio, monto:-monto, fecha:fecha,
+      notas: notas || 'Pago de utilidades', cuenta: cuenta || null, folio: folio
+    });
+    if(cuenta && typeof actualizarSaldoCuenta === 'function') actualizarSaldoCuenta(cuenta, -monto);
+    DB.recibos.unshift({
+      folio:folio, tipo:'pago_utilidad', socio:socio, monto:monto, fecha:fecha,
+      concepto:'Pago de utilidades', saldo:dispDespues, notas:notas, cuenta: cuenta || null,
+      estado:'vigente', fechaEmision: hoy(), motivoCancelacion:''
+    });
+
+    window.sincronizarAhorradorUtilidades();
+    cerrarModalPago();
+    if(typeof guardarDatos === 'function') guardarDatos();
+    try { window.renderUtilidades(); } catch(e) {}
+    try { if(typeof renderAhorros === 'function') renderAhorros(); } catch(e) {}
+    try { if(typeof renderDashboard === 'function') renderDashboard(); } catch(e) {}
+    try { if(typeof renderCuentas === 'function') renderCuentas(); } catch(e) {}
+    if(typeof toast === 'function') toast('✅ Pago de utilidades registrado: ' + dinero(monto) + ' a ' + socio);
+    if(typeof verReciboAnterior === 'function') { try { verReciboAnterior(folio); } catch(e) {} }
+  };
+
+  // Al cancelar un recibo, recalcular UTILIDADES y el panel
+  var _cancelOrig = window.confirmarCancelacion;
+  if(typeof _cancelOrig === 'function' && !_cancelOrig.__conPagos) {
+    var cw = function(){
+      var r = _cancelOrig.apply(this, arguments);
+      try { window.sincronizarAhorradorUtilidades(); pintarPanel(); if(typeof renderAhorros === 'function') renderAhorros(); } catch(e) {}
+      return r;
+    };
+    cw.__conPagos = true;
+    window.confirmarCancelacion = cw;
+  }
+
+  setTimeout(function(){ try { window.sincronizarAhorradorUtilidades(); pintarPanel(); } catch(e) {} }, 800);
+})();
+</script>
+
 <!-- Service Worker PWA: red primero, sin caché viejo -->
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=20261002-04')
+    navigator.serviceWorker.register('./sw.js?v=20261103-01')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
