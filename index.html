@@ -2109,7 +2109,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="kpi-accent"></div>
         <div class="kpi-label">Utilidades 2026</div>
         <div class="kpi-value">$<span id="kpi-utilidades">0</span></div>
-        <div class="kpi-sub">generadas · Por pagar: $<span id="kpi-utilidades-pend">0</span></div>
+        <div class="kpi-sub">generadas · Pagado: $<span id="kpi-utilidades-pagado">0</span> · Por pagar: $<span id="kpi-utilidades-pend">0</span></div>
       </div>
     </div>
 
@@ -16760,7 +16760,27 @@ window.guardarConfigT1000 = function() {
     window.confirmarCancelacion = cw;
   }
 
-  setTimeout(function(){ try { window.sincronizarAhorradorUtilidades(); pintarPanel(); } catch(e) {} }, 800);
+  // Dashboard: "Por pagar" = disponible para repartir (cobrado − pagado)
+  function pintarDashboard(){
+    var fmtN = function(n){ return (typeof fmt === 'function') ? fmt(r2(n)) : r2(n).toFixed(2); };
+    var elPend = $('kpi-utilidades-pend'), elPag = $('kpi-utilidades-pagado');
+    if(elPend) elPend.textContent = fmtN(disponible());
+    if(elPag)  elPag.textContent  = fmtN(totalPagado());
+  }
+  window.pintarDashboardUtilidades = pintarDashboard;
+  ['renderDashboard','actualizarTotalesUtilidadesUI','actualizarKpiUtilidades'].forEach(function(nombre){
+    var orig = window[nombre];
+    if(typeof orig !== 'function' || orig.__conPagosDash) return;
+    var w = function(){
+      var r = orig.apply(this, arguments);
+      try { window.sincronizarAhorradorUtilidades(); pintarDashboard(); } catch(e) {}
+      return r;
+    };
+    w.__conPagosDash = true;
+    window[nombre] = w;
+  });
+
+  setTimeout(function(){ try { window.sincronizarAhorradorUtilidades(); pintarPanel(); pintarDashboard(); if(typeof renderDashboard === 'function') renderDashboard(); } catch(e) {} }, 800);
 })();
 </script>
 
@@ -16768,7 +16788,7 @@ window.guardarConfigT1000 = function() {
 <script>
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js?v=20261103-01')
+    navigator.serviceWorker.register('./sw.js?v=20261103-02')
       .then(function(r){
         console.log('✅ PWA Service Worker registrado:', r.scope);
         try { r.update(); } catch(e) {}
