@@ -3675,11 +3675,11 @@ window.addEventListener('unhandledrejection', function(e) {
       <table>
         <thead>
           <tr>
-            <th>#</th>
             <th>Deudor</th>
             <th>Préstamo original</th>
             <th>Pagado capital</th>
             <th>Pendiente capital</th>
+            <th>% Pagado</th>
             <th></th>
           </tr>
         </thead>
@@ -6583,7 +6583,6 @@ function renderPrestamos(filtro) {
     // Porcentaje pagado
     const pct = c.capitalTotal > 0 ? ((c.pagadoTotal / c.capitalTotal) * 100).toFixed(1) : '0.0';
     return '<tr>'
-      + '<td>' + numBadge + '</td>'
       + '<td><strong class="link-cliente" data-nombre="' + c.nombre + '" style="cursor:pointer;color:var(--azul);text-decoration:underline dotted;">' + c.nombre + '</strong>' + multiTag + inactivoTag + '</td>'
       + '<td class="mono font-bold">$' + fmt(c.capitalTotal) + '</td>'
       + '<td class="mono">$' + fmt(c.pagadoTotal) + '</td>'
@@ -6596,7 +6595,7 @@ function renderPrestamos(filtro) {
         + '<button class="btn btn-secondary btn-sm pr-amort-btn" data-ids="' + c.ids.join(',') + '" data-nombre="' + c.nombre + '" title="Tabla de pagos">📋</button>'
       + '</td>'
       + '</tr>';
-  }).join('') || '<tr><td colspan="7"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
+  }).join('') || '<tr><td colspan="6"><div class="empty" style="padding:28px;"><div class="icon">✓</div><h3>Sin préstamos visibles</h3><p>Los socios inactivos ocultos no aparecen aquí.</p></div></td></tr>';
   const ptb = document.getElementById('prestamos-tbody');
   if(ptb) {
     ptb._delegado = true;
